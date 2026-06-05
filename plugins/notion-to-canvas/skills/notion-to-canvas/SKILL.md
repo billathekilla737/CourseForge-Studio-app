@@ -247,6 +247,17 @@ exam and add it", "make a Week 14 study guide", "add a rubric page to Week 3"). 
 4. **Ask publish state**, run `Verify-Slots.ps1` on the pages, push (idempotent),
    then confirm via the API (`GET /modules?include[]=items`, `/assignments`, `/quizzes`).
 
+### Term scheduling & due dates
+When you first build or schedule a class, **ask the instructor the TERM and the
+FORMAT** (full-term 15-week, 13-week, 1st/2nd 8-week, 4-week) if you do not already
+know it. From the academic calendar (`references/academic-calendar.md`) that fixes
+the **start, finals, and breaks**. Compute due dates with
+`scripts/Compute-DueDates.ps1` (default due = the **Monday after each week at
+11:59 PM**, auto-shifted past holidays, with the final in the finals window),
+**SHOW the week-by-week table for approval**, then apply with
+`scripts/Set-DueDates.ps1` (**dry-run first**; `-Apply` to write). The calendar dates
+shift yearly, so re-check the source each year.
+
 The project/capstone section below is the detailed reference for Mode B's graded
 pieces (assignments, discussions, quizzes, mixed modules, and the
 pages-only-to-gradebook migration).
@@ -382,6 +393,7 @@ Assignment object, **delete the old wiki page by its slug** so the two do not co
 - `references/workflow-pattern.md` — how to fan out the bulk conversion across agents.
 - `references/project-course.md` — project/capstone courses: the project manifest (assignments, graded discussions, front page, syllabus, mixed-type module items) and how to push them.
 - `references/blind-grading.md` — the OPT-IN blind/pseudonymized grading workflow (sterilizing+pseudonymizing gateway -> grade by pseudonym -> dry-run-first poster), the local-map/never-commit rule, and the screenshot/best-effort caveats.
+- `references/academic-calendar.md` — MGCCC term formats + Fall 2026 anchor dates (start/finals/breaks), the source-of-truth calendar URL (re-check yearly), and the DEFAULT due rule used by the due-date scripts.
 
 # Scripts
 - `scripts/Push-CanvasPages.ps1` — idempotent **lesson-course** uploader + module builder (params: ConfigPath, ManifestPath, StatePath, **-PublishState published|unpublished**, -WhatIf).
@@ -391,3 +403,5 @@ Assignment object, **delete the old wiki page by its slug** so the two do not co
 - `scripts/Extract-CanvasToken.ps1` — pull a token out of an .rtf into canvas.token.
 - `scripts/Build-GradingBundle.ps1` — OPT-IN blind-grading **sterilizing + pseudonymizing gateway**: fetches submission text, writes a LOCAL `grading\<id>\map.json` (gitignored, never read by the model) and a scrubbed, pseudonymized `bundle.json` to grade from (params: -ConfigPath, -AssignmentId, -TokenPath, -OutDir). Sanctioned by `canvas-pii-guard`.
 - `scripts/Post-Grades.ps1` — pseudonym-aware grade poster: reads `map.json` + `proposed-grades.json`, resolves each pseudonym to a user_id, **dry-run by default**, `-Apply` to post; refuses unknown pseudonyms; live-course warning + audit (params: -ConfigPath, -AssignmentId, -TokenPath, -OutDir, -Apply). Sanctioned by `canvas-pii-guard`.
+- `scripts/Compute-DueDates.ps1` — compute a week-by-week due-date table from a term start, week count, finals-window end, and break ranges (default due = the Monday after each week at 23:59, auto-shifted past holidays, full-break weeks skipped, final on the finals end). Deterministic (`ParseExact`); prints a table and supports `-AsJson` (params: -StartDate, -Weeks, -FinalsEnd, -Breaks, -DueTime, -DueWeekday, -AsJson).
+- `scripts/Set-DueDates.ps1` — apply a `Compute-DueDates -AsJson` table to a course's assignments + quizzes by reading the project manifest: maps each "Week N" module to its DueAt, resolves each Assignment/Quiz item by name/title to its Canvas id, and PUTs `assignment[due_at]`/`quiz[due_at]`. Skips "Start Here"; **dry-run by default**, `-Apply` to write (params: -ConfigPath, -ManifestPath, -DueDatesJson, -TokenPath, -Apply, -WhatIf).

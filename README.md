@@ -5,8 +5,8 @@ instance; they reuse cleanly for any Canvas school after a few setting tweaks.
 
 | Plugin | What it does |
 |---|---|
-| **`notion-to-canvas`** | Builds **Canvas course content** — migrated from a Notion course or generated on request — as styled, sanitizer-safe pages, weekly modules, and (optionally) graded assignments/discussions/quizzes. Idempotent re-runs. **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (a sterilizing + pseudonymizing gateway: identities stay local, you grade pseudonymized text, a dry-run-first poster writes grades back). |
-| **`canvas-pii-guard`** | A **local data-protection layer**: PreToolUse hooks that **block** Canvas student-data API calls (rosters/grades/submissions) and local-cache reads *before they run*, so student PII is never fetched or sent. Plus a best-effort output scrubber tuned to MGCCC ID formats. Install it alongside `notion-to-canvas`. |
+| **`courseforge`** | Builds **Canvas course content** — migrated from a Notion course or generated on request — as styled, sanitizer-safe pages, weekly modules, and (optionally) graded assignments/discussions/quizzes. Idempotent re-runs. **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (a sterilizing + pseudonymizing gateway: identities stay local, you grade pseudonymized text, a dry-run-first poster writes grades back). |
+| **`canvas-pii-guard`** | A **local data-protection layer**: PreToolUse hooks that **block** Canvas student-data API calls (rosters/grades/submissions) and local-cache reads *before they run*, so student PII is never fetched or sent. Plus a best-effort output scrubber tuned to MGCCC ID formats. Install it alongside `courseforge`. |
 
 > **Not included here:** the full admin/grading tool that *intentionally* reads student
 > submissions **with real identities**. That stays on admin machines only. What this
@@ -26,7 +26,7 @@ instance; they reuse cleanly for any Canvas school after a few setting tweaks.
 In Claude Code:
 ```
 /plugin marketplace add billathekilla737/garris-canvas-tools
-/plugin install notion-to-canvas@garris-canvas-tools
+/plugin install courseforge@garris-canvas-tools
 /plugin install canvas-pii-guard@garris-canvas-tools
 ```
 Reload Claude Code. You'll get a trust prompt on install — review the scripts first.
@@ -35,8 +35,8 @@ to a private repo, use the folder-copy method below or clone locally and
 `/plugin marketplace add <local path>`.)
 
 ### Simplest (copy the folder)
-Copy `plugins/notion-to-canvas/skills/notion-to-canvas/` into your `~/.claude/skills/`
-so you have `~/.claude/skills/notion-to-canvas/SKILL.md`. Restart Claude Code.
+Copy `plugins/courseforge/skills/courseforge/` into your `~/.claude/skills/`
+so you have `~/.claude/skills/courseforge/SKILL.md`. Restart Claude Code.
 (See `AGENT-INSTALL-PROMPT.md` for a paste-in prompt that does this for you, and
 `INSTALL-GUIDE.pdf` for a step-by-step picture guide.)
 
@@ -50,7 +50,7 @@ so you have `~/.claude/skills/notion-to-canvas/SKILL.md`. Restart Claude Code.
 ## Usage
 Ask Claude in plain English — "get my Notion course into Canvas", "add a study guide to
 Week 3", "build a final-exam quiz". Before any push it **asks whether to publish or
-leave content unpublished** (default: unpublished). See `plugins/notion-to-canvas/.../SKILL.md`.
+leave content unpublished** (default: unpublished). See `plugins/courseforge/.../SKILL.md`.
 
 ---
 
@@ -107,7 +107,7 @@ To reproduce the evidence: run `plugins/canvas-pii-guard/tests/Run-GuardTests.ps
 ---
 
 ## What to change for a non-MGCCC school
-- `plugins/notion-to-canvas/skills/notion-to-canvas/references/style-guide.md` — swap the
+- `plugins/courseforge/skills/courseforge/references/style-guide.md` — swap the
   navy/gold palette for your colors (keep the structure; it survives the sanitizer).
 - `.../scripts/Trim-CanvasNav.ps1` — the nav keep-list + LTI tab ids are MGCCC's; override `-Keep`.
 - `plugins/canvas-pii-guard/scripts/PiiPatterns.ps1` — adjust the ID/email patterns to your

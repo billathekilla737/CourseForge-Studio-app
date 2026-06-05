@@ -1,5 +1,5 @@
 <#
-  Build-GradingBundle.ps1  (notion-to-canvas - OPT-IN blind/pseudonymized grading)
+  Build-GradingBundle.ps1  (courseforge - OPT-IN blind/pseudonymized grading)
   A sterilizing + PSEUDONYMIZING gateway. It is the safe way to bring submission
   TEXT into a grading session WITHOUT bringing student identities along. It mirrors
   Get-CanvasData-Sterilized.ps1: the raw identity data stays LOCAL, only a scrubbed,

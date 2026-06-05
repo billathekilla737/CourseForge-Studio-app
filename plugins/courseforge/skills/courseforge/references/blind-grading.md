@@ -1,11 +1,11 @@
 # Blind / pseudonymized grading (OPT-IN)
 
 This is the **only** sanctioned way to grade student submissions from the
-`notion-to-canvas` skill. It is designed so that **student identities stay on the
+`courseforge` skill. It is designed so that **student identities stay on the
 local machine** and the model only ever sees pseudonymized, scrubbed submission text.
 
 It is an opt-in flow, not normal use. For grading where the real identities are in
-front of the model, use the separate `notion-to-canvas-admin` skill instead.
+front of the model, use the separate `courseforge-admin` skill instead.
 
 ## The workflow
 

@@ -1,5 +1,5 @@
 <#
-  Post-Grades.ps1  (notion-to-canvas - OPT-IN blind/pseudonymized grading)
+  Post-Grades.ps1  (courseforge - OPT-IN blind/pseudonymized grading)
   The APPLY half of the blind-grading workflow. It mirrors the admin Grade-Submissions
   poster but is PSEUDONYM-AWARE: you grade by pseudonym (S-001, S-002, ...) and this
   script resolves each pseudonym back to a real user_id LOCALLY via map.json, then posts.

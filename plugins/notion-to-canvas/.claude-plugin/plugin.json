@@ -1,8 +1,0 @@
-{
-  "name": "notion-to-canvas",
-  "version": "1.0.0",
-  "description": "Build Canvas LMS content from Notion or from generated material: styled, accessible, sanitizer-safe HTML pages, weekly modules, graded assignments/discussions/quizzes, and nav trim. Idempotent re-runs. Never reads student data.",
-  "author": { "name": "Zack Garris (MGCCC)" },
-  "homepage": "https://github.com/billathekilla737/garris-canvas-tools",
-  "keywords": ["canvas", "lms", "instructure", "notion", "education", "course-builder"]
-}

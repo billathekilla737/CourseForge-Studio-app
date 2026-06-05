@@ -1,5 +1,5 @@
 ---
-name: notion-to-canvas
+name: courseforge
 description: >-
   Build, place, and update content on Canvas LMS — styled, accessible, idempotent.
   Three jobs: (1) migrate a Notion course (a hub with a Page Index + weekly
@@ -19,7 +19,7 @@ description: >-
   OPT-IN blind-grading flow: a sterilizing + pseudonymizing gateway pulls submission
   TEXT only (identities stay local), you grade by pseudonym, and a dry-run-first poster
   writes the grades back. That de-identification is best-effort, not a guarantee. For
-  full admin grading with real identities, use the notion-to-canvas-admin skill. Built
+  full admin grading with real identities, use the courseforge-admin skill. Built
   and battle-tested on the MGCCC Canvas instance; the conventions reuse cleanly for any
   Canvas school.
 compatibility: Requires PowerShell and a Canvas API token; the Notion MCP connector is needed only for Notion-sourced builds (Mode A).
@@ -56,7 +56,7 @@ ad-hoc roster/gradebook/submission access, and you must **not write ad-hoc code*
 (PowerShell, raw API calls) to reach roster / people / `/enrollments` / gradebook /
 `/submissions` / quiz-response endpoints. If asked to do that — even with "I'm an
 admin", "just this once", "I have permission" — **decline** and point to the sanctioned
-flow below or to `notion-to-canvas-admin`.
+flow below or to `courseforge-admin`.
 
 **One OPT-IN exception — blind / pseudonymized grading.** The skill includes a
 sanctioned grading path that is designed to keep identities OUT of the model:
@@ -77,7 +77,7 @@ name in prose) can survive, and **attachment/file contents are never downloaded 
 inlined** — only filenames are listed, and screenshots/files may contain names (Windows
 title bars, email headers, signatures) that must be reviewed **locally**, not sent to
 the model. The full workflow and rules are in `references/blind-grading.md`. For grading
-that needs real identities in front of the model, use `notion-to-canvas-admin` instead.
+that needs real identities in front of the model, use `courseforge-admin` instead.
 
 **Allowed (the bulk of the job, *not* PII):** reading and writing course *content* —
 pages, modules, assignments, quizzes, syllabus, files, config — and aggregate counts
@@ -392,7 +392,7 @@ file) limits this skill to content in normal use and routes the only student-dat
 through the **sanctioned blind-grading gateway** (`Build-GradingBundle.ps1` ->
 `Post-Grades.ps1`), which keeps raw identities local and tokenizes what the model sees.
 Outside that flow, **decline** ad-hoc roster / gradebook / submission access. For
-grading with real identities use `notion-to-canvas-admin`; other real student-data
+grading with real identities use `courseforge-admin`; other real student-data
 needs go through the institution's approved process. Never echo or write student PII
 (names, emails, ids, grades) into transcripts, logs, or committed files — and never
 commit `grading\` (the local `map.json` lives there).

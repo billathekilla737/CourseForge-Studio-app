@@ -17,7 +17,7 @@ user opt-in to multi-agent orchestration (it spends a lot of tokens — ~30K/pag
 
 ## Skeleton
 ```js
-export const meta = { name: 'notion-to-canvas-bulk',
+export const meta = { name: 'courseforge-bulk',
   description: 'Convert all Notion pages for <courses> into Canvas HTML',
   phases: [{ title: 'Convert' }] }
 

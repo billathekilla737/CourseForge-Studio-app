@@ -6,14 +6,14 @@
   },
   "plugins": [
     {
-      "name": "notion-to-canvas",
-      "source": "./plugins/notion-to-canvas",
-      "description": "Notion to Canvas course builder + generate-and-place content. Content only; never reads student data."
+      "name": "courseforge",
+      "source": "./plugins/courseforge",
+      "description": "CourseForge: build, place, and schedule whole Canvas courses (migrate from Notion or generate pages/syllabi/assignments/quizzes/exams, weekly modules, weighted grading, nav trim, auto due dates). Content-first; includes one opt-in best-effort blind-grading flow that keeps identities local."
     },
     {
       "name": "canvas-pii-guard",
       "source": "./plugins/canvas-pii-guard",
-      "description": "Local PII-prevention hooks: blocks Canvas student-data API calls and local-cache reads before they run, so student data is never fetched or transmitted. Install on instructor machines alongside notion-to-canvas."
+      "description": "Local PII-prevention hooks: blocks Canvas student-data API calls and local-cache reads before they run, so student data is never fetched or transmitted. Install on instructor machines alongside courseforge."
     }
   ]
 }

@@ -1,0 +1,8 @@
+{
+  "name": "courseforge",
+  "version": "1.1.0",
+  "description": "CourseForge: build, place, and schedule whole Canvas courses. Migrate from Notion or generate styled pages, syllabi, assignments, discussions, quizzes and exams; weekly modules; weighted grading; nav trim; and automatic due dates from the term calendar. Idempotent re-runs. Content-first and does not read student data in normal use; includes one opt-in, best-effort blind-grading flow that keeps identities local.",
+  "author": { "name": "Zack Garris (MGCCC)" },
+  "homepage": "https://github.com/billathekilla737/garris-canvas-tools",
+  "keywords": ["canvas", "lms", "instructure", "notion", "education", "course-builder"]
+}

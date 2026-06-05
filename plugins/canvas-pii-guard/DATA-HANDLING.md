@@ -3,7 +3,7 @@
 ## Purpose
 This component is a **local, technical control** that prevents Canvas **student PII**
 from being acquired by, or transmitted from, an instructor's machine when they use the
-`notion-to-canvas` content skill with Claude Code. It exists so adoption does **not**
+`courseforge` content skill with Claude Code. It exists so adoption does **not**
 rest on "we trust the AI" — the protection is enforced on the instructor's computer,
 independent of the model.
 
@@ -50,7 +50,7 @@ Blocked calls never execute, so no roster/grade/submission data leaves the machi
    - `Get-CanvasData-Sterilized.ps1` — general read: keeps the **raw** response in a
      gitignored `private/` folder the agent never reads, emits only a **pattern-redacted**
      rendering (Strict profile).
-   - `Build-GradingBundle.ps1` — **opt-in blind grading** (in the `notion-to-canvas`
+   - `Build-GradingBundle.ps1` — **opt-in blind grading** (in the `courseforge`
      content skill): pulls submission **text only**, writes the pseudonym->identity
      `map.json` to a gitignored `grading/` folder the model never reads, and emits a
      **scrubbed + pseudonymized** `bundle.json` (PII patterns + the student's own name
@@ -94,7 +94,7 @@ Blocked calls never execute, so no roster/grade/submission data leaves the machi
   (Windows: a machine-level `managed-settings.json`; can be pushed via Group Policy /
   Intune). This is what converts the control from "opt-in" to "enforced."
 - **Do NOT install this guard on admin/grading machines** that legitimately access
-  student data (e.g., the separate `notion-to-canvas-admin` grading tool) — it would
+  student data (e.g., the separate `courseforge-admin` grading tool) — it would
   block their sanctioned work.
 
 ## How to verify / audit (for the reviewer)

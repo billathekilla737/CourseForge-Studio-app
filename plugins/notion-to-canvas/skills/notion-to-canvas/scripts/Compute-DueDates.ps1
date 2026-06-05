@@ -6,6 +6,10 @@
     - Each instructional week's items are due the MONDAY AFTER that week, at 23:59
       (the Monday that begins the NEXT calendar week). Both weekday and time are
       overridable (-DueWeekday, -DueTime).
+    - WEEK-1 ANCHOR: Week 1's due day is the chosen weekday (default Monday) that is
+      the FIRST such weekday MORE THAN 6 days after StartDate. Week 1 always gets a
+      full first week, so the start's day-of-week does NOT shift the schedule -- a
+      Thursday start and the following Monday start yield the SAME table.
     - SKIP any calendar week that is entirely a break (e.g. Thanksgiving Nov 23-27);
       the instructional weeks step over it.
     - If a computed due day is itself a holiday (Labor Day, a Fall Break day), shift
@@ -107,12 +111,23 @@ if ($DueTime -notmatch '^\d{2}:\d{2}$') { throw "DueTime must be HH:mm (got '$Du
 $dueHour   = [int]($DueTime.Substring(0,2))
 $dueMin    = [int]($DueTime.Substring(3,2))
 
+# Week-1 anchor (consistency): Week 1's due day is the chosen weekday that is the
+# FIRST such weekday MORE THAN 6 days after StartDate. This guarantees Week 1 always
+# gets a full first week, so the term-start's day-of-week no longer shifts the whole
+# schedule (a Thursday start and the following Monday start produce the SAME table).
+$targetDow = $weekdayOffset[$DueWeekday]              # 0=Mon offset within a week
+$anchor = $start.Date.AddDays(7)                      # at least 7 days out
+while ((([int]$anchor.DayOfWeek + 6) % 7) -ne $targetDow) { $anchor = $anchor.AddDays(1) }
+while (($anchor - $start.Date).Days -le 6) { $anchor = $anchor.AddDays(7) }
+
 # Walk calendar weeks. Instructional week N occupies the first non-fully-break
 # calendar week not yet consumed; its due day is the chosen weekday of the FOLLOWING
 # calendar week, shifted past any holiday. The last week (the final) is forced to
-# the finals-window end date.
+# the finals-window end date. Seed $weekStart so the loop's "next calendar week's
+# chosen weekday" lands on the Week-1 anchor: that is the Monday of the anchor's
+# calendar week, minus one week.
 $results = @()
-$weekStart = WeekStartMonday $start    # Monday of the term-start week
+$weekStart = (WeekStartMonday $anchor).AddDays(-7)
 
 for ($n = 1; $n -le $Weeks; $n++) {
 

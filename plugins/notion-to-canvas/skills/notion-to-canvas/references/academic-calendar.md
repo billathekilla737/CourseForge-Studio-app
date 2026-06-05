@@ -52,6 +52,30 @@ When calling `Compute-DueDates.ps1`, pass these as:
 - `-Breaks` = the break ranges, e.g.
   `'2026-09-07','2026-10-12..2026-10-13','2026-11-23..2026-11-27'`.
 
+## Machine-readable term calendar
+The scripts read the block below to look up a term's instructional anchors WITHOUT
+asking the instructor. `scripts/Get-TermCalendar.ps1` parses the first fenced
+`json` code block in this file, infers the term name from a start date
+(month >= 8 -> "Fall <year>", months 1-4 -> "Spring <year>",
+months 5-7 -> "Summer <year>"), and returns that term's `finalsEnd` + `breaks`.
+
+`finalsEnd` is the LAST day of the full-term finals window (the instructional end),
+NOT the Canvas course `end_at` (which is the padded access-end, e.g. Dec 25). Break
+entries are either a single `yyyy-MM-dd` day or a `yyyy-MM-dd..yyyy-MM-dd` range, the
+same format `Compute-DueDates.ps1 -Breaks` accepts. Re-check and extend yearly.
+
+```json
+{
+  "Fall 2026": {
+    "finalsEnd": "2026-12-11",
+    "breaks": ["2026-09-07", "2026-10-12..2026-10-13", "2026-11-23..2026-11-27"]
+  }
+}
+```
+
+If a term is NOT present in this block, `Get-TermCalendar.ps1` returns nothing and
+the caller must fall back to asking the instructor for finals + breaks.
+
 ## DEFAULT due rule
 `Compute-DueDates.ps1` lays the instructional weeks onto consecutive calendar weeks
 starting from the term start and assigns due dates by this rule:
@@ -59,6 +83,11 @@ starting from the term start and assigns due dates by this rule:
 1. **Each instructional week's items are due the MONDAY AFTER that week, at 23:59**
    (11:59 PM) — that is, the Monday that begins the next calendar week. (Both the
    weekday and the time are overridable: `-DueWeekday`, `-DueTime`.)
+   - **Week-1 anchor:** Week 1's due day is the chosen weekday (default Monday) that
+     is the FIRST such weekday MORE THAN 6 days after the start date, so Week 1
+     always gets a full first week. This makes the schedule independent of the
+     start's day-of-week: a Thursday face-to-face start (Aug 20) and the Monday
+     online start (Aug 24) produce the SAME due-date table.
 2. **Skip any calendar week that is entirely a break.** Thanksgiving week
    (Nov 23-27) is a full no-class week, so the instructional weeks step over it and
    resume the following week.

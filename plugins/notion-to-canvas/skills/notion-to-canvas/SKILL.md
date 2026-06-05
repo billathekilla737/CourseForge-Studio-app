@@ -248,15 +248,35 @@ exam and add it", "make a Week 14 study guide", "add a rubric page to Week 3"). 
    then confirm via the API (`GET /modules?include[]=items`, `/assignments`, `/quizzes`).
 
 ### Term scheduling & due dates
-When you first build or schedule a class, **ask the instructor the TERM and the
-FORMAT** (full-term 15-week, 13-week, 1st/2nd 8-week, 4-week) if you do not already
-know it. From the academic calendar (`references/academic-calendar.md`) that fixes
-the **start, finals, and breaks**. Compute due dates with
-`scripts/Compute-DueDates.ps1` (default due = the **Monday after each week at
-11:59 PM**, auto-shifted past holidays, with the final in the finals window),
-**SHOW the week-by-week table for approval**, then apply with
-`scripts/Set-DueDates.ps1` (**dry-run first**; `-Apply` to write). The calendar dates
-shift yearly, so re-check the source each year.
+**Derive, do not ask.** The skill pulls the term **start from the Canvas course
+dates** and the **length from the course's own `Week N` modules**, so it normally
+needs NO instructor input to schedule. Run `scripts/Set-DueDates.ps1 -Auto`:
+- **Start** = the course `start_at` from `GET /courses/:id` (date part); if null it
+  falls back to the term start via `GET /courses/:id?include%5B%5D=term` (the bracket
+  MUST be percent-encoded as `%5B%5D` or Canvas 404s).
+- **Length (weeks)** = the **max N among the manifest's `Week N` modules**. Do NOT use
+  Canvas `end_at` for length: `end_at` is the **access-end**, padded past finals
+  (e.g. Dec 25 / Dec 17), not the instructional/finals end (full-term finals are
+  Dec 7-11). The module count is the reliable length.
+- **Finals + breaks** = from the machine-readable term table in
+  `references/academic-calendar.md` (a fenced `json` block), looked up by
+  `scripts/Get-TermCalendar.ps1`, which infers the term from the start date
+  (month >= 8 -> Fall, 1-4 -> Spring, 5-7 -> Summer).
+
+Only **ASK the instructor** when the course is a **blank shell** (no start date AND no
+`Week N` modules) or the **term is not in the calendar table**; in those cases `-Auto`
+stops with an explicit message. The default due rule is the **chosen weekday (default
+Monday) after each week at 11:59 PM**, auto-shifted past holidays, full-break weeks
+skipped, with the final on the finals-window end. The **Week-1 anchor** gives Week 1 a
+full first week (its due day is the first chosen weekday MORE than 6 days after start),
+so a Thursday face-to-face start and the Monday online start produce the SAME table.
+
+**Always SHOW the week-by-week table for approval before applying.** `Set-DueDates.ps1`
+is **dry-run by default** (prints the table it would write); pass `-Apply` to write.
+For a hand-built table, the explicit path still works: compute with
+`scripts/Compute-DueDates.ps1 -AsJson` and pass it via `Set-DueDates.ps1 -DueDatesJson`.
+The calendar dates shift yearly, so re-check the source and extend the json table each
+year.
 
 The project/capstone section below is the detailed reference for Mode B's graded
 pieces (assignments, discussions, quizzes, mixed modules, and the
@@ -403,5 +423,6 @@ Assignment object, **delete the old wiki page by its slug** so the two do not co
 - `scripts/Extract-CanvasToken.ps1` — pull a token out of an .rtf into canvas.token.
 - `scripts/Build-GradingBundle.ps1` — OPT-IN blind-grading **sterilizing + pseudonymizing gateway**: fetches submission text, writes a LOCAL `grading\<id>\map.json` (gitignored, never read by the model) and a scrubbed, pseudonymized `bundle.json` to grade from (params: -ConfigPath, -AssignmentId, -TokenPath, -OutDir). Sanctioned by `canvas-pii-guard`.
 - `scripts/Post-Grades.ps1` — pseudonym-aware grade poster: reads `map.json` + `proposed-grades.json`, resolves each pseudonym to a user_id, **dry-run by default**, `-Apply` to post; refuses unknown pseudonyms; live-course warning + audit (params: -ConfigPath, -AssignmentId, -TokenPath, -OutDir, -Apply). Sanctioned by `canvas-pii-guard`.
-- `scripts/Compute-DueDates.ps1` — compute a week-by-week due-date table from a term start, week count, finals-window end, and break ranges (default due = the Monday after each week at 23:59, auto-shifted past holidays, full-break weeks skipped, final on the finals end). Deterministic (`ParseExact`); prints a table and supports `-AsJson` (params: -StartDate, -Weeks, -FinalsEnd, -Breaks, -DueTime, -DueWeekday, -AsJson).
-- `scripts/Set-DueDates.ps1` — apply a `Compute-DueDates -AsJson` table to a course's assignments + quizzes by reading the project manifest: maps each "Week N" module to its DueAt, resolves each Assignment/Quiz item by name/title to its Canvas id, and PUTs `assignment[due_at]`/`quiz[due_at]`. Skips "Start Here"; **dry-run by default**, `-Apply` to write (params: -ConfigPath, -ManifestPath, -DueDatesJson, -TokenPath, -Apply, -WhatIf).
+- `scripts/Compute-DueDates.ps1` — compute a week-by-week due-date table from a term start, week count, finals-window end, and break ranges (default due = the chosen weekday after each week at 23:59, auto-shifted past holidays, full-break weeks skipped, final on the finals end). Week-1 anchor = first chosen weekday >6 days after start (start day-of-week no longer shifts the schedule). Deterministic (`ParseExact`); prints a table and supports `-AsJson` (params: -StartDate, -Weeks, -FinalsEnd, -Breaks, -DueTime, -DueWeekday, -AsJson).
+- `scripts/Get-TermCalendar.ps1` — read the machine-readable term table (fenced `json` block) from `references/academic-calendar.md`; infer the term from a start date (month >= 8 -> Fall, 1-4 -> Spring, 5-7 -> Summer) and return its `finalsEnd` + `breaks`, or nothing if the term is not in the table (caller then asks the instructor). Dot-source it for the `Get-TermCalendar` / `Get-TermName` functions, or run standalone (params: -StartDate, -CalendarPath).
+- `scripts/Set-DueDates.ps1` — apply a due-date table to a course's assignments + quizzes by reading the project manifest: maps each "Week N" module to its DueAt, resolves each Assignment/Quiz item by name/title to its Canvas id, and PUTs `assignment[due_at]`/`quiz[due_at]`. Skips "Start Here"; **dry-run by default**, `-Apply` to write. Two ways to supply the table: explicit `-DueDatesJson` (a `Compute-DueDates -AsJson` file), or **`-Auto`** which derives it with no instructor input — start from the Canvas course `start_at` (term-start fallback via `?include%5B%5D=term`), length from the manifest's max `Week N` (NOT raw `end_at`, which is the padded access-end), finals+breaks from `Get-TermCalendar`; stops and asks only for a blank shell or an unknown term (params: -ConfigPath, -ManifestPath, -DueDatesJson, -Auto, -DueTime, -DueWeekday, -TokenPath, -Apply, -WhatIf).

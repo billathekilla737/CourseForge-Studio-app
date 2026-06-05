@@ -218,6 +218,11 @@ exam and add it", "make a Week 14 study guide", "add a rubric page to Week 3"). 
    (one outer `<div>`, hero `<h2>`, `<h3>` section cards, the navy/gold components).
    Humanize prose (Gotcha 4). Write each file under `canvas-export/pages/<COURSE>/`.
    For a batch (e.g. a study guide + exam per course), fan out subagents.
+   **Hints are not solutions:** never put a complete, copy-paste-able solution (full code or a finished
+   worked example) in an assignment's hints OR requirements. Give a *skeleton* (class + method
+   signatures with `// TODO:` where the graded logic goes), *name the APIs* the student needs without
+   assembling them, and use at most one sparing `____` fill-in-the-blank. The student must still write
+   every line the rubric grades. Litmus test: if pasting the hint earns the rubric, it gives away too much.
 2. **Decide placement deliberately:**
    - **Item type** — a reading/lesson is a **Page**; graded work students submit is
      an **Assignment**; a graded participation thread is a **Discussion**; a

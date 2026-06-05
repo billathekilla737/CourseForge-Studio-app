@@ -11,9 +11,12 @@
 # --- Policy: is this tool call allowed to reach Canvas? -----------------------
 # Returns a hashtable @{ allowed = $true/$false; reason = '...' }.
 # Logic order (fail-closed for Canvas data endpoints):
+#   0. Allow the SANCTIONED gateway scripts by name (sterilizing / pseudonymizing).
+#      Checked FIRST because they legitimately touch /submissions (step 4) AND read
+#      the local grading\ map (step 1); they sterilize / tokenize their own output.
 #   1. Block reads of local student-data caches (private/, grading/, audit log).
 #   2. If the text does not reference the Canvas API at all -> allow (not our concern).
-#   3. Allow the one sanctioned sterilizing gateway script by name.
+#   3. (folded into step 0)
 #   4. Deny any Canvas student-data (PII) endpoint.
 #   5. Allow known Canvas CONTENT endpoints.
 #   6. Otherwise (a Canvas API call we do not recognize) -> DENY (fail-closed).
@@ -21,6 +24,15 @@ function Test-CanvasCallAllowed {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return @{ allowed = $true; reason = '' } }
     $low = $Text.ToLower()
+
+    # 0. sanctioned gateway scripts (short-circuit BEFORE the local-cache block and the
+    #    submissions deny). Each sterilizes/pseudonymizes its own output; raw identities
+    #    stay local. Any OTHER command hitting the same endpoints/caches stays blocked.
+    if ($low -match 'get-canvasdata-sterilized\.ps1' -or
+        $low -match 'build-gradingbundle\.ps1' -or
+        $low -match 'post-grades\.ps1') {
+        return @{ allowed = $true; reason = '' }
+    }
 
     # 1. local student-data caches
     if ($low -match 'private[\\/]' -or $low -match 'grading[\\/]' -or
@@ -34,13 +46,12 @@ function Test-CanvasCallAllowed {
         return @{ allowed = $true; reason = '' }
     }
 
-    # 3. sanctioned sterilizing gateway (short-circuits; the gateway sterilizes its own output)
-    if ($low -match 'get-canvasdata-sterilized\.ps1') { return @{ allowed = $true; reason = '' } }
+    # 3. (sanctioned gateway scripts are handled at the very top in step 0)
 
     # 4. student-data (PII) endpoints -> DENY (segment-anchored; checked before content allow)
     $denyRx = '/(submissions|submission_summary|gradebook|grades|grade_change|enrollments|users|students|observees|observers|analytics|conversations|entries|entry_list|activity_stream|sis_imports|logins|profile|avatars|feeds|recent_students|student_view|effective_due_dates|quiz_submissions)([/?]|$|[^a-z0-9_])'
     if ($low -match $denyRx) {
-        return @{ allowed = $false; reason = 'canvas-pii-guard: Canvas student-data endpoint is not permitted from this skill. If data is genuinely needed, route it through Get-CanvasData-Sterilized.ps1.' }
+        return @{ allowed = $false; reason = 'canvas-pii-guard: Canvas student-data endpoint is not permitted from this skill. If data is genuinely needed, route it through a sanctioned gateway (Get-CanvasData-Sterilized.ps1, or for blind grading Build-GradingBundle.ps1 / Post-Grades.ps1).' }
     }
 
     # 5. known CONTENT endpoints -> allow (segment-anchored)

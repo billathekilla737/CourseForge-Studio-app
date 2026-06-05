@@ -1,5 +1,5 @@
 canvas-pii-guard - coverage report
-Result: 46 passed, 0 failed
+Result: 51 passed, 0 failed
 (synthetic data only; proves listed structured-PII forms, not arbitrary free text)
 
 == POLICY (block hook) ==
@@ -11,10 +11,15 @@ Result: 46 passed, 0 failed
   PASS  allow: course settings + total_students
   PASS  allow: non-Canvas command
   PASS  allow: sanctioned gateway by name
+  PASS  allow: Build-GradingBundle.ps1 (sanctioned) hitting /submissions
+  PASS  allow: Post-Grades.ps1 (sanctioned) hitting /submissions
+  PASS  allow: Post-Grades.ps1 (sanctioned) reading local grading\ map.json
   PASS  DENY: /enrollments
   PASS  DENY: /users
   PASS  DENY: /students
   PASS  DENY: /assignments/:id/submissions (deny beats allow)
+  PASS  DENY: GENERIC command (no sanctioned script) hitting /submissions
+  PASS  DENY: GENERIC command reading grading\ map.json (boundary holds for non-sanctioned)
   PASS  DENY: /gradebook
   PASS  DENY: /analytics + /users
   PASS  DENY: read of private/ cache

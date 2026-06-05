@@ -6,6 +6,11 @@ canvas.state.*.json
 canvas.project.*.json
 canvas.*.state.json
 canvas-admin-audit.log
-grading/
 canvas-export/
+
+# Local-only PII / grading outputs (NEVER commit map.json or bundles)
+grading/
 private/
+*.raw.json
+**/map.json
+**/proposed-grades*.json

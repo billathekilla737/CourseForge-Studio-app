@@ -40,11 +40,28 @@ Blocked calls never execute, so no roster/grade/submission data leaves the machi
    Bash/PowerShell/WebFetch call locally and **denies** any that target Canvas
    student-data endpoints (`/enrollments`, `/users`, `/students`, `/submissions`,
    `/gradebook`, `/grades`, `/analytics`, `/quiz_submissions`, `/conversations`, …) or
-   that read a local student-data cache (`private/`, `grading/`). **Fail-closed:**
-   unrecognized Canvas endpoints are denied. *(Enforced locally, before the network.)*
-4. **Sterilizing gateway.** If data is ever genuinely needed, `Get-CanvasData-Sterilized.ps1`
-   is the only sanctioned path: it keeps the **raw** response in a gitignored `private/`
-   folder the agent never reads, and emits only a **pattern-redacted** rendering.
+   that read a local student-data cache (`private/`, `grading/`). The **only**
+   exceptions are the three sanctioned gateway scripts named in layer 4, matched by
+   name; every other command remains denied. **Fail-closed:** unrecognized Canvas
+   endpoints are denied. *(Enforced locally, before the network.)*
+4. **Sanctioned gateways.** If data is ever genuinely needed, the policy allows three
+   scripts **by name** (and nothing else); each keeps raw data local and emits only a
+   reduced-risk rendering:
+   - `Get-CanvasData-Sterilized.ps1` — general read: keeps the **raw** response in a
+     gitignored `private/` folder the agent never reads, emits only a **pattern-redacted**
+     rendering (Strict profile).
+   - `Build-GradingBundle.ps1` — **opt-in blind grading** (in the `notion-to-canvas`
+     content skill): pulls submission **text only**, writes the pseudonym->identity
+     `map.json` to a gitignored `grading/` folder the model never reads, and emits a
+     **scrubbed + pseudonymized** `bundle.json` (PII patterns + the student's own name
+     tokens removed; attachment contents are never downloaded, only filenames listed).
+   - `Post-Grades.ps1` — posts grades back **by pseudonym**, resolving identities from the
+     local `grading/` map (dry-run by default, audited). Because it legitimately reads the
+     local `grading/` map, the policy permits these three scripts **before** the
+     local-cache block and the `/submissions` deny; **every other** command hitting those
+     endpoints or caches remains blocked fail-closed.
+   The de-identification in the grading gateways is **best-effort**, not a guarantee
+   (free-text and screenshot-embedded PII can remain) — see the BEST-EFFORT note below.
 5. **PostToolUse redactor (backstop).** `guard-redact.ps1` scrubs structured PII
    (emails, phone numbers, SIS/9-digit IDs, Canvas user-id URL params, PII JSON fields)
    from tool output. *Version-dependent; treat as a net, not the guarantee.*
@@ -117,5 +134,5 @@ suspected compromise.
   reviewers / administration.
 - `CONTINGENCY-ANALYSIS.md` - the full adversarial contingency matrix (every path PII
   could take, covered vs gap, severity, mitigation) and the hardening roadmap.
-- `tests/guard-coverage-report.txt` - generated evidence (34 protection checks pass;
+- `tests/guard-coverage-report.txt` - generated evidence (51 protection checks pass;
   disclosed limitations).

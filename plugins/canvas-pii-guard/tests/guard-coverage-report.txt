@@ -1,0 +1,62 @@
+canvas-pii-guard - coverage report
+Result: 46 passed, 0 failed
+(synthetic data only; proves listed structured-PII forms, not arbitrary free text)
+
+== POLICY (block hook) ==
+  PASS  allow: /pages
+  PASS  allow: /assignments (definition)
+  PASS  allow: /quizzes/:id/questions
+  PASS  allow: /modules
+  PASS  allow: /discussion_topics
+  PASS  allow: course settings + total_students
+  PASS  allow: non-Canvas command
+  PASS  allow: sanctioned gateway by name
+  PASS  DENY: /enrollments
+  PASS  DENY: /users
+  PASS  DENY: /students
+  PASS  DENY: /assignments/:id/submissions (deny beats allow)
+  PASS  DENY: /gradebook
+  PASS  DENY: /analytics + /users
+  PASS  DENY: read of private/ cache
+  PASS  DENY: read of grading/ cache
+  PASS  DENY: unrecognized Canvas endpoint (fail-closed)
+  PASS  allow: page slug containing "profile" not over-blocked
+
+== REDACTION (engine) ==
+  PASS  email + phone + 9-digit (Standard): removed 'jane.doe@example.edu'
+  PASS  email + phone + 9-digit (Standard): removed '601-555-0142'
+  PASS  email + phone + 9-digit (Standard): removed '900112233'
+  PASS  email + phone + 9-digit (Standard): redaction count > 0 (was 3)
+  PASS  PII JSON fields (Standard): removed 'Doe, Jane'
+  PASS  PII JSON fields (Standard): removed 'jdoe@example.edu'
+  PASS  PII JSON fields (Standard): removed '900112233'
+  PASS  PII JSON fields (Standard): redaction count > 0 (was 5)
+  PASS  Canvas user-id URL params (Standard): removed '4242'
+  PASS  Canvas user-id URL params (Standard): removed '/777'
+  PASS  Canvas user-id URL params (Standard): redaction count > 0 (was 3)
+  PASS  name fields (Strict profile): removed 'Jane Doe'
+  PASS  name fields (Strict profile): removed 'Doe, Jane'
+  PASS  name fields (Strict profile): redaction count > 0 (was 2)
+  PASS  MGCCC login_id + sis_user_id formats (Standard): removed 'R80125209'
+  PASS  MGCCC login_id + sis_user_id formats (Standard): removed '951.R70158616'
+  PASS  MGCCC login_id + sis_user_id formats (Standard): redaction count > 0 (was 2)
+  PASS  defensive: an over-length ID is still caught (REAL MGCCC format is letter + 8 digits): removed '211.M105723849'
+  PASS  defensive: an over-length ID is still caught (REAL MGCCC format is letter + 8 digits): removed 'M10573849'
+  PASS  defensive: an over-length ID is still caught (REAL MGCCC format is letter + 8 digits): redaction count > 0 (was 2)
+  PASS  real MGCCC roster record JSON (Standard): removed 'Smith, Bob'
+  PASS  real MGCCC roster record JSON (Standard): removed 'Bob Smith'
+  PASS  real MGCCC roster record JSON (Standard): removed '211.M10534634'
+  PASS  real MGCCC roster record JSON (Standard): removed 'M10534634'
+  PASS  real MGCCC roster record JSON (Standard): removed 'someone@example.edu'
+  PASS  real MGCCC roster record JSON (Standard): redaction count > 0 (was 8)
+
+== CONTENT SAFETY (no over-redaction under Standard) ==
+  PASS  content name "Week 5 Quiz" preserved (Standard)
+  PASS  no redactions on content JSON (Standard)
+
+== KNOWN LIMITATIONS (disclosed; NOT security guarantees) ==
+  NOTE  script-FILE indirection (a script could fetch PII; its command line shows no URL)  ->  ALLOWED (gap)
+  NOTE  EncodedCommand / obfuscated commands are not decoded  ->  ALLOWED (gap)
+  NOTE  MCP tool calls are not matched by the Bash|PowerShell|WebFetch hook  ->  ALLOWED (gap)
+        Mitigation for all of the above: a SCOPED Canvas token (no view-grades/students),
+        which makes student PII unfetchable at the source. See DATA-HANDLING.md.

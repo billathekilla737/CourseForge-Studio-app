@@ -9,6 +9,11 @@
       "name": "notion-to-canvas",
       "source": "./plugins/notion-to-canvas",
       "description": "Notion to Canvas course builder + generate-and-place content. Content only; never reads student data."
+    },
+    {
+      "name": "canvas-pii-guard",
+      "source": "./plugins/canvas-pii-guard",
+      "description": "Local PII-prevention hooks: blocks Canvas student-data API calls and local-cache reads before they run, so student data is never fetched or transmitted. Install on instructor machines alongside notion-to-canvas."
     }
   ]
 }

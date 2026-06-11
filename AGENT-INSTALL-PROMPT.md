@@ -1,69 +1,65 @@
-# Agent install prompt (for less-techy instructors)
+# Install CourseForge (for instructors)
 
-Have your colleague save the file `courseforge-skill.zip` (the one you email
-them) into their **Downloads** folder, open **Claude Code**, and paste the prompt
-below. Their own agent will install the skill for them.
+Plain, copy/paste instructions. **Works in Claude Code only** (the desktop app, CLI, or
+IDE extension) — it does **not** work in the claude.ai website or Claude Desktop, because
+those can't load plugins.
 
-> Works in **Claude Code** only (it needs file + shell access). It does **not** work
-> in the claude.ai website. After it finishes, they must fully restart Claude Code.
->
-> **What it does:** builds Canvas *course content* (pages, modules, assignments,
-> quizzes, syllabus). It **never reads student rosters, grades, or submissions** - the
-> skill's policy refuses that outright.
-
----
-
-## Copy everything between the lines and paste it into Claude Code
-
-```
-You are installing a Claude Code skill called "courseforge" on THIS computer for
-me. Work carefully, explain each step in plain language, and stop and ask if anything
-is unclear. I may be non-technical.
-
-GOAL: finish with the skill installed so that this file exists:
-  - Windows:      C:\Users\<MY-USERNAME>\.claude\skills\courseforge\SKILL.md
-  - macOS/Linux:  ~/.claude/skills/courseforge/SKILL.md
-
-STEP 1 - Find the source. Look, in this order:
-  (a) A zip named "courseforge-skill.zip" - search my Downloads, Desktop, and the
-      current folder.
-  (b) An already-extracted folder named "courseforge" that contains a SKILL.md.
-  (c) Only if I clearly have git installed AND access to the repo, you may instead run:
-      git clone https://github.com/billathekilla737/garris-canvas-tools.git
-      and use the folder: plugins/courseforge/skills/courseforge
-  (d) If you find none of these, STOP and tell me exactly:
-      "I can't find courseforge-skill.zip. Please save the file your colleague
-       emailed you into your Downloads folder, then run this prompt again."
-  Do NOT invent or hand-write the skill's contents. Use the real files only.
-
-STEP 2 - Extract (if it was a zip). Unzip it to a temporary folder. Then locate the
-  folder that DIRECTLY contains SKILL.md (it should be named "courseforge").
-  Watch out for double-nesting like courseforge/courseforge - you want the
-  one that actually has SKILL.md plus the "references" and "scripts" subfolders.
-
-STEP 3 - Install. Create the folder ~/.claude/skills if it does not exist. Copy the
-  whole "courseforge" folder (with its references/ and scripts/ subfolders) into
-  ~/.claude/skills, replacing any older copy that may be there.
-
-STEP 4 - Verify. Confirm that SKILL.md now exists at the target path above, and that
-  the references/ and scripts/ subfolders came along. Show me the final folder listing
-  so I can see it worked.
-
-STEP 5 - Report. Tell me it is installed, and that I must FULLY CLOSE and reopen Claude
-  Code for it to load. After I restart, I can test by asking: "Do you have the
-  courseforge skill, and what is it allowed to do?" (It should confirm it builds
-  course content and does not read student data.)
-
-IMPORTANT RULES:
-  - Do NOT ask me for, or set up, any Canvas token, password, or course settings right
-    now. This task ONLY installs the skill. Token setup happens later in a separate
-    course-work folder.
-  - Do NOT change anything outside ~/.claude/skills/courseforge.
-  - It is normal for you to ask my permission to run a command or write a file -
-    I will approve those.
-```
+> **What you're installing:** two small plugins.
+> - **courseforge** — builds your Canvas *course content* (pages, modules, assignments,
+>   quizzes, syllabus). It never reads student rosters, grades, or submissions in normal use.
+> - **canvas-pii-guard** — a local safety block that *enforces* that: it stops any
+>   student-data request before it can run. **Install both** — courseforge alone leaves
+>   the protection off.
 
 ---
 
-After install + restart, the instructor sets up their Canvas token in a course-work
-folder (the skill or the PDF guide walks them through that part).
+## Step 1 — Install (type these 3 lines in Claude Code, one at a time)
+
+```
+/plugin marketplace add billathekilla737/garris-canvas-tools
+/plugin install courseforge@garris-canvas-tools
+/plugin install canvas-pii-guard@garris-canvas-tools
+```
+
+- You'll see a **trust prompt** — that's normal. Review and approve it.
+- These start with a slash (`/`) and must be **typed by you** — an AI assistant cannot
+  run slash commands for you.
+
+## Step 2 — Restart
+
+**Fully close and reopen Claude Code.** Plugins and their safety hooks only load at startup.
+
+## Step 3 — Check it worked
+
+Ask Claude:
+
+> *Is canvas-pii-guard active, and do you have the courseforge skill?*
+
+It should confirm the **courseforge** skill is available **and** that the
+**canvas-pii-guard** PreToolUse hook is registered. If the guard isn't active, re-run the
+third command from Step 1 and restart again.
+
+## Step 4 — Connect your Canvas
+
+Open Claude Code in a folder for your course work and say:
+
+> *Set up my Canvas.*
+
+It asks two things — your **course web address** and your **access token** (typed hidden,
+like a password) — and does the rest. To get a token: in Canvas, go to
+**Account → Settings → New Access Token**, generate it, and paste it when asked.
+
+---
+
+## Optional: have Claude guide you through it
+
+If you'd rather be walked through Steps 1-4, paste this into Claude Code:
+
+> Guide me through installing the **garris-canvas-tools** plugins from the marketplace.
+> I know that `/plugin` commands are slash commands I have to type myself — give them to
+> me one at a time and wait while I run each one. After I restart, verify that **both**
+> the courseforge skill and the canvas-pii-guard hooks are active, tell me if either is
+> missing, and then help me connect my Canvas (set up my token).
+
+That assistant can't press the keys for the `/plugin` commands, but it can hand them to
+you in order, confirm the install afterward, and run the Canvas setup with you.

@@ -8,6 +8,12 @@ instance; they reuse cleanly for any Canvas school after a few setting tweaks.
 | **`courseforge`** | Builds **Canvas course content** — migrated from a Notion course or generated on request — as styled, sanitizer-safe pages, weekly modules, and (optionally) graded assignments/discussions/quizzes. Idempotent re-runs. **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (a sterilizing + pseudonymizing gateway: identities stay local, you grade pseudonymized text, a dry-run-first poster writes grades back). |
 | **`canvas-pii-guard`** | A **local data-protection layer**: PreToolUse hooks that **block** Canvas student-data API calls (rosters/grades/submissions) and local-cache reads *before they run*, so student PII is never fetched or sent. Plus a best-effort output scrubber tuned to MGCCC ID formats. Install it alongside `courseforge`. |
 
+> **Not included here:** the full admin/grading tool that *intentionally* reads student
+> submissions **with real identities**. That stays on admin machines only. What this
+> repo's content plugin *does* include is an **opt-in blind-grading** path that keeps
+> identities local and only shows the model pseudonymized, scrubbed submission text
+> (best-effort de-identification, not a guarantee — see Student data security below).
+
 ## Requirements
 - **Claude Code** (custom skills/plugins are not available in the claude.ai web app or Claude Desktop).
 - **PowerShell** (Windows PowerShell 5.1 is fine).
@@ -16,23 +22,33 @@ instance; they reuse cleanly for any Canvas school after a few setting tweaks.
 
 ## Install
 
-### As plugins (recommended)
-In Claude Code:
+Install **both** plugins from the marketplace. This is the only supported method,
+because the safety layer (`canvas-pii-guard`) is a **hooks** plugin — it must be
+*registered* with Claude Code, which a manual folder copy cannot do. In Claude Code,
+type these three lines (one at a time):
+
 ```
 /plugin marketplace add billathekilla737/garris-canvas-tools
 /plugin install courseforge@garris-canvas-tools
 /plugin install canvas-pii-guard@garris-canvas-tools
 ```
-Reload Claude Code. You'll get a trust prompt on install — review the scripts first.
-(Private repo: you must have repo access. If the marketplace command can't authenticate
-to a private repo, use the folder-copy method below or clone locally and
-`/plugin marketplace add <local path>`.)
 
-### Simplest (copy the folder)
-Copy `plugins/courseforge/skills/courseforge/` into your `~/.claude/skills/`
-so you have `~/.claude/skills/courseforge/SKILL.md`. Restart Claude Code.
-(See `AGENT-INSTALL-PROMPT.md` for a paste-in prompt that does this for you, and
-`INSTALL-GUIDE.pdf` for a step-by-step picture guide.)
+You'll get a **trust prompt** on install — review the scripts, then approve. **Fully
+restart Claude Code** so the skills and hooks load.
+
+> **Install both.** `courseforge` builds your courses; `canvas-pii-guard` is the local
+> block that actually enforces the no-student-data guarantee. Installing courseforge
+> alone leaves that protection **off**.
+
+**Verify it worked** (after restart) — ask Claude:
+> *"Is canvas-pii-guard active, and do you have the courseforge skill?"*
+
+It should confirm the courseforge skill is available **and** that the PII-guard
+PreToolUse hook is registered. If the guard isn't active, re-run the third command.
+
+> ⚠️ The old "copy the skill folder into `~/.claude/skills/`" method (and the emailed
+> agent-install prompt) is **retired** — it installed only the content skill and left
+> the safety hooks uninstalled. Use the marketplace commands above.
 
 ## First-time setup (each instructor)
 

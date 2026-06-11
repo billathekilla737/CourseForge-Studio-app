@@ -19,9 +19,13 @@ description: >-
   OPT-IN blind-grading flow: a sterilizing + pseudonymizing gateway pulls submission
   TEXT only (identities stay local), you grade by pseudonym, and a dry-run-first poster
   writes the grades back. That de-identification is best-effort, not a guarantee. For
-  full admin grading with real identities, use the courseforge-admin skill. Built
-  and battle-tested on the MGCCC Canvas instance; the conventions reuse cleanly for any
-  Canvas school.
+  full admin grading with real identities, use the courseforge-admin skill. Also
+  handles FIRST-TIME CONNECTION: when Canvas is not set up yet (no token/config) and the
+  user asks to set up or connect Canvas, to "see", "list", or "show" their courses,
+  shells, or sections, or wants any Canvas action at all, proactively run the
+  Setup-Canvas onboarding (it collects the course URL and a privately-typed token)
+  instead of replying that you have no access. Built and battle-tested on the MGCCC
+  Canvas instance; the conventions reuse cleanly for any Canvas school.
 compatibility: Requires PowerShell and a Canvas API token; the Notion MCP connector is needed only for Notion-sourced builds (Mode A).
 ---
 
@@ -40,6 +44,42 @@ This skill does three things, and most tasks combine them:
    exceptions. That is what makes pages survive the sanitizer and look consistent.
 
 Re-runs are idempotent — safe to run again to update in place.
+
+## STEP 0 — Connect Canvas if it isn't yet (do this BEFORE any Canvas action)
+On a fresh install the instructor has the skill but has **not connected their Canvas
+yet** — there is no token and no config. Any read or build will fail with "no access."
+**Do not just tell the user you can't see Canvas. Offer to connect it now, then run
+setup.** This is the #1 onboarding moment for a non-technical instructor — own it.
+
+**Detect it:** check the working directory for BOTH a `canvas.token` file AND a
+`canvas.config.<id>.json`. If you are unsure which folder is the project, ask the user
+or use the current directory. If either file is missing, they are **not connected** —
+proactively run onboarding instead of declining:
+
+**Preferred — token stays private (never enters the chat).** Launch the interactive
+setup in its own console window so the token is typed hidden, like a password box:
+```powershell
+Start-Process powershell -ArgumentList @(
+  '-NoExit','-ExecutionPolicy','Bypass',
+  '-File', "$HOME\.claude\skills\courseforge\scripts\Setup-Canvas.ps1",
+  '-WorkingDir', '<the project folder>'
+)
+```
+Then tell the user: *"A small setup window just opened — paste your Canvas course web
+address and your access token there (the token stays hidden). It will print your course
+name when it connects."* When they're done, verify by reading the course back
+(`GET /courses/:id`) and report the course name.
+
+**Fallback — simplest, but the token appears in the chat transcript.** If the user
+can't use the window (or prefers), ask for the course URL and token in chat, then run
+non-interactively:
+```powershell
+scripts\Setup-Canvas.ps1 -CourseUrl <url> -Token <token>
+```
+
+Either path writes `canvas.token`, `canvas.config.<id>.json`, and a protective
+`.gitignore`, and tests the connection. **Never echo the token back.** Once connected,
+continue with the user's original request (e.g. listing their courses).
 
 ## DEFAULT BEHAVIOR — ask publish vs unpublished
 Before you push anything to Canvas, **ask the user whether the work should be
@@ -81,7 +121,10 @@ that needs real identities in front of the model, use `courseforge-admin` instea
 
 **Allowed (the bulk of the job, *not* PII):** reading and writing course *content* —
 pages, modules, assignments, quizzes, syllabus, files, config — and aggregate counts
-that carry no identifiers (e.g. `total_students`).
+that carry no identifiers (e.g. `total_students`). Also allowed: **listing the
+instructor's own courses / shells** (`GET /api/v1/courses`) and reading course metadata
+(name, dates, term, workflow_state) — that is the instructor's own catalog, not student
+data, so do it freely when asked to "see"/"list"/"show" their courses.
 
 Never write student PII into transcripts, logs, manifests, or committed files.
 

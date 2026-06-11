@@ -8,12 +8,6 @@ instance; they reuse cleanly for any Canvas school after a few setting tweaks.
 | **`courseforge`** | Builds **Canvas course content** — migrated from a Notion course or generated on request — as styled, sanitizer-safe pages, weekly modules, and (optionally) graded assignments/discussions/quizzes. Idempotent re-runs. **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (a sterilizing + pseudonymizing gateway: identities stay local, you grade pseudonymized text, a dry-run-first poster writes grades back). |
 | **`canvas-pii-guard`** | A **local data-protection layer**: PreToolUse hooks that **block** Canvas student-data API calls (rosters/grades/submissions) and local-cache reads *before they run*, so student PII is never fetched or sent. Plus a best-effort output scrubber tuned to MGCCC ID formats. Install it alongside `courseforge`. |
 
-> **Not included here:** the full admin/grading tool that *intentionally* reads student
-> submissions **with real identities**. That stays on admin machines only. What this
-> repo's content plugin *does* include is an **opt-in blind-grading** path that keeps
-> identities local and only shows the model pseudonymized, scrubbed submission text
-> (best-effort de-identification, not a guarantee — see Student data security below).
-
 ## Requirements
 - **Claude Code** (custom skills/plugins are not available in the claude.ai web app or Claude Desktop).
 - **PowerShell** (Windows PowerShell 5.1 is fine).

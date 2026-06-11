@@ -120,7 +120,28 @@ make one). Layout used by the scripts:
 
 ## Before you start (prerequisites)
 
-1. **Notion connector** must be connected (you'll use its `fetch` and `search`).
+**Easiest path — one command does all the token/config setup.** For a
+non-technical instructor, do NOT make them find folders, copy paths, or hand-create
+a `.token` file (Windows hides extensions, so they end up with `canvas.token.txt`).
+Instead run the onboarding script from their working directory:
+
+```powershell
+scripts\Setup-Canvas.ps1
+```
+
+It asks just two things — their **course web address** and their **access token**
+(typed hidden) — then writes `canvas.token` and `canvas.config.<id>.json` correctly,
+adds a `.gitignore` so the token can't be pushed, and **tests the connection**,
+printing the course name on success. It is forgiving: if they already saved the
+token as `canvas.token.txt`, a `Canvas Token.txt`, or a pasted `.rtf` in that folder,
+it finds it, fixes it, and reuses it instead of asking. You can also drive it
+non-interactively: `Setup-Canvas.ps1 -CourseUrl <url> -Token <tok>`. Never echo the
+token back. **Prefer this over the manual steps below.**
+
+If you must set up by hand instead:
+
+1. **Notion connector** must be connected (you'll use its `fetch` and `search`) —
+   only for Notion-sourced builds (Mode A).
 2. **Canvas API token.** The user generates one at *Canvas → Account → Settings →
    New Access Token*. If they pasted it into an `.rtf`, run
    `scripts/Extract-CanvasToken.ps1` to pull it into `canvas.token` (RTF splits
@@ -416,6 +437,7 @@ Assignment object, **delete the old wiki page by its slug** so the two do not co
 - `references/academic-calendar.md` — MGCCC term formats + Fall 2026 anchor dates (start/finals/breaks), the source-of-truth calendar URL (re-check yearly), and the DEFAULT due rule used by the due-date scripts.
 
 # Scripts
+- `scripts/Setup-Canvas.ps1` — **one-command onboarding** (use this first for non-technical users): asks for the course web address + access token (hidden), writes `canvas.token` + `canvas.config.<id>.json`, adds a protective `.gitignore`, and tests the connection. Forgiving of a stray `canvas.token.txt` / `Canvas Token.txt` / pasted `.rtf` (finds, fixes, reuses). Params: -WorkingDir, -CourseUrl, -Token, -CourseLabel, -ShowToken.
 - `scripts/Push-CanvasPages.ps1` — idempotent **lesson-course** uploader + module builder (params: ConfigPath, ManifestPath, StatePath, **-PublishState published|unpublished**, -WhatIf).
 - `scripts/Push-CanvasProject.ps1` — idempotent **project/capstone** builder: pages + front page + syllabus tab + graded assignments + graded discussions + graded **quizzes** (Classic Quizzes) + assignment groups + mixed-type modules (params: ConfigPath, ManifestPath, StatePath, **-PublishState published|unpublished**, -SkipModules, -WhatIf).
 - `scripts/Verify-Slots.ps1` — hero-vs-slot check for **Page** bodies; **run before every push**. (Does not inspect assignments/discussions — spot-check those by hand.)

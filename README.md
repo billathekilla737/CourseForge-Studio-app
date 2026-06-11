@@ -41,6 +41,16 @@ so you have `~/.claude/skills/courseforge/SKILL.md`. Restart Claude Code.
 `INSTALL-GUIDE.pdf` for a step-by-step picture guide.)
 
 ## First-time setup (each instructor)
+
+**The easy way (recommended):** in your course folder, ask Claude to *"set up my
+Canvas"* (or run `scripts\Setup-Canvas.ps1`). It asks two questions — your **course
+web address** and your **access token** (typed hidden) — and does everything else:
+saves the token correctly, writes the config, protects it with `.gitignore`, and
+tests the connection, printing your course name when it works. No file paths, no
+file-extension headaches. To get the token: **Canvas → Account → Settings → New
+Access Token**, then paste it when asked.
+
+**By hand (if you prefer):**
 1. Generate a token: **Canvas → Account → Settings → New Access Token**. Save it as a
    one-line file `canvas.token` in your project folder. **Never commit it.**
 2. Make `canvas.config.<courseId>.json`:

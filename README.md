@@ -22,10 +22,9 @@ instance; they reuse cleanly for any Canvas school after a few setting tweaks.
 
 ## Install
 
-Install **both** plugins from the marketplace. This is the only supported method,
-because the safety layer (`canvas-pii-guard`) is a **hooks** plugin — it must be
-*registered* with Claude Code, which a manual folder copy cannot do. In Claude Code,
-type these three lines (one at a time):
+Install **both** plugins from the marketplace. The safety layer (`canvas-pii-guard`) is a
+**hooks** plugin — it must be *registered* with Claude Code, which a manual folder copy
+cannot do. In Claude Code, type these three lines (one at a time):
 
 ```
 /plugin marketplace add billathekilla737/garris-canvas-tools
@@ -46,9 +45,27 @@ restart Claude Code** so the skills and hooks load.
 It should confirm the courseforge skill is available **and** that the PII-guard
 PreToolUse hook is registered. If the guard isn't active, re-run the third command.
 
-> ⚠️ The old "copy the skill folder into `~/.claude/skills/`" method (and the emailed
-> agent-install prompt) is **retired** — it installed only the content skill and left
-> the safety hooks uninstalled. Use the marketplace commands above.
+### If `/plugin` isn't available (SDK harness, automation)
+
+Some surfaces — the **Claude Agent SDK** harness, headless/automation runs — can't load
+the plugin marketplace and will say `/plugin` *"isn't available in this environment."*
+For those, run the bundled installer instead. Crucially, it does what a bare folder copy
+could not: it **registers the canvas-pii-guard hooks** into `settings.json`, so the
+safety block is never left off. It's idempotent, merges into any existing `settings.json`
+(writing a `.bak` first), and runs the 51-check guard suite at the end.
+
+```powershell
+git clone https://github.com/billathekilla737/garris-canvas-tools "$env:TEMP\garris-canvas-tools"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\garris-canvas-tools\Install-CourseForge.ps1"
+```
+
+An AI assistant can run those two lines for you (they're ordinary commands, not slash
+commands). See [`AGENT-INSTALL-PROMPT.md`](AGENT-INSTALL-PROMPT.md) for a paste-ready
+prompt.
+
+> ⚠️ Do **not** hand-copy just the skill folder into `~/.claude/skills/` — that installs
+> only the content skill and leaves the safety hooks uninstalled. Use the marketplace
+> commands, or `Install-CourseForge.ps1`, both of which register the hooks.
 
 ## First-time setup (each instructor)
 

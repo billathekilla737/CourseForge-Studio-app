@@ -12,14 +12,17 @@
 # Returns a hashtable @{ allowed = $true/$false; reason = '...' }.
 # Logic order (fail-closed for Canvas data endpoints):
 #   0. Allow the SANCTIONED gateway scripts by name (sterilizing / pseudonymizing).
-#      Checked FIRST because they legitimately touch /submissions (step 4) AND read
-#      the local grading\ map (step 1); they sterilize / tokenize their own output.
+#      Checked FIRST because they legitimately touch /submissions AND read the local
+#      grading\ map; they sterilize / tokenize their own output.
 #   1. Block reads of local student-data caches (private/, grading/, audit log).
-#   2. If the text does not reference the Canvas API at all -> allow (not our concern).
-#   3. (folded into step 0)
-#   4. Deny any Canvas student-data (PII) endpoint.
-#   5. Allow known Canvas CONTENT endpoints.
-#   6. Otherwise (a Canvas API call we do not recognize) -> DENY (fail-closed).
+#   2. Isolate the ACTUAL Canvas URL tokens (a whitespace-delimited token containing
+#      '/api/v1/' or 'instructure.com/<path>'). If there are none -> allow (not our
+#      concern). Evaluating only these tokens -- not the whole command blob -- avoids
+#      false positives where a sensitive word merely co-occurs in unrelated text
+#      (a Windows C:/Users/ path, a git commit message, prose, a tool description).
+#   3. For each real Canvas URL token: DENY if it hits a student-data (PII) segment.
+#   4. Then each real Canvas URL token must be a recognized CONTENT or course
+#      settings/list endpoint, else DENY (fail-closed).
 function Test-CanvasCallAllowed {
     param([string]$Text)
     if ([string]::IsNullOrWhiteSpace($Text)) { return @{ allowed = $true; reason = '' } }
@@ -34,34 +37,41 @@ function Test-CanvasCallAllowed {
         return @{ allowed = $true; reason = '' }
     }
 
-    # 1. local student-data caches
+    # 1. local student-data caches (whole-text: these are file paths, not URLs)
     if ($low -match 'private[\\/]' -or $low -match 'grading[\\/]' -or
         $low -match 'submissions\.index\.json' -or $low -match 'canvas-admin-audit\.log' -or
         $low -match 'proposed-grades') {
         return @{ allowed = $false; reason = 'canvas-pii-guard: reading a local student-data cache (private/ or grading/) is blocked.' }
     }
 
-    # 2. only govern Canvas API references
-    if (-not (($low -match '/api/v1/') -or ($low -match 'instructure\.com'))) {
-        return @{ allowed = $true; reason = '' }
-    }
-
-    # 3. (sanctioned gateway scripts are handled at the very top in step 0)
-
-    # 4. student-data (PII) endpoints -> DENY (segment-anchored; checked before content allow)
-    $denyRx = '/(submissions|submission_summary|gradebook|grades|grade_change|enrollments|users|students|observees|observers|analytics|conversations|entries|entry_list|activity_stream|sis_imports|logins|profile|avatars|feeds|recent_students|student_view|effective_due_dates|quiz_submissions)([/?]|$|[^a-z0-9_])'
-    if ($low -match $denyRx) {
-        return @{ allowed = $false; reason = 'canvas-pii-guard: Canvas student-data endpoint is not permitted from this skill. If data is genuinely needed, route it through a sanctioned gateway (Get-CanvasData-Sterilized.ps1, or for blind grading Build-GradingBundle.ps1 / Post-Grades.ps1).' }
-    }
-
-    # 5. known CONTENT endpoints -> allow (segment-anchored)
+    # 2. isolate the real Canvas URL tokens. A token qualifies only if it is an actual
+    #    Canvas path/URL ('/api/v1/...' or 'instructure.com/...') -- NOT a bare host, an
+    #    email at *.instructure.com, or an unrelated /Users path. No Canvas URL -> allow.
+    $denyRx  = '/(submissions|submission_summary|gradebook|grades|grade_change|enrollments|users|students|observees|observers|analytics|conversations|entries|entry_list|activity_stream|sis_imports|logins|profile|avatars|feeds|recent_students|student_view|effective_due_dates|quiz_submissions)([/?]|$|[^a-z0-9_])'
     $allowRx = '/(pages|modules|module_items|assignments|assignment_groups|quizzes|discussion_topics|tabs|files|folders|external_tools)([/?]|$|[^a-z0-9_])'
-    if ($low -match $allowRx) { return @{ allowed = $true; reason = '' } }
-    # bare course settings: /courses/<id> NOT followed by another path segment
-    if ($low -match '/courses/\d+(?![\d/])') { return @{ allowed = $true; reason = '' } }
 
-    # 6. fail-closed: a Canvas API call we do not recognize
-    return @{ allowed = $false; reason = 'canvas-pii-guard (fail-closed): unrecognized Canvas API endpoint. Only content endpoints are allowed from this skill.' }
+    $canvasTokens = @(($low -split '\s+') | Where-Object { $_ -match '/api/v1/' -or $_ -match 'instructure\.com/' })
+    if ($canvasTokens.Count -eq 0) { return @{ allowed = $true; reason = '' } }
+
+    # 3. deny any real Canvas URL that targets a student-data (PII) segment
+    foreach ($tok in $canvasTokens) {
+        if ($tok -match $denyRx) {
+            return @{ allowed = $false; reason = 'canvas-pii-guard: Canvas student-data endpoint is not permitted from this skill. If data is genuinely needed, route it through a sanctioned gateway (Get-CanvasData-Sterilized.ps1, or for blind grading Build-GradingBundle.ps1 / Post-Grades.ps1).' }
+        }
+    }
+
+    # 4. each real Canvas URL must be a recognized CONTENT endpoint, a single course
+    #    (/courses/<id>), or the course LIST (/courses) -- otherwise fail-closed.
+    foreach ($tok in $canvasTokens) {
+        $ok = ($tok -match $allowRx) -or
+              ($tok -match '/courses/\d+(?![\d/])') -or
+              ($tok -match '/courses([?]|$|[^a-z0-9_/])')
+        if (-not $ok) {
+            return @{ allowed = $false; reason = 'canvas-pii-guard (fail-closed): unrecognized Canvas API endpoint. Only content endpoints are allowed from this skill.' }
+        }
+    }
+
+    return @{ allowed = $true; reason = '' }
 }
 
 # --- Redaction: scrub structured PII from text --------------------------------

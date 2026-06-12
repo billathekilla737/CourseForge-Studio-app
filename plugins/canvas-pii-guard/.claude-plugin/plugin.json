@@ -1,6 +1,6 @@
 {
   "name": "canvas-pii-guard",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Local, technical PII-prevention layer for Canvas workflows. A PreToolUse hook BLOCKS Canvas student-data API calls and reads of local student-data caches before they run, so student PII is never acquired and never transmitted. Ships a sterilizing data gateway and a best-effort output redactor as secondary safety nets. Designed for instructor (non-admin) machines; do NOT install on admin/grading machines that legitimately access student data.",
   "author": { "name": "Zack Garris (MGCCC)" },
   "keywords": ["canvas", "ferpa", "pii", "privacy", "guardrail", "hooks", "education"]

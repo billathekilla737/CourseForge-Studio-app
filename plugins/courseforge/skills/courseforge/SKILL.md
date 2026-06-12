@@ -51,10 +51,19 @@ yet** — there is no token and no config. Any read or build will fail with "no 
 **Do not just tell the user you can't see Canvas. Offer to connect it now, then run
 setup.** This is the #1 onboarding moment for a non-technical instructor — own it.
 
-**Detect it:** check the working directory for BOTH a `canvas.token` file AND a
-`canvas.config.<id>.json`. If you are unsure which folder is the project, ask the user
-or use the current directory. If either file is missing, they are **not connected** —
-proactively run onboarding instead of declining:
+**Detect it:** look for BOTH a `canvas.token` file AND a `canvas.config.<id>.json`,
+checking (a) the current working directory, then (b) the **standard folder**
+`%USERPROFILE%\Documents\canvas-work` (this is where the double-click `Setup-Canvas.bat`
+helper and the default setup write them — always check here if the current dir has no
+token). If you find them in `canvas-work`, use that folder's `canvas.token` /
+`canvas.config.*.json` for all script `-ConfigPath`/`-TokenPath` arguments. If you are
+unsure which folder is the project, ask the user. If either file is missing everywhere,
+they are **not connected** — proactively run onboarding instead of declining.
+
+**Easiest for a non-technical instructor:** tell them to double-click **`Setup-Canvas.bat`**
+(in the repo, or they can download just that one file) — it asks for their course URL and
+token and writes everything into `Documents\canvas-work` for them, no typing of file
+paths. Otherwise run setup yourself:
 
 **Preferred — token stays private (never enters the chat).** Launch the interactive
 setup in its own console window so the token is typed hidden, like a password box:

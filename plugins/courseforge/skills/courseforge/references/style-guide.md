@@ -1,146 +1,156 @@
-# Canvas-safe HTML style guide (ADA / Ally-clean "bordered" template)
+# Canvas-safe HTML style guide (MGCCC blue-and-gold) + accessibility
 
-Inline-styled components that survive the Canvas Rich Content Editor sanitizer **and**
-pass an Anthology Ally accessibility scan at 100%. Colors below are the MGCCC
-"Mississippi" blue-and-gold palette — swap the hexes for another school, but keep the
-*structure* (border-only, no fills) — that's what keeps Ally happy.
+Inline-styled components that survive the Canvas Rich Content Editor sanitizer and meet
+Anthology Ally's accessibility checks. Colors are the MGCCC "Mississippi" blue-and-gold
+palette — swap the hexes for another school, but keep the *structure*.
 
-## The accessibility rule that shapes everything (WCAG 1.4.1 — "use of color")
-MGCCC scans every page/assignment/quiz with **Anthology Ally**. Ally's
-*"Potential use of color alone to communicate information"* flag fires on exactly two things,
-so the whole design avoids both:
+## Two looks (pick per instructor preference)
+The components below are given in the **RICH** form (the filled navy-banner look most
+instructors want). There is also a **CLEAN** variant that scores a perfect Ally scan.
 
-1. **No `background:` color fills.** ANY background fill is flagged — even a neutral gray.
-   Convey structure with **borders, not fills** (top-bars, left-accents, rings, underlines).
-2. **No chromatic *body* text.** Colored `<strong>`/`<span>`/`<p>` runs are flagged.
-   Body text is **default black**; emphasis is **`<strong>` bold**, never color.
+- **RICH (default):** filled navy hero + footer, colored callout fills, gold borders.
+  Looks like a designed page. **Trade-off:** Ally raises *"Potential use of color alone"*
+  on the filled bands — that is an **advisory** 1.4.1 item the instructor reviews and
+  marks resolved, **not** a hard failure. Contrast and all *hard* checks still pass.
+- **CLEAN (for a 100%-green scan):** no `background:` fills anywhere; color appears only in
+  **navy `#061E3F` headings** and **borders** (gold/navy/blue/red/gray); body text default
+  black, `<strong>` for emphasis; links default + underline. To convert RICH&rarr;CLEAN:
+  delete every `background:` declaration, change white/`#cfdcec` band text to default (and
+  the hero `<h2>` to navy), strip chromatic color from non-heading text. (Headings and
+  borders are exempt from Ally's use-of-color check; **any** fill — even gray — is flagged.)
 
-What Ally does **not** flag (so we use these freely for brand):
-- **Navy `#061E3F` on `<h2>`/`<h3>` headings** (headings are exempt at any count).
-- **Borders of any color** — gold, navy, blue, gray, red.
+**The hard accessibility rules below apply to BOTH looks** and are non-negotiable.
 
-So **color appears in only two places: heading text (navy) and borders (gold/navy/blue/red/gray).**
-This passed Ally at **100%** on a full course. (Contrast — WCAG 1.4.3 — is automatically
-satisfied: default-black and navy text on white are >11:1.)
+## Hard accessibility rules (both looks — these are real Ally failures)
+- **Real semantic headings.** One `<h2>` (the title) then `<h3>` sections — never fake a
+  heading with bold/large `<span>`/`<p>` ("Headings may be missing" / "Styles instead of
+  semantic markup"), and never skip a level (h2&rarr;h3, never h2&rarr;h4; "skipped headings").
+  For sub-labels inside a card use bold `<div><strong>`, not a heading tag.
+- **Descriptive image alt text — never the filename.** `alt="Console output: Casablanca runs
+  90 minutes"`, not `alt="output.png"`. Decorative images &rarr; `alt=""`. **VIEW the image when
+  you can** (see "Generating alt text" below) and describe what it shows; otherwise derive it
+  from the surrounding text. Never leave a filename or a missing `alt` on an informative image.
+- **Tables = real tabular data only, WITH headers.** A genuine data table keeps `<table>` and
+  gets `<th scope="col">` (and `<th scope="row">` for labeled rows); Canvas preserves real
+  tables. A table used only for layout &rarr; convert to label/value rows.
+- **Every link has text.** No empty or icon-only `<a>` ("Link does not contain text").
+- **Contrast >= 4.5:1.** All the hexes below are pre-checked: white/`#cfdcec`/gold on the navy
+  bands and navy/slate on white all pass. The safe link blue on white is `#1565C0` (5.3:1).
+- **Never meaning by color alone.** Alerts pair a red border **and** a ⚠ icon **and** a heading
+  word; links carry `text-decoration: underline` (not color alone).
+- **External / embedded content** ("Linked or embedded external content...") is about the
+  *linked* resource (PDF, publisher site, embedded video), not your HTML — it **cannot** be
+  auto-fixed; surface it to the instructor.
 
-## Hard rules (the Canvas sanitizer enforces these)
-- **Inline `style="..."` only.** No `<style>`, no `class=`/`id=` styling.
-- **No `<table>`.** Use label/value rows or a bold heading + single-level `<ul>`.
-- **No nested lists** (`<ul>` in `<li>`), **no `<ol>`** (put the number in the text),
-  **no `<br>`** (use `margin-top`), **no HTML comments**, **no `box-shadow`**.
-- **No web-font `<link>`** — always include web-safe fallbacks in `font-family`.
-- Safe tags: `div, h2, h3, p, ul, li, a, strong, span, img`. Italics via
-  `<span style="font-style: italic;">` (no `<em>`).
-- Escape code: `<`→`&lt;`, `>`→`&gt;`, `&`→`&amp;`. Entities for punctuation:
-  `&mdash; &amp; &rarr; &middot; &ldquo; &rdquo;`.
+## Generating alt text (how to actually SEE Canvas images)
+Course-hosted images can be downloaded and viewed, so alt text can be accurate, not guessed:
+- An `<img src>` whose URL contains the **course's own id** and a **`?verifier=<hash>`** token
+  is fetchable. Download and view it, then write alt from what you see:
+  `curl -s -o tmp_img.png -L "<src url with &amp; turned back into &>"` then read the PNG.
+- An image hosted in a **different** Canvas course (a publisher/master course id in the URL)
+  usually returns **HTTP 403** to your token — you cannot view it; write alt from context.
+- Decorative UI flourishes &rarr; `alt=""`. Keep every `src` URL exactly as-is.
 
-## Palette (color lives only in headings + borders)
+## Palette
 | Role | Hex |
 |---|---|
-| Navy — **heading text** (h2/h3) **only**, and top/left borders | `#061E3F` |
-| Gold — top-bars, dividers, H3 underline, pill rings (border only) | `#E9A821` |
-| Blue — info/goal **left-border** | `#236192` |
-| Red — alert **left-border** | `#C11F31` |
-| Card border / code border / neutral structure | `#d7dce3` |
-| **Body text** | default (no `color:`) — emphasis via `<strong>` |
-| **Links** | default color + `text-decoration: underline` |
+| Navy — hero/footer fill, **heading text** (h2/h3), top/left borders | `#061E3F` |
+| Pill fill (solid, on navy) | `#0E2C54` |
+| Gold — top-bars, dividers, H3 underline, pill ring, eyebrow-on-navy | `#E9A821` |
+| Blue — info/goal left-border | `#236192` · Subtitle-on-navy `#cfdcec` |
+| Red — alert (border + heading) | `#C11F31` · alert fill `#fbe9eb` |
+| Body text | `#2c3a4d` · Muted `#4b5563` · Card border `#d7dce3` · Light gray fill `#F5F5F5` |
+| Info-box fill | `#eef4fa` · Link `#1565C0` (underlined) |
 
-**Never** set `color:` on body text, and **never** set a `background:` color. If you ever
-must color non-heading text, the only AA-safe link blue is `#1565C0` (5.3:1 on white) — but
-prefer default + underline.
+## Hard sanitizer rules (the Canvas RCE enforces these)
+- **Inline `style="..."` only.** No `<style>`, no styling `class=`/`id=` (a Canvas file-link's
+  own `class="instructure_file_link"` is functional — keep it). No `box-shadow`.
+- **No `<br>`** (use `margin-top`), **no `<ol>`** (number inline), **no nested `<ul>`**, **no
+  HTML comments**, **no web-font `<link>`**.
+- Safe tags: `div, h2, h3, p, ul, li, a, strong, span, img` (+ a real data `<table>` with
+  scope). Italics via `<span style="font-style: italic;">` (no `<em>`).
+- Escape code: `<`&rarr;`&lt;`, `>`&rarr;`&gt;`, `&`&rarr;`&amp;`.
 
-## Components (copy the inline styles — note: no `background` anywhere)
+## Components (RICH form; the CLEAN swap is "drop the `background:` + de-color non-heading text")
 
-**Wrapper** (one outer div; no body color):
+**Wrapper:** `<div style="max-width: 980px; margin: 0 auto; font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; color: #2c3a4d;"> ... </div>`
+
+**Hero** (filled navy; eyebrow &rarr; h2 title &rarr; subtitle):
 ```html
-<div style="max-width: 980px; margin: 0 auto; font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.55;"> ... </div>
-```
-
-**Header block** (gold top-bar, navy `<h2>` title, default eyebrow/subtitle — NO fill):
-```html
-<div style="padding: 24px; border-radius: 8px; border-top: 5px solid #E9A821;">
-  <div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700;">EYEBROW</div>
-  <h2 style="margin: 6px 0 4px; font-size: 30px; font-family: Georgia, 'Times New Roman', serif; color: #061E3F;">TITLE</h2>
-  <p style="margin: 0 0 14px; font-size: 15px;">SUBTITLE</p>
+<div style="padding: 24px; border-radius: 8px; background: #061E3F; border-top: 5px solid #E9A821;">
+  <div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #E9A821; font-weight: 700;">EYEBROW</div>
+  <h2 style="margin: 6px 0 4px; font-size: 30px; font-family: Georgia, 'Times New Roman', serif; color: #ffffff;">TITLE</h2>
+  <p style="margin: 0 0 14px; font-size: 15px; color: #cfdcec;">SUBTITLE</p>
 </div>
 ```
-**Pill / chip** (gold ring, no fill, default text):
-`<span style="display: inline-block; border: 1px solid #E9A821; border-radius: 999px; padding: 5px 14px; font-size: 13px; margin: 4px 6px 0 0;"><strong>LABEL</strong> value</span>`
+**Pill** (solid, gold ring): `<span style="display: inline-block; background: #0E2C54; border: 1px solid #E9A821; border-radius: 999px; padding: 5px 14px; font-size: 13px; color: #ffffff; margin: 4px 6px 0 0;"><strong style="color: #E9A821;">LABEL</strong> value</span>`
 
-**Card** (gray border + gold top-bar, no fill; navy `<h3>` with gold underline):
+**Card** (white, gold top-bar; navy `<h3>` with gold underline):
 ```html
-<div style="margin-top: 18px; padding: 18px; border-radius: 8px; border: 1px solid #d7dce3; border-top: 4px solid #E9A821;">
+<div style="margin-top: 18px; padding: 18px; border-radius: 8px; background: #ffffff; border: 1px solid #d7dce3; border-top: 4px solid #E9A821;">
   <h3 style="margin: 0 0 12px; font-size: 19px; color: #061E3F;"><span style="border-bottom: 2px solid #E9A821; padding-bottom: 6px;">SECTION TITLE</span></h3>
-  <p style="margin: 0; font-size: 14px;">Body.</p>
+  <p style="margin: 0; font-size: 14px; color: #2c3a4d;">Body.</p>
 </div>
 ```
-**List inside a card**: `<ul style="margin: 0; padding-left: 18px; font-size: 14px;"><li>...</li></ul>`
+**List inside a card**: `<ul style="margin: 0; padding-left: 18px; font-size: 14px; color: #2c3a4d;"><li>...</li></ul>`
 
-**Info / goal / tip box** (blue left-border, no fill):
+**Info / goal / tip box** (blue left-border):
 ```html
-<div style="margin-top: 18px; padding: 10px 12px; border-radius: 8px; border-left: 4px solid #236192; font-size: 13px;"><strong>&#127919; Lesson goal:</strong> ...</div>
+<div style="margin-top: 18px; padding: 10px 12px; border-radius: 8px; background: #eef4fa; border-left: 4px solid #236192; font-size: 13px; color: #2c3a4d;"><strong style="color: #061E3F;">&#127919; Lesson goal:</strong> ...</div>
 ```
-
-**Alert** (red left-border + icon + heading WORD, no fill — meaning never by color alone):
+**Alert** (red — border + icon + heading word, never color alone):
 ```html
-<div style="margin-top: 18px; padding: 14px 16px; border-radius: 8px; border: 1px solid #d7dce3; border-left: 5px solid #C11F31;">
-  <div style="font-size: 14px; font-weight: 700; margin-bottom: 4px;">&#9888; Heading</div>
-  <p style="margin: 0; font-size: 14px;">...</p>
+<div style="margin-top: 18px; padding: 14px 16px; border-radius: 8px; background: #fbe9eb; border: 1px solid #f3c2c8; border-left: 5px solid #C11F31;">
+  <div style="font-size: 14px; color: #C11F31; font-weight: 700; margin-bottom: 4px;">&#9888; Heading</div>
+  <p style="margin: 0; font-size: 14px; color: #061E3F;">...</p>
+</div>
+```
+**Code block** (preserves newlines, wraps on mobile):
+```html
+<div style="margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: #F5F5F5; border: 1px solid #d7dce3; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; color: #2c3a4d; white-space: pre-wrap; overflow-x: auto;">REAL NEWLINES, &lt; &gt; &amp; ESCAPED</div>
+```
+**Inline code**: `<span style="font-family: 'Consolas', 'Courier New', monospace; background: #F5F5F5; padding: 1px 5px; border-radius: 4px; font-size: 13px; color: #061E3F;">code</span>`
+
+**Real data table** (only for genuine tabular data; add scope):
+```html
+<table style="border-collapse: collapse; width: 100%; font-size: 14px;">
+  <tr><th scope="col" style="border: 1px solid #d7dce3; padding: 6px; text-align: left;">Column</th> ...</tr>
+  <tr><th scope="row" style="border: 1px solid #d7dce3; padding: 6px;">Row label</th><td style="border: 1px solid #d7dce3; padding: 6px;">cell</td></tr>
+</table>
+```
+**Label/value row** (replaces layout tables): `<div style="margin-bottom: 6px;"><strong style="color: #061E3F;">Label:</strong> value</div>`
+**Link**: `<a href="..." style="color: #1565C0; text-decoration: underline;">descriptive text</a>`
+
+**Footer** (filled navy):
+```html
+<div style="margin-top: 18px; padding: 16px 18px; border-radius: 8px; background: #061E3F; border-top: 5px solid #E9A821; color: #ffffff;">
+  <div style="font-size: 14px;">COURSE &middot; <strong style="color: #E9A821;">Course Name</strong> &middot; Week N</div>
+  <div style="margin-top: 8px; font-size: 13px; color: #cfdcec;">One-line next step. Return to the course Page Index in Canvas.</div>
 </div>
 ```
 
-**Code block** (gray border, no fill; preserves newlines, wraps on mobile):
-```html
-<div style="margin-top: 12px; padding: 12px 14px; border-radius: 8px; border: 1px solid #d7dce3; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; overflow-x: auto;">REAL NEWLINES, &lt; &gt; &amp; ESCAPED</div>
-```
-**Inline code**: `<span style="font-family: 'Consolas', 'Courier New', monospace; border: 1px solid #d7dce3; padding: 1px 5px; border-radius: 4px; font-size: 13px;">code</span>`
-
-**Label/value row** (replaces 2-column tables): `<div style="margin-bottom: 6px;"><strong>Label:</strong> value</div>`
-**Hierarchy** (replaces 3-column tables / outlines): a `<div><strong>Heading</strong></div>` then one `<ul>` of sub-points.
-**Grading rubric**: a card of label/value rows like `<div style="margin-bottom: 6px;">Criterion <strong>(20 pts)</strong></div>`, then a total row `<strong>Total: 100 points</strong>`.
-**Link**: `<a href="..." style="text-decoration: underline;">text</a>` (default color; underline is the non-color cue).
-
-**Footer** (gold top-bar, no fill, default text):
-```html
-<div style="margin-top: 18px; padding: 16px 18px; border-radius: 8px; border-top: 5px solid #E9A821;">
-  <div style="font-size: 14px;">COURSE &middot; <strong>Course Name</strong> &middot; Week N</div>
-  <div style="margin-top: 8px; font-size: 13px;">One-line next step. Return to the course Page Index in Canvas.</div>
-</div>
-```
-
-**Kept-emoji entities** (use sparingly, always beside a text word so meaning isn't icon-only):
-`&#127919;` 🎯 goal · `&#9989;` ✅ practice · `&#9888;` ⚠️ alert.
-
-## Accessibility checklist
-- Exactly one `<h1>` = the Canvas page name. Header-block title is `<h2>`, sections `<h3>`.
-- **Color only in headings (navy) + borders.** No `background:` fills, no chromatic body text.
-- Every `<img>` has `alt` (decorative → `alt=""`; never the filename).
-- Don't encode meaning in color alone (alerts use a red border **and** ⚠ icon **and** a heading word).
-- Links carry `text-decoration: underline` (the non-color cue).
-- Mobile: test at 360px, body text ≥ 14px, tap targets ≥ 44px, no fixed widths except the
-  980px wrapper, grids collapse (`minmax(260px,1fr)`).
-
-## Ally full-compliance checklist (real flags we've hit — fix them at authoring time)
-Anthology Ally checks more than color. Every generated page/assignment must also satisfy:
-- **Real semantic headings.** One `<h2>` (the title) then `<h3>` sections — never fake a heading with a bold/large `<span>`/`<p>` (Ally: "Headings may be missing" / "Styles might be used instead of semantic markup"), and never skip a level (h2&rarr;h3, never h2&rarr;h4; Ally: "Page contains skipped headings").
-- **Descriptive image alt text &mdash; never the filename.** `alt="Console output: bid of 8 is rejected, 11 is accepted"`, not `alt="output.png"` (Ally: "Alternative text uses filename..."). Purely decorative images &rarr; `alt=""`. Write alt from what the image conveys *in context* &mdash; only its purpose needs conveying. NOTE: course images are often hosted in a *different* Canvas course you may not have token access to (HTTP 401), so you usually cannot fetch/view them; derive alt from the surrounding text.
-- **Tables = real tabular data only, WITH headers.** If it is a genuine data table, keep `<table>` and add `<th scope="col">` (and `<th scope="row">` where rows are labeled); Canvas preserves real tables (Ally: "Table does not include header rows or columns" / "missing row or column scope"). If a table is only layout/spacing, convert to label/value rows. (House pages avoid tables for layout, but a real data table WITH scope is correct and accessible.)
-- **Every link has text.** No empty or icon-only `<a>` (Ally: "Link does not contain text") &mdash; put a descriptive phrase inside the link.
-- **External / embedded content is a manual flag.** Ally's "Linked or embedded external content may not meet accessibility standards" is about the *linked* resource (a PDF, a publisher/MindTap site, an embedded video), not your HTML; it cannot be auto-fixed &mdash; surface it to the instructor.
-
-## Remediating an EXISTING course (gotchas)
-- **Target the PUBLISHED page.** Canvas auto-appends `-2` to a duplicate-title slug, so a course can hold two same-titled pages (one published, one not). Style the one students see (`published: true`); flag the duplicate for the instructor to delete.
-- Re-PUT **preserves real `<table>`s** (the "no table" rule is a house mobile/layout preference, not a Canvas-sanitizer limit). `class=`, `box-shadow`, and `<style>` ARE stripped by the sanitizer.
-- Preserve existing instructional content **verbatim** when restyling; restructure + add semantic headings + fix accessibility only. Do not rewrite/humanize imported (e.g., publisher) content.
+**Kept-emoji entities** (sparingly, always beside a text word): `&#127919;` 🎯 · `&#9989;` ✅ · `&#9888;` ⚠️.
 
 ## Page skeleton
-header block → goal/intro info box → one card per source section → (for assignments:
-Requirements, Deliverable, Grading rubric) → footer. Cover everything the source covers;
-invent nothing.
+hero &rarr; goal/intro info box &rarr; one card per source section (each with a real `<h3>`) &rarr;
+(for assignments: Requirements, Deliverable, Grading rubric) &rarr; footer. Cover everything the
+source covers; invent nothing. Exactly one `<h1>` = the Canvas page name (the hero title is `<h2>`).
 
 ## Syllabus pages — special handling
-Render formal and plain (no decorative emoji). Convert every table (hour breakdown, grading
-scale, attendance) to label/value rows. Put the full nondiscrimination / Section 504 / ADA /
-Title IX statement in a gray-bordered card (no fill). Make emails `mailto:` links, underlined.
-**Omit internal instructor notes** (e.g. "verify course number/credits") — surface them to the
-user instead.
+Render formal and plain (no decorative emoji). Convert hour-breakdown / grading-scale /
+attendance tables to label/value rows (or real tables WITH scope). Put the full
+nondiscrimination / Section 504 / ADA / Title IX statement in a light card. Emails as
+underlined `mailto:` links. **Omit internal instructor notes** — surface them to the user.
+
+## Mobile
+Test at 360px; body text >= 14px; tap targets >= 44px; no fixed widths except the 980px
+wrapper; grids collapse (`minmax(260px,1fr)`).
+
+## Remediating an EXISTING course (gotchas)
+- **Target the PUBLISHED page.** Canvas auto-appends `-2` to a duplicate-title slug, so a course
+  can hold two same-titled pages (one published, one not). Restyle the one students see
+  (`published: true`); flag the duplicate for the instructor to delete.
+- Re-PUT **preserves real `<table>`s** (the "no layout table" rule is a house preference, not a
+  Canvas-sanitizer limit). `class=` (styling), `box-shadow`, and `<style>` ARE stripped.
+- Preserve existing instructional content **verbatim** when restyling; restructure + add semantic
+  headings + fix accessibility only. Do not rewrite/humanize imported (e.g., publisher) content.

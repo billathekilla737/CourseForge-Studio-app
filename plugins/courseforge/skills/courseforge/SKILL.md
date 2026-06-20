@@ -306,6 +306,15 @@ exam and add it", "make a Week 14 study guide", "add a rubric page to Week 3"). 
    signatures with `// TODO:` where the graded logic goes), *name the APIs* the student needs without
    assembling them, and use at most one sparing `____` fill-in-the-blank. The student must still write
    every line the rubric grades. Litmus test: if pasting the hint earns the rubric, it gives away too much.
+   **Accessibility (every page — see `references/style-guide.md` for the full checklist + both looks):**
+   real `<h2>`/`<h3>` headings (never fake one with bold, never skip a level); every informative
+   `<img>` gets DESCRIPTIVE alt (never the filename; decorative &rarr; `alt=""`); real data tables get
+   `<th scope>`; every link has text. **You can SEE most Canvas images to write accurate alt** — an
+   `<img src>` containing the course's own id and a `?verifier=` token is downloadable
+   (`curl -s -o tmp.png -L "<src>"`, then read the PNG and describe what it shows); an image hosted
+   in a *different* course (a publisher/master id) may return 403, so use context. Filled navy bands
+   look best but raise Ally's **advisory** "use of color" item; drop all `background:` fills for a
+   100%-green scan (the "clean" variant in the style guide).
 2. **Decide placement deliberately:**
    - **Item type** — a reading/lesson is a **Page**; graded work students submit is
      an **Assignment**; a graded participation thread is a **Discussion**; a

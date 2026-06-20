@@ -1,115 +1,133 @@
-# Canvas-safe HTML style guide
+# Canvas-safe HTML style guide (ADA / Ally-clean "bordered" template)
 
-Inline-styled components that survive the Canvas Rich Content Editor sanitizer.
-Colors/typography below are the MGCCC "Mississippi" palette — swap the hexes for
-another school, but keep the *structure* (it's what survives the sanitizer).
+Inline-styled components that survive the Canvas Rich Content Editor sanitizer **and**
+pass an Anthology Ally accessibility scan at 100%. Colors below are the MGCCC
+"Mississippi" blue-and-gold palette — swap the hexes for another school, but keep the
+*structure* (border-only, no fills) — that's what keeps Ally happy.
 
-## Hard rules (the sanitizer enforces these)
+## The accessibility rule that shapes everything (WCAG 1.4.1 — "use of color")
+MGCCC scans every page/assignment/quiz with **Anthology Ally**. Ally's
+*"Potential use of color alone to communicate information"* flag fires on exactly two things,
+so the whole design avoids both:
+
+1. **No `background:` color fills.** ANY background fill is flagged — even a neutral gray.
+   Convey structure with **borders, not fills** (top-bars, left-accents, rings, underlines).
+2. **No chromatic *body* text.** Colored `<strong>`/`<span>`/`<p>` runs are flagged.
+   Body text is **default black**; emphasis is **`<strong>` bold**, never color.
+
+What Ally does **not** flag (so we use these freely for brand):
+- **Navy `#061E3F` on `<h2>`/`<h3>` headings** (headings are exempt at any count).
+- **Borders of any color** — gold, navy, blue, gray, red.
+
+So **color appears in only two places: heading text (navy) and borders (gold/navy/blue/red/gray).**
+This passed Ally at **100%** on a full course. (Contrast — WCAG 1.4.3 — is automatically
+satisfied: default-black and navy text on white are >11:1.)
+
+## Hard rules (the Canvas sanitizer enforces these)
 - **Inline `style="..."` only.** No `<style>`, no `class=`/`id=` styling.
 - **No `<table>`.** Use label/value rows or a bold heading + single-level `<ul>`.
-- **No nested lists** (`<ul>` inside `<li>`), **no `<ol>`** (put the number in the
-  text), **no `<br>`** (use `margin-top` for spacing), **no HTML comments**.
-- **No `box-shadow`** (this instance strips it — use borders for definition).
+- **No nested lists** (`<ul>` in `<li>`), **no `<ol>`** (put the number in the text),
+  **no `<br>`** (use `margin-top`), **no HTML comments**, **no `box-shadow`**.
 - **No web-font `<link>`** — always include web-safe fallbacks in `font-family`.
 - Safe tags: `div, h2, h3, p, ul, li, a, strong, span, img`. Italics via
   `<span style="font-style: italic;">` (no `<em>`).
-- Escape code: `<`→`&lt;`, `>`→`&gt;`, `&`→`&amp;`. Use entities for punctuation:
+- Escape code: `<`→`&lt;`, `>`→`&gt;`, `&`→`&amp;`. Entities for punctuation:
   `&mdash; &amp; &rarr; &middot; &ldquo; &rdquo;`.
 
-## Palette
+## Palette (color lives only in headings + borders)
 | Role | Hex |
 |---|---|
-| Navy (hero/footer/headings/strong) | `#061E3F` |
-| Blue (info-box left border) | `#236192` |
-| Link | `#186FC8` |
-| Gold (top borders, dividers, H3 underline, pills on navy) | `#E9A821` |
-| Body text | `#2c3a4d` · Muted `#4b5563` · Subtitle-on-navy `#cfdcec` |
-| Info box bg | `#eef4fa` · Card border `#d7dce3` · Light gray `#F5F5F5` |
-| Alert: red `#C11F31` · bg `#fbe9eb` · border `#f3c2c8` |
+| Navy — **heading text** (h2/h3) **only**, and top/left borders | `#061E3F` |
+| Gold — top-bars, dividers, H3 underline, pill rings (border only) | `#E9A821` |
+| Blue — info/goal **left-border** | `#236192` |
+| Red — alert **left-border** | `#C11F31` |
+| Card border / code border / neutral structure | `#d7dce3` |
+| **Body text** | default (no `color:`) — emphasis via `<strong>` |
+| **Links** | default color + `text-decoration: underline` |
 
-**Gold is decorative only** (fails AA as text on light) — borders/dividers/pills-on-navy.
+**Never** set `color:` on body text, and **never** set a `background:` color. If you ever
+must color non-heading text, the only AA-safe link blue is `#1565C0` (5.3:1 on white) — but
+prefer default + underline.
 
-## Accessibility
-- Exactly one `<h1>` = the Canvas page name. Hero title is `<h2>`, sections `<h3>`.
-- Every `<img>` has `alt` (decorative → `alt=""`; never the filename).
-- Don't encode meaning in color alone (alerts use red **and** a text heading).
-- Mobile: test at 360px, body text ≥ 14px, tap targets ≥ 44px, no fixed widths
-  except the 980px wrapper, grids collapse (`minmax(260px,1fr)`).
+## Components (copy the inline styles — note: no `background` anywhere)
 
-## Components (copy the inline styles)
-
-**Wrapper** (one outer div):
+**Wrapper** (one outer div; no body color):
 ```html
-<div style="max-width: 980px; margin: 0 auto; font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; color: #2c3a4d;"> ... </div>
+<div style="max-width: 980px; margin: 0 auto; font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.55;"> ... </div>
 ```
 
-**Hero** (navy; eyebrow → h2 title → subtitle → optional pills):
+**Header block** (gold top-bar, navy `<h2>` title, default eyebrow/subtitle — NO fill):
 ```html
-<div style="padding: 24px; border-radius: 8px; background: #061E3F; border-top: 5px solid #E9A821;">
-  <div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #E9A821; font-weight: 700;">EYEBROW</div>
-  <h2 style="margin: 6px 0 4px; font-size: 30px; font-family: Georgia, 'Times New Roman', serif; color: #ffffff;">TITLE</h2>
-  <p style="margin: 0 0 14px; font-size: 15px; color: #cfdcec;">SUBTITLE</p>
+<div style="padding: 24px; border-radius: 8px; border-top: 5px solid #E9A821;">
+  <div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700;">EYEBROW</div>
+  <h2 style="margin: 6px 0 4px; font-size: 30px; font-family: Georgia, 'Times New Roman', serif; color: #061E3F;">TITLE</h2>
+  <p style="margin: 0 0 14px; font-size: 15px;">SUBTITLE</p>
 </div>
 ```
-**Pill** (on navy): `<span style="display: inline-block; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.28); border-radius: 999px; padding: 5px 14px; font-size: 13px; color: #ffffff; margin: 4px 6px 0 0;"><strong style="color: #E9A821;">LABEL</strong> value</span>`
+**Pill / chip** (gold ring, no fill, default text):
+`<span style="display: inline-block; border: 1px solid #E9A821; border-radius: 999px; padding: 5px 14px; font-size: 13px; margin: 4px 6px 0 0;"><strong>LABEL</strong> value</span>`
 
-**Card** (white, gold top-border):
+**Card** (gray border + gold top-bar, no fill; navy `<h3>` with gold underline):
 ```html
-<div style="margin-top: 18px; padding: 18px; border-radius: 8px; background: #ffffff; border: 1px solid #d7dce3; border-top: 4px solid #E9A821;">
+<div style="margin-top: 18px; padding: 18px; border-radius: 8px; border: 1px solid #d7dce3; border-top: 4px solid #E9A821;">
   <h3 style="margin: 0 0 12px; font-size: 19px; color: #061E3F;"><span style="border-bottom: 2px solid #E9A821; padding-bottom: 6px;">SECTION TITLE</span></h3>
-  <p style="margin: 0; font-size: 14px; color: #2c3a4d;">Body.</p>
+  <p style="margin: 0; font-size: 14px;">Body.</p>
 </div>
 ```
-**List inside a card**: `<ul style="margin: 0; padding-left: 18px; font-size: 14px; color: #2c3a4d;"><li>...</li></ul>`
+**List inside a card**: `<ul style="margin: 0; padding-left: 18px; font-size: 14px;"><li>...</li></ul>`
 
-**Info / goal / tip box** (blue left border):
+**Info / goal / tip box** (blue left-border, no fill):
 ```html
-<div style="margin-top: 18px; padding: 10px 12px; border-radius: 8px; background: #eef4fa; border-left: 4px solid #236192; font-size: 13px; color: #2c3a4d;"><strong style="color: #061E3F;">&#127919; Lesson goal:</strong> ...</div>
+<div style="margin-top: 18px; padding: 10px 12px; border-radius: 8px; border-left: 4px solid #236192; font-size: 13px;"><strong>&#127919; Lesson goal:</strong> ...</div>
 ```
 
-**Alert** (red; warnings/must-read):
+**Alert** (red left-border + icon + heading WORD, no fill — meaning never by color alone):
 ```html
-<div style="margin-top: 18px; padding: 14px 16px; border-radius: 8px; background: #fbe9eb; border: 1px solid #f3c2c8; border-left: 5px solid #C11F31;">
-  <div style="font-size: 14px; color: #C11F31; font-weight: 700; margin-bottom: 4px;">&#9888; Heading</div>
-  <p style="margin: 0; font-size: 14px; color: #061E3F;">...</p>
+<div style="margin-top: 18px; padding: 14px 16px; border-radius: 8px; border: 1px solid #d7dce3; border-left: 5px solid #C11F31;">
+  <div style="font-size: 14px; font-weight: 700; margin-bottom: 4px;">&#9888; Heading</div>
+  <p style="margin: 0; font-size: 14px;">...</p>
 </div>
 ```
 
-**Code block** (replaces `<pre>`; preserves newlines, wraps on mobile):
+**Code block** (gray border, no fill; preserves newlines, wraps on mobile):
 ```html
-<div style="margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: #F5F5F5; border: 1px solid #d7dce3; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; color: #2c3a4d; white-space: pre-wrap; overflow-x: auto;">REAL NEWLINES, &lt; &gt; &amp; ESCAPED</div>
+<div style="margin-top: 12px; padding: 12px 14px; border-radius: 8px; border: 1px solid #d7dce3; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; overflow-x: auto;">REAL NEWLINES, &lt; &gt; &amp; ESCAPED</div>
 ```
-**Inline code**: `<span style="font-family: 'Consolas', 'Courier New', monospace; background: #F5F5F5; padding: 1px 5px; border-radius: 4px; font-size: 13px; color: #061E3F;">code</span>`
+**Inline code**: `<span style="font-family: 'Consolas', 'Courier New', monospace; border: 1px solid #d7dce3; padding: 1px 5px; border-radius: 4px; font-size: 13px;">code</span>`
 
-**Label/value row** (replaces 2-column tables):
-```html
-<div style="margin-bottom: 6px;"><strong style="color: #061E3F;">Label:</strong> value</div>
-```
+**Label/value row** (replaces 2-column tables): `<div style="margin-bottom: 6px;"><strong>Label:</strong> value</div>`
 **Hierarchy** (replaces 3-column tables / outlines): a `<div><strong>Heading</strong></div>` then one `<ul>` of sub-points.
+**Grading rubric**: a card of label/value rows like `<div style="margin-bottom: 6px;">Criterion <strong>(20 pts)</strong></div>`, then a total row `<strong>Total: 100 points</strong>`.
+**Link**: `<a href="..." style="text-decoration: underline;">text</a>` (default color; underline is the non-color cue).
 
-**Grading rubric** (assignment/project pages): a card of label/value rows like
-`<div style="margin-bottom: 6px;">Criterion <strong style="color: #061E3F;">(20 pts)</strong></div>`,
-then a total info box `<strong>Total: 100 points</strong>`.
-
-**Footer** (navy):
+**Footer** (gold top-bar, no fill, default text):
 ```html
-<div style="margin-top: 18px; padding: 16px 18px; border-radius: 8px; background: #061E3F; border-top: 5px solid #E9A821; color: #ffffff;">
-  <div style="font-size: 14px;">COURSE &middot; <strong style="color: #E9A821;">Course Name</strong> &middot; Week N</div>
-  <div style="margin-top: 8px; font-size: 13px; color: #cfdcec;">One-line next step. Return to the course Page Index in Canvas.</div>
+<div style="margin-top: 18px; padding: 16px 18px; border-radius: 8px; border-top: 5px solid #E9A821;">
+  <div style="font-size: 14px;">COURSE &middot; <strong>Course Name</strong> &middot; Week N</div>
+  <div style="margin-top: 8px; font-size: 13px;">One-line next step. Return to the course Page Index in Canvas.</div>
 </div>
 ```
 
-**Kept-emoji entities** (use sparingly): `&#127919;` 🎯 goal · `&#9989;` ✅ practice · `&#9888;` ⚠️ alert.
+**Kept-emoji entities** (use sparingly, always beside a text word so meaning isn't icon-only):
+`&#127919;` 🎯 goal · `&#9989;` ✅ practice · `&#9888;` ⚠️ alert.
+
+## Accessibility checklist
+- Exactly one `<h1>` = the Canvas page name. Header-block title is `<h2>`, sections `<h3>`.
+- **Color only in headings (navy) + borders.** No `background:` fills, no chromatic body text.
+- Every `<img>` has `alt` (decorative → `alt=""`; never the filename).
+- Don't encode meaning in color alone (alerts use a red border **and** ⚠ icon **and** a heading word).
+- Links carry `text-decoration: underline` (the non-color cue).
+- Mobile: test at 360px, body text ≥ 14px, tap targets ≥ 44px, no fixed widths except the
+  980px wrapper, grids collapse (`minmax(260px,1fr)`).
 
 ## Page skeleton
-hero → goal/intro info box → one card per source section → (for assignments:
-Requirements, Deliverable, Grading rubric) → footer. Cover everything the source
-covers; invent nothing.
+header block → goal/intro info box → one card per source section → (for assignments:
+Requirements, Deliverable, Grading rubric) → footer. Cover everything the source covers;
+invent nothing.
 
 ## Syllabus pages — special handling
-Render formal and plain (no decorative emoji). Convert every table (hour
-breakdown, grading scale, attendance) to label/value rows. Put the full
-nondiscrimination / Section 504 / ADA / Title IX statement in a light-gray
-(`#F5F5F5`) card. Make emails `mailto:` links, underlined, `#186FC8`. **Omit any
-internal instructor notes** (e.g. "verify course number/credits") — those are
-authoring asides, not student content; surface them to the user instead.
+Render formal and plain (no decorative emoji). Convert every table (hour breakdown, grading
+scale, attendance) to label/value rows. Put the full nondiscrimination / Section 504 / ADA /
+Title IX statement in a gray-bordered card (no fill). Make emails `mailto:` links, underlined.
+**Omit internal instructor notes** (e.g. "verify course number/credits") — surface them to the
+user instead.

@@ -120,6 +120,19 @@ prefer default + underline.
 - Mobile: test at 360px, body text ≥ 14px, tap targets ≥ 44px, no fixed widths except the
   980px wrapper, grids collapse (`minmax(260px,1fr)`).
 
+## Ally full-compliance checklist (real flags we've hit — fix them at authoring time)
+Anthology Ally checks more than color. Every generated page/assignment must also satisfy:
+- **Real semantic headings.** One `<h2>` (the title) then `<h3>` sections — never fake a heading with a bold/large `<span>`/`<p>` (Ally: "Headings may be missing" / "Styles might be used instead of semantic markup"), and never skip a level (h2&rarr;h3, never h2&rarr;h4; Ally: "Page contains skipped headings").
+- **Descriptive image alt text &mdash; never the filename.** `alt="Console output: bid of 8 is rejected, 11 is accepted"`, not `alt="output.png"` (Ally: "Alternative text uses filename..."). Purely decorative images &rarr; `alt=""`. Write alt from what the image conveys *in context* &mdash; only its purpose needs conveying. NOTE: course images are often hosted in a *different* Canvas course you may not have token access to (HTTP 401), so you usually cannot fetch/view them; derive alt from the surrounding text.
+- **Tables = real tabular data only, WITH headers.** If it is a genuine data table, keep `<table>` and add `<th scope="col">` (and `<th scope="row">` where rows are labeled); Canvas preserves real tables (Ally: "Table does not include header rows or columns" / "missing row or column scope"). If a table is only layout/spacing, convert to label/value rows. (House pages avoid tables for layout, but a real data table WITH scope is correct and accessible.)
+- **Every link has text.** No empty or icon-only `<a>` (Ally: "Link does not contain text") &mdash; put a descriptive phrase inside the link.
+- **External / embedded content is a manual flag.** Ally's "Linked or embedded external content may not meet accessibility standards" is about the *linked* resource (a PDF, a publisher/MindTap site, an embedded video), not your HTML; it cannot be auto-fixed &mdash; surface it to the instructor.
+
+## Remediating an EXISTING course (gotchas)
+- **Target the PUBLISHED page.** Canvas auto-appends `-2` to a duplicate-title slug, so a course can hold two same-titled pages (one published, one not). Style the one students see (`published: true`); flag the duplicate for the instructor to delete.
+- Re-PUT **preserves real `<table>`s** (the "no table" rule is a house mobile/layout preference, not a Canvas-sanitizer limit). `class=`, `box-shadow`, and `<style>` ARE stripped by the sanitizer.
+- Preserve existing instructional content **verbatim** when restyling; restructure + add semantic headings + fix accessibility only. Do not rewrite/humanize imported (e.g., publisher) content.
+
 ## Page skeleton
 header block → goal/intro info box → one card per source section → (for assignments:
 Requirements, Deliverable, Grading rubric) → footer. Cover everything the source covers;

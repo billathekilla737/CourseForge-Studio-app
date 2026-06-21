@@ -490,7 +490,11 @@ Assignment object, **delete the old wiki page by its slug** so the two do not co
 ---
 
 # References (load as needed)
-- `references/style-guide.md` — Canvas-safe component library, palette, accessibility.
+- `references/style-guide.md` — Canvas-safe component library, palette, accessibility (rich + clean looks).
+- `references/ada-remediation.md` — **ADA/Ally remediation playbook** for an EXISTING course: what Ally
+  flags + how to clear each, the clean-vs-rich score trade-off (use clean for >=90%), viewing images for
+  concise alt (positional fallback for galleries), the scan->restyle->verify->push workflow, write-lock /
+  duplicate-slug gotchas, and the PPTX/PDF document reality. Use when asked to "fix my Ally score".
 - `references/conversion-spec.md` — the exact per-page conversion prompt (reuse verbatim for workflow agents).
 - `references/workflow-pattern.md` — how to fan out the bulk conversion across agents.
 - `references/project-course.md` — project/capstone courses: the project manifest (assignments, graded discussions, front page, syllabus, mixed-type module items) and how to push them.

@@ -30,6 +30,8 @@ instructors want). There is also a **CLEAN** variant that scores a perfect Ally 
   90 minutes"`, not `alt="output.png"`. Decorative images &rarr; `alt=""`. **VIEW the image when
   you can** (see "Generating alt text" below) and describe what it shows; otherwise derive it
   from the surrounding text. Never leave a filename or a missing `alt` on an informative image.
+  **Keep alt CONCISE (&le; ~110 chars)** &mdash; Ally also flags *"Alternative text is too lengthy"*;
+  one short phrase, not a transcript.
 - **Tables = real tabular data only, WITH headers.** A genuine data table keeps `<table>` and
   gets `<th scope="col">` (and `<th scope="row">` for labeled rows); Canvas preserves real
   tables. A table used only for layout &rarr; convert to label/value rows.
@@ -50,6 +52,11 @@ Course-hosted images can be downloaded and viewed, so alt text can be accurate, 
 - An image hosted in a **different** Canvas course (a publisher/master course id in the URL)
   usually returns **HTTP 403** to your token — you cannot view it; write alt from context.
 - Decorative UI flourishes &rarr; `alt=""`. Keep every `src` URL exactly as-is.
+- **Many-image gallery page** (e.g. a deck rendered as 40&ndash;80 slide images): viewing each is too
+  slow &mdash; use **positional alt** (`alt="Access Chapter 1 - slide graphic 5"`), which clears the
+  filename/missing flag fast and losslessly; note to the instructor it's positional, not described.
+- **Full ADA remediation of an existing course** (scan &rarr; restyle &rarr; verify &rarr; push, plus the
+  document/PPTX caveats and write-lock gotchas) lives in `references/ada-remediation.md`.
 
 ## Palette
 | Role | Hex |

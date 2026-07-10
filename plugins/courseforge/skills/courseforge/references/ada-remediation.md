@@ -71,10 +71,28 @@ resolved) but still pull the number down until cleared.
   pass array args with the call operator, not `-File … -X a,b,c`.
 
 ## Documents (PPTX / PDF / DOCX) — Ally scans these too
-Heavier and slower than HTML; set expectations before promising the whole set:
-- **`.pptx` (modern):** remediable with `python-pptx` — add image **alt** (view each image) and ensure
-  every slide has a **title**, then **re-upload** (replaces the file). Slow per deck (many images) and
-  the round-trip should be validated on one deck first.
+- **`.pptx` (modern): FULLY AUTOMATED** via the two-phase gateway — no per-file human oversight.
+  `Remediate-CanvasPptx.ps1` + `remediate_pptx.py` (both in `scripts/`); requires `pip install python-pptx`.
+  1. `-Action List` → enumerate the course's decks. `-Action Fetch` → download each (original kept as
+     `original.pptx` backup) and auto-scan: extracts every image to `work\images\` + a `report.json`
+     of issues (missing/filename/over-long alt, untitled slides, headerless tables, low-contrast).
+  2. **Agent vision phase:** READ each extracted image, write `work\fixes.json` — concise alt (≤110
+     chars) per image key, `""` for decorative (sets the real PowerPoint decorative flag), and a title
+     per untitled slide. Slide context strings in the report help describe accurately.
+  3. `-Action Push` → applies fixes (`fixed.pptx`), re-verifies to 0 hard issues, then uploads over the
+     original (`on_duplicate=overwrite`, same name + folder, so **course links keep working**).
+     Dry-run by default; `-Apply` to upload.
+  - Untitled slides get the title placeholder filled, or a cloned/synthesized title positioned
+    **off-canvas** — visuals unchanged, screen readers announce it (the Microsoft-documented technique).
+  - **Contrast is REPORT-ONLY** (recoloring an instructor's design is their call) — surface the list.
+  - Never touch **submission attachments** (student work) — course Files only.
+  - Round-trip validated end-to-end (upload → download → re-verify = 0 hard issues) on MGCCC, 2026-07,
+    including a worst-case deck (image-only slides, statements baked into pixels: alt must carry the
+    statement text AND the artwork content, since a screen reader gets nothing else).
+  - **Overwrite changes the file id** (name preserved; Canvas keeps replacement pointers so module/page
+    links generally redirect) — after pushing to a real course, click a module link to the file to confirm.
+  - **Image-only text decks:** the durable fix is rebuilding as real text slides (also helps zoom users) —
+    that changes the design, so offer it to the instructor; the alt-text pass is the non-invasive fix.
 - **`.ppt` (legacy):** `python-pptx` **cannot** read it; convert to `.pptx` first (PowerPoint/LibreOffice)
   — not headless-automatable here.
 - **`.pdf`:** real remediation (tagging, reading order, alt) is largely **manual** (Acrobat).

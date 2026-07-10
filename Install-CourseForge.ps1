@@ -169,6 +169,22 @@ $json = ConvertTo-JsonSafe $settings
 [System.IO.File]::WriteAllText($settingsPath, $json)   # UTF-8, no BOM
 Say "hooks registered -> $settingsPath"
 
+# --- 3b) optional dependency: python-pptx (powers automated PPTX ADA remediation) ---
+$py = Get-Command python -ErrorAction SilentlyContinue
+if ($py) {
+    & python -c "import pptx" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Installing python-pptx (needed for PPTX ADA remediation)..."
+        & python -m pip install --quiet python-pptx
+        if ($LASTEXITCODE -eq 0) { Say "python-pptx installed" }
+        else { Write-Host "  (could not install python-pptx - PPTX remediation will prompt for it later)" }
+    } else {
+        Say "python-pptx already present"
+    }
+} else {
+    Write-Host "  (Python not found - PPTX ADA remediation needs Python + python-pptx; HTML features unaffected)"
+}
+
 # --- 4) prove it: run the bundled guard tests -----------------------------------
 if (-not $SkipTests) {
     $tests = Join-Path $guardDst 'tests\Run-GuardTests.ps1'

@@ -125,7 +125,10 @@ $state = [ordered]@{ pages=@{}; assignments=@{}; discussions=@{}; quizzes=@{}; m
 # unless (a) the course has no modules, (b) a prior state file proves this script
 # built it, or (c) the operator explicitly passed -RebuildModules.
 if (-not $WhatIf -and -not $SkipModules) {
-    $existingMods = @(Invoke-Canvas GET "/modules?per_page=100")
+    # assign-then-wrap: @(Invoke-Canvas ...) directly would nest the array on
+    # PS 5.1 and report Count=1 (gate still fires, but the message would lie)
+    $existingMods = Invoke-Canvas GET "/modules?per_page=100"
+    $existingMods = @($existingMods)
     $ownCourse    = Test-Path $StatePath
     if ($existingMods.Count -gt 0 -and -not $ownCourse -and -not $RebuildModules) {
         Write-Host ""

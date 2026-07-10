@@ -14,3 +14,4 @@ private/
 *.raw.json
 **/map.json
 **/proposed-grades*.json
+__pycache__/

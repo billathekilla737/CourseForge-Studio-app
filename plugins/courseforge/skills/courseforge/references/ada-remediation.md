@@ -42,22 +42,45 @@ resolved) but still pull the number down until cleared.
   use **positional alt** ("Access Chapter 1 — slide graphic 5") — it clears the filename/missing flag
   fast and losslessly. Note to the instructor it's positional, not described.
 
-## Remediating an existing course — the workflow
-1. **Dump** every body locally (pages, assignments, quiz descriptions, **syllabus tab**).
-2. **Scan / flag** the items that actually have issues (from the Ally CSV, or detect directly:
-   filename/empty alt, substantial body with no heading, table without scope, empty link, fills).
-   Skip already-clean and very short pages.
-3. **Restyle** each flagged item into the template (one parallel agent per item for scale): rebuild in
-   the CLEAN look, **view in-course images** for concise alt, add semantic headings, fix tables/links —
-   and **preserve all instructional content verbatim** (restructure + fix a11y only; never rewrite or
-   summarize, especially imported/publisher content).
-4. **Verify** before pushing: 0 `background:` fills, navy only on `<h2>/<h3>`, no filename/empty/over-long
-   alt, no banned tags, and **visible text unchanged** vs source (no content drift).
-5. **Push** idempotently (pages → `wiki_page[body]`, assignments → `assignment[description]`,
-   quizzes → `quiz[description]`, syllabus → `course[syllabus_body]`). **Never change publish state.**
-6. Have the instructor **re-scan** to confirm; iterate on anything left.
+## Remediating an existing course — the SCRIPTED pipeline (use this, don't improvise)
+Three scripts ship the whole workflow (all in `scripts/`; validated end-to-end on MGCCC 2026-07):
+
+1. **Dump** — `Dump-CanvasContent.ps1 [-CourseId <id>] [-WorkDir <dir>]`
+   Downloads every body Ally scans (pages, assignment descriptions, discussion messages, quiz
+   descriptions, syllabus) + writes `manifest.json`. Strips the auto-injected theme `<link>/<script>`.
+   Skips quiz-/discussion-backed assignment SHELLS (their PUT 400s; the real body is on the quiz/topic).
+2. **Transform** — `python restyle_html.py transform <WorkDir> --look hybrid|rich|clean`
+   Deterministic (touches only `style=""` attrs + wraps unstructured bodies in hero+card; entity-encodes
+   non-ASCII). **DEFAULT = hybrid** (filled navy hero+footer only, ~2 advisories/page). `rich` = all
+   fills; `clean` = zero fills for max-score mandates. Prints the expected Ally advisory count.
+   `python restyle_html.py scan <WorkDir>` reports the hard a11y issues (alt/headings/tables/links).
+   **Image alt text still needs the agent's eyes** — view course-hosted images (see above) and fix alt
+   in the styled files before verify.
+3. **Verify** — `python restyle_html.py verify <WorkDir>` (exit 0 required)
+   Proves per item: visible text byte-identical (styled) or verbatim-contained (wrapped), href/src sets
+   unchanged, headings preserved, no dark-on-navy, pure ASCII, missing-heading fixed.
+4. **Push** — `Push-CanvasRemediation.ps1 -WorkDir <dir> [-Apply]`
+   In-place body updates ONLY (never modules/publish state/titles). Dry-run default. Refuses without a
+   passing verify-report. Test-writes first item (403 = write-locked course, aborts clean). Live
+   re-verify fetches every item back. Quiz descriptions go as JSON (see gotchas).
+5. Have the instructor **re-scan in Ally**; advisory "use of color" items from fills are reviewed +
+   marked resolved there (decorative navy).
 
 ## Operational gotchas (do not relearn)
+- **Quiz descriptions IGNORE form-encoded PUTs** — HTTP 200, nothing saved (same family as the tabs
+  API). Send JSON: `{"quiz":{"description":"..."}}`. Push-CanvasRemediation does this.
+- **Quiz-/discussion-backed assignments 400 on `assignment[description]`** — they are shells; edit the
+  quiz description / topic message instead. Dump-CanvasContent skips the shells automatically.
+- **Never hand a hashtable body to PS 5.1 `Invoke-RestMethod` for big HTML PUTs** — its form serializer
+  mis-encodes some bodies and Canvas drops the param and 200-no-ops (observed live: push "succeeded",
+  content unchanged). Build the form body with `[uri]::EscapeDataString` (chunked; it throws on very
+  long strings) or send JSON.
+- **Raw 4-byte emoji in a body = Canvas API 500** (generic Apache error page). Entity-encode ALL
+  non-ASCII before pushing (`restyle_html.py` asciify does this).
+- **Canvas auto-injects the account theme `<link>/<script>` on READ** — strip before PUT or it gets
+  stored and double-injected (dump does this).
+- **PS 5.1 `Set-Content -Encoding UTF8` writes a BOM** that breaks `python json.load` — write manifests
+  BOM-less (`[IO.File]::WriteAllText` + `UTF8Encoding($false)`) and read with `utf-8-sig`.
 - **Test-write before bulk-pushing a past course.** Some concluded courses are **write-locked**: a PUT
   returns **403** on *all* content (even a no-op page edit) despite `workflow_state: available` — usually
   a **closed grading period / concluded-with-restrictions**. The instructor/registrar must re-open it.

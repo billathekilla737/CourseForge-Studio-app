@@ -53,17 +53,16 @@ setup.** This is the #1 onboarding moment for a non-technical instructor — own
 
 **Detect it:** look for BOTH a `canvas.token` file AND a `canvas.config.<id>.json`,
 checking (a) the current working directory, then (b) the **standard folder**
-`%USERPROFILE%\Documents\canvas-work` (this is where the double-click `Setup-Canvas.bat`
-helper and the default setup write them — always check here if the current dir has no
-token). If you find them in `canvas-work`, use that folder's `canvas.token` /
-`canvas.config.*.json` for all script `-ConfigPath`/`-TokenPath` arguments. If you are
-unsure which folder is the project, ask the user. If either file is missing everywhere,
-they are **not connected** — proactively run onboarding instead of declining.
+`%USERPROFILE%\Documents\canvas-work` (where the default setup writes them — always
+check here if the current dir has no token). If you find them in `canvas-work`, use that
+folder's `canvas.token` / `canvas.config.*.json` for all script `-ConfigPath`/`-TokenPath`
+arguments (the `CanvasContext.ps1` resolver in every push/dump script does this
+automatically). If you are unsure which folder is the project, ask the user. If either
+file is missing everywhere, they are **not connected** — proactively run onboarding
+instead of declining. (Designers working MANY courses: one folder per course, config +
+token side by side; disambiguate with `-CourseId`.)
 
-**Easiest for a non-technical instructor:** tell them to double-click **`Setup-Canvas.bat`**
-(in the repo, or they can download just that one file) — it asks for their course URL and
-token and writes everything into `Documents\canvas-work` for them, no typing of file
-paths. Otherwise run setup yourself:
+**Run setup yourself — this is the easiest path for the user:**
 
 **Preferred — token stays private (never enters the chat).** Launch the interactive
 setup in its own console window so the token is typed hidden, like a password box:

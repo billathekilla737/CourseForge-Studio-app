@@ -17,14 +17,41 @@ instance; they reuse cleanly for any Canvas school after a few setting tweaks.
 ## Requirements
 - **Claude Code** (custom skills/plugins are not available in the claude.ai web app or Claude Desktop).
 - **PowerShell** (Windows PowerShell 5.1 is fine).
+- **Python 3** — powers the automated **PPTX ADA remediation** and the HTML restyle
+  pipeline. Everything else works without it; the installer sets up `python-pptx` for
+  you when Python is present.
 - A **Canvas API access token** for your own account, plus your course base URL + id.
 - For Notion-sourced builds only: a connected **Notion MCP** connector.
 
-## Install
+## Install — one line
 
-Install **both** plugins from the marketplace. The safety layer (`canvas-pii-guard`) is a
-**hooks** plugin — it must be *registered* with Claude Code, which a manual folder copy
-cannot do. In Claude Code, type these three lines (one at a time):
+Open **PowerShell** (Start menu → type "PowerShell") and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex
+```
+
+That's the whole install: it uses the Claude Code plugin system when the CLI is
+available, otherwise downloads this repo and runs the script installer — either way
+**both** plugins land (`courseforge` builds courses; `canvas-pii-guard` is the local
+block that enforces the no-student-data guarantee), the guard hooks are registered,
+`python-pptx` is set up, and the guard test suite runs. Safe to re-run any time —
+re-running is also how you **update**.
+
+Then: **fully restart Claude Code** (approve the trust prompt if one appears), open
+your course folder, and say *"set up my Canvas."*
+
+**Verify it worked** (after restart) — ask Claude:
+> *"Is canvas-pii-guard active, and do you have the courseforge skill?"*
+
+To remove everything later: run [`Uninstall-CourseForge.ps1`](Uninstall-CourseForge.ps1)
+(leaves your Canvas tokens/configs alone).
+
+<details>
+<summary>Manual alternatives (marketplace commands / script installer)</summary>
+
+**Marketplace, by hand** — in Claude Code, type these three lines (one at a time),
+approving the trust prompts:
 
 ```
 /plugin marketplace add billathekilla737/garris-canvas-tools
@@ -32,40 +59,21 @@ cannot do. In Claude Code, type these three lines (one at a time):
 /plugin install canvas-pii-guard@garris-canvas-tools
 ```
 
-You'll get a **trust prompt** on install — review the scripts, then approve. **Fully
-restart Claude Code** so the skills and hooks load.
-
-> **Install both.** `courseforge` builds your courses; `canvas-pii-guard` is the local
-> block that actually enforces the no-student-data guarantee. Installing courseforge
-> alone leaves that protection **off**.
-
-**Verify it worked** (after restart) — ask Claude:
-> *"Is canvas-pii-guard active, and do you have the courseforge skill?"*
-
-It should confirm the courseforge skill is available **and** that the PII-guard
-PreToolUse hook is registered. If the guard isn't active, re-run the third command.
-
-### If `/plugin` isn't available (SDK harness, automation)
-
-Some surfaces — the **Claude Agent SDK** harness, headless/automation runs — can't load
-the plugin marketplace and will say `/plugin` *"isn't available in this environment."*
-For those, run the bundled installer instead. Crucially, it does what a bare folder copy
-could not: it **registers the canvas-pii-guard hooks** into `settings.json`, so the
-safety block is never left off. It's idempotent, merges into any existing `settings.json`
-(writing a `.bak` first), and runs the 51-check guard suite at the end.
+**Script installer, by hand** (no git needed — download the repo ZIP from GitHub,
+extract, then):
 
 ```powershell
-git clone https://github.com/billathekilla737/garris-canvas-tools "$env:TEMP\garris-canvas-tools"
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\garris-canvas-tools\Install-CourseForge.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-CourseForge.ps1
 ```
 
-An AI assistant can run those two lines for you (they're ordinary commands, not slash
-commands). See [`AGENT-INSTALL-PROMPT.md`](AGENT-INSTALL-PROMPT.md) for a paste-ready
-prompt.
+It merges the guard hooks into any existing `settings.json` (writing a `.bak` first)
+and runs the full guard test suite at the end. An AI assistant can drive this for
+you — see [`AGENT-INSTALL-PROMPT.md`](AGENT-INSTALL-PROMPT.md).
 
 > ⚠️ Do **not** hand-copy just the skill folder into `~/.claude/skills/` — that installs
-> only the content skill and leaves the safety hooks uninstalled. Use the marketplace
-> commands, or `Install-CourseForge.ps1`, both of which register the hooks.
+> only the content skill and leaves the safety hooks uninstalled. Every supported path
+> above registers the hooks.
+</details>
 
 ## First-time setup (each instructor)
 
@@ -120,7 +128,7 @@ How it works (defense in depth):
 6. **Output scrubber (backstop)** — best-effort redaction of stray IDs/emails, tuned to
    MGCCC formats (login `M########`, SIS `###.M########`).
 
-**Proven:** a built-in test runs **51 checks** against the exact rules and passes all 51
+**Proven:** a built-in test suite runs dozens of checks against the exact rules and passes all of them
 (including that the two grading gateways are allowed at `/submissions` and to read their
 local map, while generic commands hitting `/submissions` or `grading/` are still denied)
 — and it openly lists what it does *not* catch.

@@ -1,30 +1,28 @@
-# ⚡ Quick Start (5 minutes)
+# ⚡ Quick Start (3 minutes)
 
 You'll do this once. You need the **Claude Code** app (desktop, CLI, or the VS Code
 extension) — not the claude.ai website, which can't load plugins.
 
-## 1. Install the tools
+## 1. Install — paste one line
 
-Type these three lines into Claude Code, **one at a time**, pressing Enter after each.
-(They start with `/` — you have to type them yourself; an assistant can't run slash
-commands for you.)
+Open **PowerShell** (press the Windows key, type `powershell`, press Enter) and paste
+this line, then press Enter:
 
-```
-/plugin marketplace add billathekilla737/garris-canvas-tools
-/plugin install courseforge@garris-canvas-tools
-/plugin install canvas-pii-guard@garris-canvas-tools
+```powershell
+irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex
 ```
 
-A **trust prompt** will pop up — that's normal. Read it and approve.
+It installs **both** tools — `courseforge` (builds and fixes course content) and
+`canvas-pii-guard` (the safety layer that blocks student-data requests) — registers the
+safety hooks, and checks itself with the built-in test suite. Watch for
+**ALL TESTS PASSED** near the end.
 
-> **Install both.** `courseforge` builds your course content; `canvas-pii-guard` is the
-> safety layer that blocks student-data requests. courseforge alone leaves the
-> protection off.
+> Re-running the same line later is how you **update**. It's always safe to re-run.
 
-## 2. Restart
+## 2. Restart Claude Code
 
 Fully close and reopen Claude Code. Plugins and their safety hooks only switch on at
-startup.
+startup. If a **trust prompt** pops up, read it and approve — that's normal.
 
 ## 3. Check it worked
 
@@ -32,8 +30,7 @@ Ask Claude:
 
 > *Is canvas-pii-guard active, and do you have the courseforge skill?*
 
-It should confirm **both**. If the guard isn't on, run the third line from Step 1 again
-and restart.
+It should confirm **both**. If not, re-run the line from Step 1 and restart again.
 
 ## 4. Connect your Canvas
 
@@ -48,12 +45,16 @@ It asks two things:
 - **Your access token** — typed hidden, like a password. To get one: in Canvas go to
   **Account → Settings → + New Access Token → Generate**, then paste it when asked.
 
-That's it — you can now say things like *"Build my Week 1 page"* or *"Add a final exam
-to this course."*
+That's it — you can now say things like *"Bring this course up to ADA compliance,"*
+*"Build my Week 1 page,"* or *"Add a final exam to this course."*
 
 ---
 
-**Trouble?** If `/plugin` says *"isn't available in this environment,"* you're on a
-surface that can't load the plugin marketplace (the Claude Agent SDK harness,
-automation/headless runs). See **[Alternative install (the script method)](AGENT-INSTALL-PROMPT.md)**
-— there's a one-script installer an AI assistant can run for you.
+**Trouble?**
+- If your IT setup blocks the one-liner, download the repo ZIP from
+  [github.com/billathekilla737/garris-canvas-tools](https://github.com/billathekilla737/garris-canvas-tools)
+  (green **Code** button → Download ZIP), extract it, right-click `Install-CourseForge.ps1`
+  → **Run with PowerShell**.
+- An AI assistant can drive the install for you — see
+  **[AGENT-INSTALL-PROMPT.md](AGENT-INSTALL-PROMPT.md)**.
+- To uninstall later: run `Uninstall-CourseForge.ps1` from the repo.

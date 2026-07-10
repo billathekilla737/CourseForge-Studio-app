@@ -1,34 +1,47 @@
-# Install CourseForge (for instructors)
+# Install CourseForge (for instructors and curriculum designers)
 
 Plain, copy/paste instructions. **Works in Claude Code only** (the desktop app, CLI, or
 IDE extension) — it does **not** work in the claude.ai website or Claude Desktop, because
 those can't load plugins.
 
 > **What you're installing:** two small plugins.
-> - **courseforge** — builds your Canvas *course content* (pages, modules, assignments,
->   quizzes, syllabus). It never reads student rosters, grades, or submissions in normal use.
+> - **courseforge** — builds and remediates your Canvas *course content* (pages, modules,
+>   assignments, quizzes, syllabus, PPTX). It never reads student rosters, grades, or
+>   submissions in normal use.
 > - **canvas-pii-guard** — a local safety block that *enforces* that: it stops any
 >   student-data request before it can run. **Install both** — courseforge alone leaves
 >   the protection off.
 
 ---
 
-## Step 1 — Install (type these 3 lines in Claude Code, one at a time)
+## Step 1 — Install (one line in PowerShell)
 
+Open **PowerShell** and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex
 ```
-/plugin marketplace add billathekilla737/garris-canvas-tools
-/plugin install courseforge@garris-canvas-tools
-/plugin install canvas-pii-guard@garris-canvas-tools
-```
 
-- You'll see a **trust prompt** — that's normal. Review and approve it.
-- These start with a slash (`/`) and must be **typed by you** — an AI assistant cannot
-  run slash commands for you.
+It installs both plugins (via the Claude Code plugin system when available, else the
+bundled script installer), registers the safety hooks, sets up `python-pptx`, and runs
+the guard test suite. **Safe to re-run any time — re-running is also the update path.**
 
-> **If `/plugin` says "isn't available in this environment":** you're on a surface that
-> can't load the plugin marketplace (the Claude Agent SDK harness, automation/headless
-> runs, etc.). Skip to **[Alternative install](#alternative-install-no-plugin-the-script-method)**
-> below — there's a one-script installer an AI assistant *can* run for you.
+An AI assistant **can run this line for you** (it's a regular command, not a slash
+command). Paste this into Claude Code:
+
+> Install the **garris-canvas-tools** plugins by running the one-line bootstrap:
+> `irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex`
+> Then show me the test result (it should say ALL TESTS PASSED) and confirm both the
+> courseforge skill and the canvas-pii-guard hooks are installed. Finally, help me
+> connect my Canvas.
+
+> **Prefer the in-app marketplace?** Type these three lines in Claude Code yourself
+> (slash commands can't be typed for you), approving the trust prompts:
+> ```
+> /plugin marketplace add billathekilla737/garris-canvas-tools
+> /plugin install courseforge@garris-canvas-tools
+> /plugin install canvas-pii-guard@garris-canvas-tools
+> ```
 
 ## Step 2 — Restart
 
@@ -71,36 +84,29 @@ you in order, confirm the install afterward, and run the Canvas setup with you.
 
 ---
 
-## Alternative install (no `/plugin`): the script method
+## Under the hood (and offline fallback)
 
-Use this when the `/plugin` commands aren't available — for example inside the **Claude
-Agent SDK harness** or any automation where typing `/plugin` returns *"isn't available in
-this environment."* It does the same job as the marketplace install, including the part a
-plain folder-copy never could: it **registers the canvas-pii-guard hooks** into your
-Claude `settings.json`, so the safety block is never left off.
+The bootstrap prefers the Claude Code plugin system; when the CLI isn't available it
+downloads this repo as a **ZIP** (no git required) and runs `Install-CourseForge.ps1`,
+which does the part a plain folder-copy never could: it **registers the canvas-pii-guard
+hooks** into your Claude `settings.json`, so the safety block is never left off.
 
-An AI assistant **can run this for you** (it's regular commands, not slash commands).
-Paste this into Claude Code:
-
-> Install the **garris-canvas-tools** plugins using the script method, because `/plugin`
-> isn't available here. Clone `https://github.com/billathekilla737/garris-canvas-tools`
-> to a temp folder and run `Install-CourseForge.ps1` from it. Then show me the test
-> result (it should say 51 passed) and confirm both the courseforge skill and the
-> canvas-pii-guard hooks are installed. Finally, help me connect my Canvas.
-
-Or run it yourself in PowerShell:
+If your network blocks `raw.githubusercontent.com`, do it by hand: download the repo ZIP
+from GitHub (green **Code** button → Download ZIP), extract it, and run:
 
 ```powershell
-git clone https://github.com/billathekilla737/garris-canvas-tools "$env:TEMP\garris-canvas-tools"
-powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\garris-canvas-tools\Install-CourseForge.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-CourseForge.ps1
 ```
 
 The installer is **idempotent** (safe to re-run), **merges** into any existing
 `settings.json` without disturbing your other settings (it writes a `settings.json.bak`
-first), and finishes by running the bundled **51-check** guard test suite so you can see
-the block is active. If you're in a normal Claude Code app afterward, **restart** so the
-hooks load; in the SDK harness they're picked up without a restart. Then do **Step 4**
-above to connect Canvas.
+first), and finishes by running the bundled guard test suite (watch for
+**ALL TESTS PASSED**) so you can see the block is active. If you're in a normal Claude
+Code app afterward, **restart** so the hooks load; in the SDK harness they're picked up
+without a restart. Then do **Step 4** above to connect Canvas.
 
-> Requires Windows PowerShell 5.1+ and `git`. Installs to `%USERPROFILE%\.claude`
+To remove everything later, run `Uninstall-CourseForge.ps1` from the repo — it
+de-registers the hooks and deletes the skills, leaving your Canvas tokens/configs alone.
+
+> Requires Windows PowerShell 5.1+. Installs to `%USERPROFILE%\.claude`
 > (override with `-ConfigDir`).

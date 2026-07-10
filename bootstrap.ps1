@@ -45,6 +45,16 @@ if (-not $claude) {
         (Join-Path $env:APPDATA 'npm\claude.cmd'))) {
         if (Test-Path $cand) { $claude = $cand; break }
     }
+    if ($claude) {
+        # claude.exe exists but its folder is not on PATH (the CLI installer can
+        # leave it off) - fix the USER PATH so plain `claude` works in NEW windows.
+        $binDir = Split-Path -Parent $claude
+        $userPath = [Environment]::GetEnvironmentVariable('Path','User')
+        if (($userPath -split ';') -notcontains $binDir) {
+            [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $binDir), 'User')
+            Say "added $binDir to your PATH (new terminal windows will recognize 'claude')"
+        }
+    }
 }
 
 $installed = $false
@@ -104,10 +114,14 @@ if ($py) {
 # --- done ----------------------------------------------------------------------------
 Write-Host ""
 if ($installed) {
-    Write-Host "DONE. Two steps left:"
-    Write-Host "  1. FULLY restart Claude Code (quit and reopen) so the skills and safety hooks load."
-    Write-Host "     Approve the plugin trust prompt if one appears."
-    Write-Host "  2. Open your course folder in Claude Code and say:  set up my Canvas"
+    Write-Host "DONE. You will not need PowerShell again - everything else happens in the Claude Code app."
+    Write-Host ""
+    Write-Host "  1. FULLY restart Claude Code (quit and reopen). Approve the trust prompt if one appears."
+    Write-Host "  2. In the app, use Open Folder and pick (or create) this folder:"
+    Write-Host "        Documents\canvas-work"
+    Write-Host "     That folder is simply where your Canvas connection gets saved - always open"
+    Write-Host "     the same one and you stay connected."
+    Write-Host "  3. Say:  set up my Canvas"
     Write-Host ""
     Write-Host "Verify any time by asking: 'Is canvas-pii-guard active, and do you have the courseforge skill?'"
 } else {

@@ -15,7 +15,10 @@ instance; they reuse cleanly for any Canvas school after a few setting tweaks.
 > (best-effort de-identification, not a guarantee — see Student data security below).
 
 ## Requirements
-- **Claude Code** (custom skills/plugins are not available in the claude.ai web app or Claude Desktop).
+- **Claude Code** — for non-technical users the **desktop app** is the recommended
+  surface (install it like any program, sign in, no terminal needed day-to-day); the
+  CLI and IDE extensions work identically. Custom skills/plugins are not available in
+  the claude.ai web app or Claude Desktop (the chat app).
 - **PowerShell** (Windows PowerShell 5.1 is fine).
 - **Python 3** — powers the automated **PPTX ADA remediation** and the HTML restyle
   pipeline. Everything else works without it; the installer sets up `python-pptx` for
@@ -38,8 +41,10 @@ block that enforces the no-student-data guarantee), the guard hooks are register
 `python-pptx` is set up, and the guard test suite runs. Safe to re-run any time —
 re-running is also how you **update**.
 
-Then: **fully restart Claude Code** (approve the trust prompt if one appears), open
-your course folder, and say *"set up my Canvas."*
+Then: **fully restart Claude Code** (approve the trust prompt if one appears), use
+**Open Folder** to open `Documents\canvas-work` (create it if it's new — it's simply
+where your Canvas connection gets saved; always open the same folder), and say
+*"set up my Canvas."* PowerShell is never needed again after the install line.
 
 **Verify it worked** (after restart) — ask Claude:
 > *"Is canvas-pii-guard active, and do you have the courseforge skill?"*

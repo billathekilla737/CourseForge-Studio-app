@@ -34,8 +34,13 @@ Blocked calls never execute, so no roster/grade/submission data leaves the machi
 ## Layered controls (defense in depth)
 1. **AI policy (hard stop).** The content skill's instructions refuse student-data
    requests, even under pressure. *(Policy layer — necessary but not sufficient alone.)*
-2. **No PII tools.** The content skill ships **zero scripts** that read rosters, grades,
-   or submissions. Auditable by reading its `scripts/` folder. *(Removes the capability.)*
+2. **No ad-hoc PII tools.** The content skill ships **no general-purpose roster, grade,
+   or submission reader**. Exactly **two** scripts in its `scripts/` folder touch student
+   data — the opt-in blind-grading gateways described in layer 4 (`Build-GradingBundle.ps1`,
+   `Post-Grades.ps1`) — and layer 3 recognizes them **by name** while denying every other
+   command on those endpoints. Auditable by reading the folder: an auditor **will** find
+   those two files; that is the sanctioned design, not a leak. *(Removes the general
+   capability; routes the one sanctioned path through named gateways.)*
 3. **PreToolUse BLOCK hook (the guarantee).** `guard-block.ps1` inspects every
    Bash/PowerShell/WebFetch call locally and **denies** any that target Canvas
    student-data endpoints (`/enrollments`, `/users`, `/students`, `/submissions`,
@@ -63,14 +68,19 @@ Blocked calls never execute, so no roster/grade/submission data leaves the machi
    The de-identification in the grading gateways is **best-effort**, not a guarantee
    (free-text and screenshot-embedded PII can remain) — see the BEST-EFFORT note below.
 5. **PostToolUse redactor (backstop).** `guard-redact.ps1` scrubs structured PII
-   (emails, phone numbers, SIS/9-digit IDs, Canvas user-id URL params, PII JSON fields)
-   from tool output. *Version-dependent; treat as a net, not the guarantee.*
+   (emails, phone numbers, MGCCC login/SIS id formats, SSNs, Canvas user-id URL params,
+   PII JSON fields) from tool output. It deliberately does **not** redact bare unlabeled
+   9-digit numbers: those collide with Canvas file/export/progress ids and broke
+   id-carrying content workflows, while real MGCCC student ids (letter + 8 digits, and
+   the `###.X########` SIS form) remain fully covered by their own patterns.
+   *Version-dependent; treat as a net, not the guarantee.*
 
 ## What is GUARANTEED vs BEST-EFFORT (please read)
 - **Guaranteed and auditable — PREVENTION.** With layers 2 + 3, the skill does not
-  fetch student data, so there is nothing to transmit. This is verifiable: read
-  `guard-block.ps1` (the deny/allow logic is plain text), audit the skill's `scripts/`
-  (no student-data calls), and run the test harness. This is the claim to stand behind.
+  fetch student data outside the two named gateways, so there is nothing to transmit.
+  This is verifiable: read `guard-block.ps1` (the deny/allow logic is plain text), audit
+  the skill's `scripts/` (the only student-data calls are in the two layer-4 gateways),
+  and run the test harness. This is the claim to stand behind.
 - **Best-effort — REDACTION.** Pattern matching (gateway + redactor) reduces risk for
   *incidental* structured PII. It **cannot be certified "100% / no leaks"** for
   arbitrary free-text PII (an unusual name in prose, text inside an uploaded PDF/image,

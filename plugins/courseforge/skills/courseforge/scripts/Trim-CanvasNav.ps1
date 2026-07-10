@@ -18,7 +18,7 @@
 param(
   [Parameter(Mandatory)] [string]$BaseUrl,
   [Parameter(Mandatory)] [int[]]$CourseIds,
-  [string]$TokenPath = (Join-Path $PSScriptRoot '..\..\..\canvas.token'),
+  [string]$TokenPath = '',   # default: canvas.token next to the resolved config (CanvasContext.ps1)
   [System.Collections.IDictionary]$Keep = ([ordered]@{
     'home'=1; 'announcements'=2; 'syllabus'=3; 'modules'=4;
     'context_external_tool_382357'=5;  'discussions'=6; 'grades'=7; 'people'=8; 'files'=9;
@@ -29,6 +29,10 @@ param(
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $base = $BaseUrl.TrimEnd('/')
+if (-not $TokenPath) {
+    . "$PSScriptRoot\CanvasContext.ps1"
+    $TokenPath = (Resolve-CanvasContext).TokenPath
+}
 $token = (Get-Content -Raw $TokenPath).Trim()
 $headers = @{ Authorization = "Bearer $token" }
 

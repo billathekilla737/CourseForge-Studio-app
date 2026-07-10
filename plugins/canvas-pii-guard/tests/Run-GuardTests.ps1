@@ -44,7 +44,16 @@ $policy = @(
     @{ t = 'Get-Content .\private\users.raw.json';               e = $false; l = 'DENY: read of private/ cache' },
     @{ t = 'type C:\proj\grading\721874\15943978\submissions.index.json'; e = $false; l = 'DENY: read of grading/ cache' },
     @{ t = "Invoke-RestMethod $B/some_new_endpoint";             e = $false; l = 'DENY: unrecognized Canvas endpoint (fail-closed)' },
-    @{ t = "Invoke-RestMethod $B/pages/player-profile-system";   e = $true;  l = 'allow: page slug containing "profile" not over-blocked' }
+    @{ t = "Invoke-RestMethod $B/pages/player-profile-system";   e = $true;  l = 'allow: page slug containing "profile" not over-blocked' },
+    @{ t = "Invoke-RestMethod -Method Post $B/content_exports";  e = $true;  l = 'allow: /content_exports (create export)' },
+    @{ t = "Invoke-RestMethod $B/content_exports/9";             e = $true;  l = 'allow: /content_exports/:id (poll export)' },
+    @{ t = "Invoke-RestMethod -Method Post $B/content_migrations"; e = $true; l = 'allow: /content_migrations (create import/copy)' },
+    @{ t = "Invoke-RestMethod $B/content_migrations/9";          e = $true;  l = 'allow: /content_migrations/:id (poll import)' },
+    @{ t = "Invoke-RestMethod $B/content_migrations/9/selective_data"; e = $true; l = 'allow: /content_migrations/:id/selective_data' },
+    @{ t = 'Invoke-RestMethod https://mgccc.instructure.com/api/v1/progress/456'; e = $true; l = 'allow: top-level /progress/:id (async poll)' },
+    @{ t = 'Invoke-RestMethod "$BASE/api/v1/courses/$ID/content_exports"'; e = $true; l = 'allow: variable-id export URL (keyword match sidesteps literal-id rule)' },
+    @{ t = "Invoke-RestMethod $B/progress_reports";              e = $false; l = 'DENY: /progress_reports (underscore boundary holds, fail-closed)' },
+    @{ t = 'Invoke-RestMethod "$BASE/api/v1/courses/$ID/enrollments"'; e = $false; l = 'DENY: variable-id /enrollments (deny still wins over any allow)' }
 )
 foreach ($c in $policy) {
     $r = Test-CanvasCallAllowed -Text $c.t
@@ -54,8 +63,8 @@ foreach ($c in $policy) {
 $lines += ""
 $lines += "== REDACTION (engine) =="
 $red = @(
-    @{ t = 'Reach me at jane.doe@example.edu or 601-555-0142, SIS 900112233.'; p = 'Standard';
-       remove = @('jane.doe@example.edu','601-555-0142','900112233'); l = 'email + phone + 9-digit (Standard)' },
+    @{ t = 'Reach me at jane.doe@example.edu or 601-555-0142, SSN 123-45-6789, SIS M10534634.'; p = 'Standard';
+       remove = @('jane.doe@example.edu','601-555-0142','123-45-6789','M10534634'); l = 'email + phone + SSN + MGCCC id (Standard)' },
     @{ t = '{"sortable_name":"Doe, Jane","login_id":"jdoe@example.edu","sis_user_id":"900112233"}'; p = 'Standard';
        remove = @('Doe, Jane','jdoe@example.edu','900112233'); l = 'PII JSON fields (Standard)' },
     @{ t = 'https://x.instructure.com/api/v1/courses/1/users/4242?user_id=4242 then /submissions/777'; p = 'Standard';
@@ -81,6 +90,12 @@ $content = '{"name":"Week 5 Quiz","points_possible":25,"published":true}'
 $co = Invoke-PiiRedaction -Text $content -Profile 'Standard'
 Check ($co.Text.Contains('Week 5 Quiz')) 'content name "Week 5 Quiz" preserved (Standard)'
 Check ($co.Count -eq 0) 'no redactions on content JSON (Standard)'
+# 9-digit Canvas object ids (files, exports, progress) must SURVIVE redaction, or
+# id-carrying workflows (export polling, module-item linking) silently break.
+$ids = '{"id":108345177,"export_id":738492011} poll /api/v1/progress/456789012'
+$io = Invoke-PiiRedaction -Text $ids -Profile 'Standard'
+Check ($io.Text.Contains('108345177') -and $io.Text.Contains('738492011') -and $io.Text.Contains('456789012')) 'bare 9-digit Canvas ids preserved (no [ID9] false positive)'
+Check ($io.Count -eq 0) 'no redactions on id-bearing content (Standard)'
 
 # Honest disclosure: things the block hook does NOT catch (NOT counted in pass/fail).
 # These are by-design boundaries, mitigated by a scoped Canvas token + no-PII tools in

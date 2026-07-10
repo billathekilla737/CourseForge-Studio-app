@@ -13,15 +13,20 @@
 #>
 param(
     [string]$Root        = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
-    [string]$ConfigPath  = (Join-Path $PSScriptRoot '..\canvas.config.json'),
+    [string]$ConfigPath  = '',   # resolved by CanvasContext.ps1 (cwd, then Documents\canvas-work)
     [string]$ManifestPath= (Join-Path $PSScriptRoot '..\canvas-export\manifest.json'),
-    [string]$TokenPath   = (Join-Path $PSScriptRoot '..\canvas.token'),
+    [string]$TokenPath   = '',   # default: canvas.token next to the resolved config
+    [string]$CourseId    = '',   # disambiguates when several canvas.config.*.json coexist
     [string]$StatePath   = (Join-Path $PSScriptRoot '..\canvas.state.json'),
     [ValidateSet('published','unpublished')] [string]$PublishState = 'unpublished',
     [switch]$WhatIf
 )
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+. "$PSScriptRoot\CanvasContext.ps1"
+$ctx = Resolve-CanvasContext -ConfigPath $ConfigPath -TokenPath $TokenPath -CourseId $CourseId
+$ConfigPath = $ctx.ConfigPath; $TokenPath = $ctx.TokenPath
 
 $cfg      = Get-Content -Raw -Encoding UTF8 $ConfigPath   | ConvertFrom-Json
 $manifest = Get-Content -Raw -Encoding UTF8 $ManifestPath | ConvertFrom-Json

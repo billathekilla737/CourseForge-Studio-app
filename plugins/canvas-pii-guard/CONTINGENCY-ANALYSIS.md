@@ -71,8 +71,9 @@ In priority order:
    redact inside a local-only gateway (#10) — better, never handle them in the content flow.
 
 ## Verification (reproduce the evidence)
-- `tests/Run-GuardTests.ps1` → `guard-coverage-report.txt` (34 security assertions PASS,
-  plus the disclosed limitations).
+- `tests/Run-GuardTests.ps1` → `guard-coverage-report.txt` (every security assertion in
+  the suite PASSES — the exact count is printed in the report header, so it never goes
+  stale here — plus the disclosed limitations).
 - Read `scripts/guard-block.ps1` and `scripts/PiiPatterns.ps1` (short, plain, no network).
 - Live: with the guard installed, attempt a roster call — it is denied locally before any
   request is made.

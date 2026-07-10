@@ -48,7 +48,11 @@ function Test-CanvasCallAllowed {
     #    Canvas path/URL ('/api/v1/...' or 'instructure.com/...') -- NOT a bare host, an
     #    email at *.instructure.com, or an unrelated /Users path. No Canvas URL -> allow.
     $denyRx  = '/(submissions|submission_summary|gradebook|grades|grade_change|enrollments|users|students|observees|observers|analytics|conversations|entries|entry_list|activity_stream|sis_imports|logins|profile|avatars|feeds|recent_students|student_view|effective_due_dates|quiz_submissions)([/?]|$|[^a-z0-9_])'
-    $allowRx = '/(pages|modules|module_items|assignments|assignment_groups|quizzes|discussion_topics|tabs|files|folders|external_tools)([/?]|$|[^a-z0-9_])'
+    # content_exports/content_migrations/progress are content-plane (course copy /
+    # common-cartridge / async status poll); deny runs FIRST (step 3), so adding them
+    # here cannot open any student-data endpoint. The [^a-z0-9_] boundary keeps
+    # look-alikes (e.g. /progress_reports) fail-closed.
+    $allowRx = '/(pages|modules|module_items|assignments|assignment_groups|quizzes|discussion_topics|tabs|files|folders|external_tools|content_exports|content_migrations|progress)([/?]|$|[^a-z0-9_])'
 
     $canvasTokens = @(($low -split '\s+') | Where-Object { $_ -match '/api/v1/' -or $_ -match 'instructure\.com/' })
     if ($canvasTokens.Count -eq 0) { return @{ allowed = $true; reason = '' } }
@@ -95,7 +99,11 @@ function Invoke-PiiRedaction {
     # For exact precision instead, change {8,9} to {8}.
     [void]$patterns.Add(@{ rx = '\b\d{3}\.[A-Za-z]\d{8,9}\b'; rep = '[SISID]' })  # sis_user_id: ###.X######## (8 digits)
     [void]$patterns.Add(@{ rx = '\b[A-Za-z]\d{8,9}\b'; rep = '[USERID]' })         # login_id: letter + 8 digits
-    [void]$patterns.Add(@{ rx = '\b\d{9}\b'; rep = '[ID9]' })
+    # SSN shape only. (A bare \b\d{9}\b rule was removed: it false-positived on Canvas
+    # file/course/export/progress ids, breaking id-carrying content workflows. Real
+    # MGCCC student ids are covered by the letter+8 patterns above; roster JSON by the
+    # field pattern below.)
+    [void]$patterns.Add(@{ rx = '\b\d{3}-\d{2}-\d{4}\b'; rep = '[SSN]' })
     [void]$patterns.Add(@{ rx = '(/users/)\d+'; rep = '${1}[ID]' })
     [void]$patterns.Add(@{ rx = '(/submissions/)\d+'; rep = '${1}[ID]' })
     [void]$patterns.Add(@{ rx = '(/enrollments/)\d+'; rep = '${1}[ID]' })

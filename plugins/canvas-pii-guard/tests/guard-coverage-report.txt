@@ -1,5 +1,5 @@
 canvas-pii-guard - coverage report
-Result: 51 passed, 0 failed
+Result: 63 passed, 0 failed
 (synthetic data only; proves listed structured-PII forms, not arbitrary free text)
 
 == POLICY (block hook) ==
@@ -26,16 +26,26 @@ Result: 51 passed, 0 failed
   PASS  DENY: read of grading/ cache
   PASS  DENY: unrecognized Canvas endpoint (fail-closed)
   PASS  allow: page slug containing "profile" not over-blocked
+  PASS  allow: /content_exports (create export)
+  PASS  allow: /content_exports/:id (poll export)
+  PASS  allow: /content_migrations (create import/copy)
+  PASS  allow: /content_migrations/:id (poll import)
+  PASS  allow: /content_migrations/:id/selective_data
+  PASS  allow: top-level /progress/:id (async poll)
+  PASS  allow: variable-id export URL (keyword match sidesteps literal-id rule)
+  PASS  DENY: /progress_reports (underscore boundary holds, fail-closed)
+  PASS  DENY: variable-id /enrollments (deny still wins over any allow)
 
 == REDACTION (engine) ==
-  PASS  email + phone + 9-digit (Standard): removed 'jane.doe@example.edu'
-  PASS  email + phone + 9-digit (Standard): removed '601-555-0142'
-  PASS  email + phone + 9-digit (Standard): removed '900112233'
-  PASS  email + phone + 9-digit (Standard): redaction count > 0 (was 3)
+  PASS  email + phone + SSN + MGCCC id (Standard): removed 'jane.doe@example.edu'
+  PASS  email + phone + SSN + MGCCC id (Standard): removed '601-555-0142'
+  PASS  email + phone + SSN + MGCCC id (Standard): removed '123-45-6789'
+  PASS  email + phone + SSN + MGCCC id (Standard): removed 'M10534634'
+  PASS  email + phone + SSN + MGCCC id (Standard): redaction count > 0 (was 4)
   PASS  PII JSON fields (Standard): removed 'Doe, Jane'
   PASS  PII JSON fields (Standard): removed 'jdoe@example.edu'
   PASS  PII JSON fields (Standard): removed '900112233'
-  PASS  PII JSON fields (Standard): redaction count > 0 (was 5)
+  PASS  PII JSON fields (Standard): redaction count > 0 (was 4)
   PASS  Canvas user-id URL params (Standard): removed '4242'
   PASS  Canvas user-id URL params (Standard): removed '/777'
   PASS  Canvas user-id URL params (Standard): redaction count > 0 (was 3)
@@ -58,6 +68,8 @@ Result: 51 passed, 0 failed
 == CONTENT SAFETY (no over-redaction under Standard) ==
   PASS  content name "Week 5 Quiz" preserved (Standard)
   PASS  no redactions on content JSON (Standard)
+  PASS  bare 9-digit Canvas ids preserved (no [ID9] false positive)
+  PASS  no redactions on id-bearing content (Standard)
 
 == KNOWN LIMITATIONS (disclosed; NOT security guarantees) ==
   NOTE  script-FILE indirection (a script could fetch PII; its command line shows no URL)  ->  ALLOWED (gap)

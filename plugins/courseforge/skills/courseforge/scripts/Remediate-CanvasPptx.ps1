@@ -22,6 +22,7 @@ param(
     [Parameter(Mandatory=$true)][ValidateSet('List','Fetch','Push')] [string]$Action,
     [string]$ConfigPath,
     [string]$TokenPath,
+    [string]$CourseId,   # disambiguates when several canvas.config.*.json coexist
     [string]$WorkDir = '.\pptx-work',
     [string]$FileId,
     [switch]$Apply   # Push without -Apply = dry run (report what would upload)
@@ -30,18 +31,9 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-function Resolve-Default([string]$path, [string]$pattern) {
-    if ($path) { return $path }
-    $here = Get-ChildItem -Path . -Filter $pattern -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($here) { return $here.FullName }
-    $std = Join-Path $env:USERPROFILE 'Documents\canvas-work'
-    $c = Get-ChildItem -Path $std -Filter $pattern -File -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($c) { return $c.FullName }
-    throw "Cannot find $pattern (looked in . and $std). Pass the path explicitly."
-}
-
-$ConfigPath = Resolve-Default $ConfigPath 'canvas.config.*.json'
-$TokenPath  = Resolve-Default $TokenPath  'canvas.token'
+. "$PSScriptRoot\CanvasContext.ps1"
+$ctx = Resolve-CanvasContext -ConfigPath $ConfigPath -TokenPath $TokenPath -CourseId $CourseId
+$ConfigPath = $ctx.ConfigPath; $TokenPath = $ctx.TokenPath
 $cfg   = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 $tok   = (Get-Content $TokenPath -Raw).Trim()
 $base  = $cfg.base_url.TrimEnd('/')

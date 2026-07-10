@@ -31,14 +31,19 @@ param(
     [string]$Root         = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
     [Parameter(Mandatory)] [string]$ConfigPath,
     [Parameter(Mandatory)] [string]$ManifestPath,
-    [string]$TokenPath    = (Join-Path $PSScriptRoot '..\canvas.token'),
+    [string]$TokenPath    = '',   # default: canvas.token next to the config (CanvasContext.ps1)
     [string]$StatePath    = (Join-Path $PSScriptRoot '..\canvas.project.state.json'),
     [ValidateSet('published','unpublished')] [string]$PublishState = 'unpublished',
     [switch]$SkipModules,
+    [switch]$RebuildModules,   # required to wipe modules on a course this script did not build
     [switch]$WhatIf
 )
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+. "$PSScriptRoot\CanvasContext.ps1"
+$ctx = Resolve-CanvasContext -ConfigPath $ConfigPath -TokenPath $TokenPath
+$ConfigPath = $ctx.ConfigPath; $TokenPath = $ctx.TokenPath
 
 $cfg      = Get-Content -Raw -Encoding UTF8 $ConfigPath   | ConvertFrom-Json
 $manifest = Get-Content -Raw -Encoding UTF8 $ManifestPath | ConvertFrom-Json
@@ -112,6 +117,26 @@ function Get-AssignmentGroupId {
 }
 
 $state = [ordered]@{ pages=@{}; assignments=@{}; discussions=@{}; quizzes=@{}; modules=@() }
+
+# --- SAFETY GATE (before ANY write): module wipe protection ------------------
+# The module pass (section 5) deletes every existing module and rebuilds from the
+# manifest. That is correct for a shell this script owns, and DESTRUCTIVE for a
+# populated course it has never seen. Refuse up front - before content writes -
+# unless (a) the course has no modules, (b) a prior state file proves this script
+# built it, or (c) the operator explicitly passed -RebuildModules.
+if (-not $WhatIf -and -not $SkipModules) {
+    $existingMods = @(Invoke-Canvas GET "/modules?per_page=100")
+    $ownCourse    = Test-Path $StatePath
+    if ($existingMods.Count -gt 0 -and -not $ownCourse -and -not $RebuildModules) {
+        Write-Host ""
+        Write-Host "REFUSING: course $courseId already has $($existingMods.Count) module(s) and no prior state file"
+        Write-Host "($StatePath) shows this script built them. Rebuilding would DELETE the"
+        Write-Host "instructor's existing module structure. Nothing has been written."
+        Write-Host "  - Update content without touching modules:  re-run with -SkipModules"
+        Write-Host "  - Wipe and rebuild modules (destructive):   re-run with -RebuildModules"
+        exit 2
+    }
+}
 
 Write-Host "Target: $($manifest.course_label)  ($api)"
 Write-Host "Publish state: $PublishState"

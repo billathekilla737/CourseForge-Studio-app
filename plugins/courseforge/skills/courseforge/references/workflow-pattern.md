@@ -1,5 +1,9 @@
 # Bulk conversion via a parallel workflow
 
+> **Scope:** this is for **Mode A (the optional Notion-import build path)** — bulk-
+> converting many Notion pages at once. Existing-course remediation/restyle has its own
+> scripted pipeline in `ada-remediation.md`.
+
 For more than ~10 pages, convert with a multi-agent workflow (one agent per page)
 instead of serially. A 51-page job ran in ~7 minutes this way. Requires explicit
 user opt-in to multi-agent orchestration (it spends a lot of tokens — ~30K/page).

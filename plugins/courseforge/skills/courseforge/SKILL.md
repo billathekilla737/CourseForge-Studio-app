@@ -1,22 +1,29 @@
 ---
 name: courseforge
 description: >-
-  Build, place, and update content on Canvas LMS — styled, accessible, idempotent.
-  Three jobs: (1) migrate a Notion course (a hub with a Page Index + weekly
-  schedule) into a fully built Canvas course; (2) generate content on request — a
-  page, syllabus, assignment, graded discussion, quiz or final exam, study guide —
-  and expertly place it into the right Canvas course, module, item type, position,
-  points, and assignment group; (3) keep every Canvas HTML output on the project
-  style guide. Use whenever the user wants to move, port, migrate, copy, rebuild, or
-  "get my Notion course/lessons/projects/assignments/syllabus into Canvas", populate
-  an empty Canvas shell, bulk-create pages and modules, add or grade assignments and
-  quizzes, build a final exam or study guide, or "put this on Canvas" — even if they
-  never say "Canvas API" or name this skill. Also covers standalone sub-tasks:
-  trimming a course's left-hand nav to a keep-list, and bulk-converting many pages
-  with a parallel workflow. Before any push, ask whether the work should be published
-  or left unpublished. This skill is content-first and does not read student data in
-  normal use; it refuses ad-hoc roster/grade/submission access. It DOES include one
-  OPT-IN blind-grading flow: a sterilizing + pseudonymizing gateway pulls submission
+  Remediate, restyle, build, and move content on Canvas LMS — styled, accessible,
+  idempotent, dry-run-first. Main jobs: (1) bring an EXISTING course up to
+  ADA/Ally accessibility with little or no manual oversight — fix HTML pages,
+  assignments, discussions, quiz descriptions and the syllabus (dump → restyle →
+  verify visible text unchanged → push in place, never touching modules or publish
+  state) AND remediate PowerPoint (.pptx) decks (descriptive alt text + slide
+  titles); (2) give a course a looks overhaul — restyle it into the branded template
+  (clean / rich / hybrid); (3) generate content on request — a page, syllabus,
+  assignment, graded discussion, quiz or final exam, study guide — placed into the
+  right module, item type, position, points and assignment group; (4)
+  export / import / clone whole courses — .imscc backups, cartridge import, and
+  Canvas-to-Canvas copy for replica sandboxes; (5) build a course from a source,
+  including the OPTIONAL path of migrating a Notion course. Use whenever the user
+  wants to make a course ADA / accessible / Ally-compliant, fix alt text or headings,
+  remediate PowerPoints, restyle or "give my course the school look", add or build
+  pages / assignments / quizzes / exams / study guides, export / back up / copy /
+  clone a course, populate an empty Canvas shell, or "get my Notion course into
+  Canvas" — even if they never say "Canvas API" or name this skill. Also covers
+  standalone sub-tasks: trimming a course's left-hand nav, and bulk-converting many
+  pages with a parallel workflow. Before any push, ask whether the work should be
+  published or left unpublished. This skill is content-first and does not read student
+  data in normal use; it refuses ad-hoc roster/grade/submission access. It DOES include
+  one OPT-IN blind-grading flow: a sterilizing + pseudonymizing gateway pulls submission
   TEXT only (identities stay local), you grade by pseudonym, and a dry-run-first poster
   writes the grades back. That de-identification is best-effort, not a guarantee. For
   full admin grading with real identities, use the courseforge-admin skill. Also
@@ -26,24 +33,35 @@ description: >-
   Setup-Canvas onboarding (it collects the course URL and a privately-typed token)
   instead of replying that you have no access. Built and battle-tested on the MGCCC
   Canvas instance; the conventions reuse cleanly for any Canvas school.
-compatibility: Requires PowerShell and a Canvas API token; the Notion MCP connector is needed only for Notion-sourced builds (Mode A).
+compatibility: Requires PowerShell and a Canvas API token. Python 3 (with python-pptx) powers PowerPoint remediation and the HTML restyle pipeline. The Notion MCP connector is OPTIONAL — needed only for the Notion-import build path (Mode A).
 ---
 
-# Canvas content builder (Notion-sourced or generated)
+# CourseForge — Canvas course toolkit
 
-This skill does three things, and most tasks combine them:
+Point this at a Canvas course to **remediate, restyle, build, or move** it. The jobs,
+most-used first:
 
-1. **Notion → Canvas.** Turn a Notion course (the source of truth: lessons,
-   projects, syllabus) into a real Canvas course — styled HTML pages organized into
-   weekly Modules, with a clean nav. (**Mode A**, Steps 1-7 below.)
-2. **Generate & place.** When asked to *create* content (a page, assignment, graded
-   discussion, quiz/final exam, study guide), generate it and place it expertly into
-   the right course, module, item type, position, points, and assignment group.
-   (**Mode B** — see its section below.)
-3. **Style.** Every Canvas HTML output follows `references/style-guide.md` — no
-   exceptions. That is what makes pages survive the sanitizer and look consistent.
+1. **Remediate for accessibility (ADA / Ally).** Bring an *existing* course up to
+   compliance with little or no manual oversight — every HTML body (pages, assignments,
+   discussions, quiz descriptions, the syllabus) **and PowerPoint (`.pptx`) decks**. The
+   scripted pipeline (dump → restyle → verify text-unchanged → push in place, never
+   touching modules or publish state) and the PPTX gateway both live in
+   `references/ada-remediation.md`.
+2. **Restyle / looks overhaul.** Reskin a course into the branded template — clean,
+   rich, or hybrid looks (`references/style-guide.md`).
+3. **Generate & place content.** Create a page, syllabus, assignment, graded
+   discussion, quiz/exam or study guide and place it into the right module, item type,
+   position, points and assignment group (**Mode B** below).
+4. **Export / import / clone.** Back a course up to a local `.imscc`, import a
+   cartridge, or copy one course into another for a replica sandbox
+   (`Export-CanvasCourse.ps1` / `Import-CanvasCourse.ps1`).
+5. **Build a course from a source.** Populate a shell — including the *optional* path
+   of migrating a **Notion** course (**Mode A** below; one input option, not the main
+   event).
 
-Re-runs are idempotent — safe to run again to update in place.
+Two rules cut across all of it: every HTML output follows `references/style-guide.md`
+(that is what survives the Canvas sanitizer and stays consistent), and writes are
+**idempotent** and **dry-run-first** — safe to re-run to update in place.
 
 ## STEP 0 — Connect Canvas if it isn't yet (do this BEFORE any Canvas action)
 On a fresh install the instructor has the skill but has **not connected their Canvas
@@ -145,11 +163,15 @@ with a **scoped Canvas token** (a role without view-grades / view-students permi
 for the real enforcement. Don't claim it is an air gap or unbreakable; the protections
 are prevention (block hook + no ad-hoc tools) plus best-effort de-identification.
 
-## Mode A — Notion → Canvas (the shape of the work)
+## Mode A — Build a course from a Notion source (one input path)
+
+Use this only when the user actually has a Notion course to import. It is one way to
+*populate* a course; the accessibility, restyle, generate, and export/import jobs above
+do not involve Notion at all.
 
 ```
 Notion hub page (Page Index + weekly schedule)
-   -> one styled, Canvas-safe HTML file per page   (the conversion — the real work)
+   -> one styled, Canvas-safe HTML file per page   (the conversion step)
    -> a manifest mapping each file to its week-module + Learn/Build slot
    -> VERIFY each file landed in the right slot     (non-negotiable — see Gotcha 1)
    -> push: create/update pages, build modules, place items  (Push-CanvasPages.ps1)
@@ -191,18 +213,18 @@ token back. **Prefer this over the manual steps below.**
 
 If you must set up by hand instead:
 
-1. **Notion connector** must be connected (you'll use its `fetch` and `search`) —
-   only for Notion-sourced builds (Mode A).
-2. **Canvas API token.** The user generates one at *Canvas → Account → Settings →
+1. **Canvas API token.** The user generates one at *Canvas → Account → Settings →
    New Access Token*. If they pasted it into an `.rtf`, run
    `scripts/Extract-CanvasToken.ps1` to pull it into `canvas.token` (RTF splits
    the token across formatting runs; the script rejoins it). Otherwise just have
    them save it as plain text in `canvas.token`. Never echo the token back.
-3. **Course id + base url.** From the course URL `https://SCHOOL.instructure.com/
+2. **Course id + base url.** From the course URL `https://SCHOOL.instructure.com/
    courses/12345` → base_url `https://SCHOOL.instructure.com`, course_id `12345`.
    Write `canvas.config.<id>.json`. Prefer an **unpublished** shell first.
-4. Sanity-check auth with a cheap read before writing anything:
+3. Sanity-check auth with a cheap read before writing anything:
    `GET /api/v1/courses/:id` (expect the course name back).
+4. **Only for a Notion import (Mode A):** the **Notion MCP connector** must be
+   connected (you'll use its `fetch` and `search`). Not needed for any other job.
 
 ## Step 1 — Map the Notion course
 

@@ -6,7 +6,7 @@ setting tweaks.
 
 | Plugin | What it does |
 |---|---|
-| **`courseforge`** | **Builds, remediates, and restyles Canvas courses**, all idempotent and dry-run-first on writes: **(1) Build / generate** — migrate a Notion course, or generate pages, syllabi, assignments, graded discussions, quizzes/exams and study guides as styled, sanitizer-safe, accessible content placed into the right modules. **(2) ADA / Ally remediation of an *existing* course, largely hands-off** — dump → restyle → verify (visible text provably unchanged) → push in place for every HTML body (pages, assignments, discussions, quiz descriptions, syllabus), **plus automated PowerPoint (`.pptx`) alt-text + slide-title remediation**. **(3) Looks overhaul** — restyle a whole course into the branded navy/gold template (clean / rich / hybrid looks). **(4) Export / import / clone** — back a course up to a local `.imscc` and import it, or copy one course into another (replica sandboxes). **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (a sterilizing + pseudonymizing gateway: identities stay local, you grade pseudonymized text, a dry-run-first poster writes grades back). |
+| **`courseforge`** | **Remediates, restyles, builds, and moves Canvas courses** — idempotent, dry-run-first on writes: **(1) ADA / Ally remediation of an *existing* course, largely hands-off** — dump → restyle → verify (visible text provably unchanged) → push in place for every HTML body (pages, assignments, discussions, quiz descriptions, syllabus), **plus automated PowerPoint (`.pptx`) alt-text + slide-title remediation**. **(2) Looks overhaul** — restyle a whole course into the branded navy/gold template (clean / rich / hybrid looks). **(3) Generate & place content** — pages, syllabi, assignments, graded discussions, quizzes/exams and study guides, as styled, sanitizer-safe, accessible content placed into the right modules (or seed a new course from a **Notion** export — one input option). **(4) Export / import / clone** — back a course up to a local `.imscc` and import it, or copy one course into another (replica sandboxes). **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (a sterilizing + pseudonymizing gateway: identities stay local, you grade pseudonymized text, a dry-run-first poster writes grades back). |
 | **`canvas-pii-guard`** | A **local data-protection layer**: PreToolUse hooks that **block** Canvas student-data API calls (rosters/grades/submissions) and local-cache reads *before they run*, so student PII is never fetched or sent. Plus a best-effort output scrubber tuned to MGCCC ID formats. Install it alongside `courseforge`. |
 
 > **Not included here:** the full admin/grading tool that *intentionally* reads student
@@ -25,7 +25,7 @@ setting tweaks.
   pipeline. Everything else works without it; the installer sets up `python-pptx` for
   you when Python is present.
 - A **Canvas API access token** for your own account, plus your course base URL + id.
-- For Notion-sourced builds only: a connected **Notion MCP** connector.
+- **Optional**, only for the Notion-import build path: a connected **Notion MCP** connector.
 
 ## Install — one line
 
@@ -100,10 +100,11 @@ Access Token**, then paste it when asked.
 
 ## Usage
 Ask Claude in plain English:
-- **Build / generate:** *"get my Notion course into Canvas"*, *"add a study guide to Week 3"*, *"build a final-exam quiz"*
 - **ADA compliance (existing course):** *"bring this course up to ADA compliance"*, *"fix my Ally score"*, *"make these PowerPoints accessible"*
 - **Looks overhaul:** *"give this course the school look"*, *"restyle Week 1 in the navy template"*
+- **Generate & place content:** *"add a study guide to Week 3"*, *"build a final-exam quiz"*, *"write a syllabus page"*
 - **Backup / copy:** *"export this course as a backup"*, *"clone this course into a sandbox"*
+- **Build from Notion (optional):** *"get my Notion course into Canvas"*
 
 Before any push it **asks whether to publish or leave content unpublished** (default:
 unpublished), and content writes are **dry-run-first**. Remediation **never changes your

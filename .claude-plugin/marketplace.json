@@ -2,13 +2,13 @@
   "name": "garris-canvas-tools",
   "owner": { "name": "Zack Garris" },
   "metadata": {
-    "description": "Canvas LMS course-building tools for instructors (Claude Code plugins)."
+    "description": "Canvas LMS course tools for instructors and curriculum designers (Claude Code plugins): accessibility remediation, restyling, content generation, and course export/import."
   },
   "plugins": [
     {
       "name": "courseforge",
       "source": "./plugins/courseforge",
-      "description": "CourseForge: build, place, and schedule whole Canvas courses (migrate from Notion or generate pages/syllabi/assignments/quizzes/exams, weekly modules, weighted grading, nav trim, auto due dates). Content-first; includes one opt-in best-effort blind-grading flow that keeps identities local."
+      "description": "CourseForge: remediate (ADA/Ally, incl. PowerPoint), restyle, build, and move Canvas courses — generate pages/syllabi/assignments/quizzes/exams, export/import/clone (.imscc + Canvas-to-Canvas copy), weekly modules, weighted grading, nav trim, auto due dates, optional Notion import. Content-first; includes one opt-in best-effort blind-grading flow that keeps identities local."
     },
     {
       "name": "canvas-pii-guard",

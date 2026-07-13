@@ -1,5 +1,9 @@
 # Per-page conversion spec
 
+> **Scope:** this reference applies only to **Mode A (the optional Notion-import build
+> path)**. For remediating or restyling an *existing* Canvas course, see
+> `ada-remediation.md` (the dump → restyle → verify → push pipeline) instead.
+
 This is the instruction block for converting ONE Notion page into one Canvas-safe
 HTML file. Reuse it verbatim — give it to each subagent in the bulk workflow, or
 follow it yourself when converting serially. It assumes the agent has the Notion

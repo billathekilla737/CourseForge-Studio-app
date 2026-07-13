@@ -1,8 +1,8 @@
 {
   "name": "courseforge",
   "version": "1.1.0",
-  "description": "CourseForge: build, place, and schedule whole Canvas courses. Migrate from Notion or generate styled pages, syllabi, assignments, discussions, quizzes and exams; weekly modules; weighted grading; nav trim; and automatic due dates from the term calendar. Idempotent re-runs. Content-first and does not read student data in normal use; includes one opt-in, best-effort blind-grading flow that keeps identities local.",
+  "description": "CourseForge: remediate, restyle, build, and move Canvas courses. Bring an existing course to ADA/Ally accessibility with little manual oversight (HTML pages/assignments/discussions/quizzes/syllabus plus PowerPoint decks); restyle a course into a branded template; generate and place pages, syllabi, assignments, discussions, quizzes and exams; export/import/clone whole courses (.imscc backups and Canvas-to-Canvas copies for replica sandboxes); and optionally seed a new course from a Notion export. Weekly modules, weighted grading, nav trim, auto due dates. Idempotent and dry-run-first on writes. Content-first and does not read student data in normal use; includes one opt-in, best-effort blind-grading flow that keeps identities local.",
   "author": { "name": "Zack Garris (MGCCC)" },
   "homepage": "https://github.com/billathekilla737/garris-canvas-tools",
-  "keywords": ["canvas", "lms", "instructure", "notion", "education", "course-builder"]
+  "keywords": ["canvas", "lms", "instructure", "accessibility", "ada", "ally", "wcag", "course-design", "pptx", "education", "course-builder", "notion"]
 }

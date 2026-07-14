@@ -169,20 +169,21 @@ $json = ConvertTo-JsonSafe $settings
 [System.IO.File]::WriteAllText($settingsPath, $json)   # UTF-8, no BOM
 Say "hooks registered -> $settingsPath"
 
-# --- 3b) optional dependency: python-pptx (powers automated PPTX ADA remediation) ---
+# --- 3b) optional dependencies: python-pptx / python-docx / pypdf --------------
+# (power PPTX + DOCX ADA remediation and PDF triage)
 $py = Get-Command python -ErrorAction SilentlyContinue
 if ($py) {
-    & python -c "import pptx" 2>$null
+    & python -c "import pptx, docx, pypdf" 2>$null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Installing python-pptx (needed for PPTX ADA remediation)..."
-        & python -m pip install --quiet python-pptx
-        if ($LASTEXITCODE -eq 0) { Say "python-pptx installed" }
-        else { Write-Host "  (could not install python-pptx - PPTX remediation will prompt for it later)" }
+        Write-Host "Installing python-pptx / python-docx / pypdf (document remediation + triage)..."
+        & python -m pip install --quiet python-pptx python-docx pypdf
+        if ($LASTEXITCODE -eq 0) { Say "document libraries installed" }
+        else { Write-Host "  (could not install document libraries - PPTX/DOCX/PDF features will prompt later)" }
     } else {
-        Say "python-pptx already present"
+        Say "document libraries present (pptx/docx/pypdf)"
     }
 } else {
-    Write-Host "  (Python not found - PPTX ADA remediation needs Python + python-pptx; HTML features unaffected)"
+    Write-Host "  (Python not found - PPTX/DOCX remediation and PDF triage need Python 3; HTML features unaffected)"
 }
 
 # --- 4) prove it: run the bundled guard tests -----------------------------------

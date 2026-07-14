@@ -47,12 +47,19 @@ function Test-CanvasCallAllowed {
     # 2. isolate the real Canvas URL tokens. A token qualifies only if it is an actual
     #    Canvas path/URL ('/api/v1/...' or 'instructure.com/...') -- NOT a bare host, an
     #    email at *.instructure.com, or an unrelated /Users path. No Canvas URL -> allow.
-    $denyRx  = '/(submissions|submission_summary|gradebook|grades|grade_change|enrollments|users|students|observees|observers|analytics|conversations|entries|entry_list|activity_stream|sis_imports|logins|profile|avatars|feeds|recent_students|student_view|effective_due_dates|quiz_submissions)([/?]|$|[^a-z0-9_])'
+    # NOTE: rubric DEFINITIONS (/rubrics, /rubric_associations) are content and
+    # allowed below, but rubric ASSESSMENTS are per-student scores - student data.
+    # assessments|rubric_assessments in the deny list keeps that split airtight
+    # because deny always runs first.
+    $denyRx  = '/(submissions|submission_summary|gradebook|grades|grade_change|enrollments|users|students|observees|observers|analytics|conversations|entries|entry_list|activity_stream|sis_imports|logins|profile|avatars|feeds|recent_students|student_view|effective_due_dates|quiz_submissions|assessments|rubric_assessments)([/?]|$|[^a-z0-9_])'
     # content_exports/content_migrations/progress are content-plane (course copy /
     # common-cartridge / async status poll); deny runs FIRST (step 3), so adding them
     # here cannot open any student-data endpoint. The [^a-z0-9_] boundary keeps
     # look-alikes (e.g. /progress_reports) fail-closed.
-    $allowRx = '/(pages|modules|module_items|assignments|assignment_groups|quizzes|discussion_topics|tabs|files|folders|external_tools|content_exports|content_migrations|progress)([/?]|$|[^a-z0-9_])'
+    # rubrics/rubric_associations are grading CRITERIA definitions (content-plane),
+    # not student scores; deny-first (step 3) still blocks any URL that also touches
+    # a student-data segment.
+    $allowRx = '/(pages|modules|module_items|assignments|assignment_groups|quizzes|discussion_topics|tabs|files|folders|external_tools|content_exports|content_migrations|progress|rubrics|rubric_associations)([/?]|$|[^a-z0-9_])'
 
     $canvasTokens = @(($low -split '\s+') | Where-Object { $_ -match '/api/v1/' -or $_ -match 'instructure\.com/' })
     if ($canvasTokens.Count -eq 0) { return @{ allowed = $true; reason = '' } }

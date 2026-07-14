@@ -118,6 +118,19 @@ Three scripts ship the whole workflow (all in `scripts/`; validated end-to-end o
     that changes the design, so offer it to the instructor; the alt-text pass is the non-invasive fix.
 - **`.ppt` (legacy):** `python-pptx` **cannot** read it; convert to `.pptx` first (PowerPoint/LibreOffice)
   — not headless-automatable here.
-- **`.pdf`:** real remediation (tagging, reading order, alt) is largely **manual** (Acrobat).
+- **`.docx`: FULLY AUTOMATED** via the same two-phase gateway — `Remediate-CanvasDocx.ps1` +
+  `remediate_docx.py` (needs `python-docx`). Scan finds missing/filename image alt, documents with no
+  real Heading styles (plus faux-bold heading CANDIDATES with paragraph indexes), and tables without a
+  repeating header row; the agent views extracted images and writes `fixes.json` (alt text; **opt-in**
+  paragraph→Heading promotions — they restyle the text, so never auto-apply; `table_headers`); Push
+  re-verifies to 0 issues and overwrite-uploads (original kept). Honest scope: alt + headings + table
+  header rows — not full document tagging.
+- **`.pdf`: TRIAGE ONLY** — `Triage-CanvasPdfs.ps1` + `triage_pdf.py` (needs `pypdf`) classifies every
+  course PDF: `scanned-image` (no text layer → OCR/re-source; the worst Ally offenders), `text-untagged`
+  (words but no headings/reading order), `tagged` (spot-check quality), `encrypted`. Real remediation
+  (tagging, reading order) stays **manual** (Acrobat) — never claim otherwise. The ranked
+  `triage-report.md` tells the instructor which of their 40 PDFs actually hurt the score.
+- **Batch across courses:** `Batch-Remediate.ps1` runs the whole HTML pipeline over `-CourseIds`
+  with one aggregate summary — dry-run first, always.
 - **Publisher decks (Pearson/Cengage):** edits may revert on the consortium's next import — the
   instructor's **own** files are the durable win; do those first.

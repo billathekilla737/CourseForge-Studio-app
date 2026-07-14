@@ -1,5 +1,5 @@
 canvas-pii-guard - coverage report
-Result: 63 passed, 0 failed
+Result: 68 passed, 0 failed
 (synthetic data only; proves listed structured-PII forms, not arbitrary free text)
 
 == POLICY (block hook) ==
@@ -35,6 +35,11 @@ Result: 63 passed, 0 failed
   PASS  allow: variable-id export URL (keyword match sidesteps literal-id rule)
   PASS  DENY: /progress_reports (underscore boundary holds, fail-closed)
   PASS  DENY: variable-id /enrollments (deny still wins over any allow)
+  PASS  allow: /rubrics (create rubric DEFINITION - content)
+  PASS  allow: /rubrics/:id (read definition)
+  PASS  allow: /rubric_associations (attach to assignment)
+  PASS  DENY: /rubrics/:id/assessments (per-student scores; deny beats rubrics allow)
+  PASS  DENY: /rubric_assessments (student data)
 
 == REDACTION (engine) ==
   PASS  email + phone + SSN + MGCCC id (Standard): removed 'jane.doe@example.edu'
@@ -75,5 +80,6 @@ Result: 63 passed, 0 failed
   NOTE  script-FILE indirection (a script could fetch PII; its command line shows no URL)  ->  ALLOWED (gap)
   NOTE  EncodedCommand / obfuscated commands are not decoded  ->  ALLOWED (gap)
   NOTE  MCP tool calls are not matched by the Bash|PowerShell|WebFetch hook  ->  ALLOWED (gap)
+  NOTE  QUERY-PARAM includes (?include[]=assessments) lack a leading slash, so the path-segment deny cannot see them; the redactor is the backstop  ->  ALLOWED (gap)
         Mitigation for all of the above: a SCOPED Canvas token (no view-grades/students),
         which makes student PII unfetchable at the source. See DATA-HANDLING.md.

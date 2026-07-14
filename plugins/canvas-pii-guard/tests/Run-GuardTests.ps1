@@ -53,7 +53,12 @@ $policy = @(
     @{ t = 'Invoke-RestMethod https://mgccc.instructure.com/api/v1/progress/456'; e = $true; l = 'allow: top-level /progress/:id (async poll)' },
     @{ t = 'Invoke-RestMethod "$BASE/api/v1/courses/$ID/content_exports"'; e = $true; l = 'allow: variable-id export URL (keyword match sidesteps literal-id rule)' },
     @{ t = "Invoke-RestMethod $B/progress_reports";              e = $false; l = 'DENY: /progress_reports (underscore boundary holds, fail-closed)' },
-    @{ t = 'Invoke-RestMethod "$BASE/api/v1/courses/$ID/enrollments"'; e = $false; l = 'DENY: variable-id /enrollments (deny still wins over any allow)' }
+    @{ t = 'Invoke-RestMethod "$BASE/api/v1/courses/$ID/enrollments"'; e = $false; l = 'DENY: variable-id /enrollments (deny still wins over any allow)' },
+    @{ t = "Invoke-RestMethod -Method Post $B/rubrics";          e = $true;  l = 'allow: /rubrics (create rubric DEFINITION - content)' },
+    @{ t = "Invoke-RestMethod $B/rubrics/42";                    e = $true;  l = 'allow: /rubrics/:id (read definition)' },
+    @{ t = "Invoke-RestMethod -Method Post $B/rubric_associations"; e = $true; l = 'allow: /rubric_associations (attach to assignment)' },
+    @{ t = "Invoke-RestMethod $B/rubrics/42/assessments";        e = $false; l = 'DENY: /rubrics/:id/assessments (per-student scores; deny beats rubrics allow)' },
+    @{ t = "Invoke-RestMethod $B/rubric_associations/9/rubric_assessments"; e = $false; l = 'DENY: /rubric_assessments (student data)' }
 )
 foreach ($c in $policy) {
     $r = Test-CanvasCallAllowed -Text $c.t
@@ -105,7 +110,8 @@ $lines += "== KNOWN LIMITATIONS (disclosed; NOT security guarantees) =="
 $limits = @(
     @{ t = 'powershell -NoProfile -File C:\tmp\export.ps1'; l = 'script-FILE indirection (a script could fetch PII; its command line shows no URL)' },
     @{ t = 'powershell -EncodedCommand SQBuAHYAbwBrAGUA'; l = 'EncodedCommand / obfuscated commands are not decoded' },
-    @{ t = 'use the canvas MCP tool to get submissions for course 1'; l = 'MCP tool calls are not matched by the Bash|PowerShell|WebFetch hook' }
+    @{ t = 'use the canvas MCP tool to get submissions for course 1'; l = 'MCP tool calls are not matched by the Bash|PowerShell|WebFetch hook' },
+    @{ t = "Invoke-RestMethod $B/rubrics/42?include[]=assessments"; l = 'QUERY-PARAM includes (?include[]=assessments) lack a leading slash, so the path-segment deny cannot see them; the redactor is the backstop' }
 )
 foreach ($c in $limits) {
     $r = Test-CanvasCallAllowed -Text $c.t

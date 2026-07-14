@@ -101,14 +101,14 @@ if (-not $installed) {
 # --- python-pptx (PPTX ADA remediation) - both paths --------------------------------
 $py = Get-Command python -ErrorAction SilentlyContinue
 if ($py) {
-    & python -c "import pptx" 2>$null
+    & python -c "import pptx, docx, pypdf" 2>$null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Installing python-pptx (PPTX ADA remediation)..."
-        & python -m pip install --quiet python-pptx
-        if ($LASTEXITCODE -eq 0) { Say "python-pptx installed" } else { Warn "could not install python-pptx (PPTX remediation will ask for it later)" }
-    } else { Say "python-pptx present" }
+        Write-Host "Installing document libraries (PPTX/DOCX remediation + PDF triage)..."
+        & python -m pip install --quiet python-pptx python-docx pypdf
+        if ($LASTEXITCODE -eq 0) { Say "document libraries installed" } else { Warn "could not install document libraries (those features will ask later)" }
+    } else { Say "document libraries present (pptx/docx/pypdf)" }
 } else {
-    Warn "Python not found - PPTX ADA remediation needs Python 3 + python-pptx; everything else works without it."
+    Warn "Python not found - PPTX/DOCX remediation and PDF triage need Python 3; everything else works without it."
 }
 
 # --- done ----------------------------------------------------------------------------

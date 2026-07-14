@@ -14,6 +14,25 @@
   Returns @{ ConfigPath; TokenPath; Config }  (Config = parsed JSON object).
   ASCII only. PowerShell 5.1 compatible. Throws on any ambiguity or missing file.
 #>
+function Get-CanvasPaged {
+    # Follow Link rel="next" and return ALL items. Assign-then-return @($var)
+    # (PS 5.1: @(<cmdlet>) nests a JSON array and .Count lies).
+    param([Parameter(Mandatory)][string]$Url, [Parameter(Mandatory)][hashtable]$Headers)
+    $out = @()
+    while ($Url) {
+        $resp = Invoke-WebRequest -Uri $Url -Headers $Headers -UseBasicParsing
+        $page = ([Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray())) | ConvertFrom-Json
+        $out += @($page)
+        $Url = $null
+        if ($resp.Headers.Link) {
+            foreach ($part in ($resp.Headers.Link -split ',')) {
+                if ($part -match '<([^>]+)>;\s*rel="next"') { $Url = $Matches[1] }
+            }
+        }
+    }
+    return @($out)
+}
+
 function Resolve-CanvasContext {
     param(
         [string]$ConfigPath,

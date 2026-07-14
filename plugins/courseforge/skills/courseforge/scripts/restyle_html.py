@@ -162,13 +162,39 @@ def classify(style, has_h2):
     return None
 
 
+COLOR_DECL = re.compile(r"(?<![-a-zA-Z])color\s*:\s*[^;\"']+;?", re.I)
+OPEN_TAG = re.compile(r"<(\w+)\b([^>]*?)>", re.S)
+
+
 def strip_fills(h):
-    """CLEAN look: remove every background fill; re-ink white/on-navy text."""
-    n = len(re.findall(r"background\s*:", h, re.I))
-    h = re.sub(r"background\s*:\s*[^;\"']+;?", "", h, flags=re.I)
-    h = re.sub(r"color:\s*#ffffff", "color:" + NAVY, h, flags=re.I)
-    h = re.sub(r"color:\s*#cfdcec", "color:#4b5563", h, flags=re.I)
-    return h, n
+    """CLEAN look, per the field-proven spec in ada-remediation.md:
+      - NO background fills anywhere (Ally flags every fill, even white)
+      - color lives ONLY in navy <h2>/<h3> headings and borders
+      - ALL other text drops its color declaration -> default black
+        (chromatic non-heading text is itself a 'use of color' flag, and
+        orphaned gold-on-white is a hard CONTRAST failure)
+      - links (<a>) keep their color (house style pairs it with underline)
+    Borders are never touched (headings + borders are Ally-exempt)."""
+    n = len(re.findall(r"background(?:-color)?\s*:", h, re.I))
+    h = re.sub(r"background(?:-color)?\s*:\s*[^;\"']+;?", "", h, flags=re.I)
+
+    def per_tag(m):
+        tag, attrs = m.group(1).lower(), m.group(2)
+        if "style" not in attrs.lower():
+            return m.group(0)
+
+        def per_style(sm):
+            s = sm.group(1)
+            if tag in ("h2", "h3"):
+                s = COLOR_DECL.sub("", s).rstrip().rstrip(";") + ";color:" + NAVY
+            elif tag != "a":
+                s = COLOR_DECL.sub("", s)
+            return 'style="%s"' % s.strip().strip(";")
+
+        attrs2 = re.sub(r'style\s*=\s*"([^"]*)"', per_style, attrs, count=1, flags=re.I)
+        return "<%s%s>" % (m.group(1), attrs2)
+
+    return OPEN_TAG.sub(per_tag, h), n
 
 
 def transform_components(h, look):
@@ -220,7 +246,7 @@ HERO_FILLED = ('<div style="padding: 24px; border-radius: 8px; background: ' + N
 HERO_CLEAN = ('<div style="padding: 22px 24px; border-radius: 8px; border-top: 5px solid ' + GOLD +
               '; border-left: 8px solid ' + NAVY + ';">'
               '<div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; '
-              'color: ' + NAVY + '; font-weight: 700;">{eyebrow}</div>'
+              'font-weight: 700;">{eyebrow}</div>'
               '<h2 style="margin: 6px 0 0; font-size: 26px; font-family: Georgia, '
               "'Times New Roman', serif; color: " + NAVY + ';">{title}</h2></div>')
 CARD_OPEN = ('<div style="margin-top: 18px; padding: 18px; border-radius: 8px; background: #ffffff; '
@@ -342,8 +368,20 @@ def cmd_verify(workdir):
             issues.append("src set changed")
         if any(ord(c) >= 128 for c in new):
             issues.append("non-ASCII survived (emoji-500 risk)")
-        if look == "clean" and re.search(r"background\s*:", new, re.I):
-            issues.append("clean look still has a fill")
+        if look == "clean":
+            if re.search(r"background\s*:", new, re.I):
+                issues.append("clean look still has a fill")
+            # full clean spec: NO color declaration outside h2/h3/a. A stray
+            # chromatic non-heading color is a use-of-color flag, and orphaned
+            # light text (gold/white) on the now-white page is a contrast FAIL.
+            for mm in OPEN_TAG.finditer(new):
+                tg = mm.group(1).lower()
+                if tg in ("h2", "h3", "a"):
+                    continue
+                st = re.search(r'style\s*=\s*"([^"]*)"', mm.group(2), re.I)
+                if st and COLOR_DECL.search(st.group(1)):
+                    issues.append("clean look: colored non-heading <%s> text survived" % tg)
+                    break
         # dark-on-navy: inside every navy-FILLED div (exact span, nesting-aware),
         # no dark text colors may remain
         for (s0, e, style) in find_div_spans(new):

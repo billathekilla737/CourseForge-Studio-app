@@ -49,10 +49,14 @@ Three scripts ship the whole workflow (all in `scripts/`; validated end-to-end o
    Downloads every body Ally scans (pages, assignment descriptions, discussion messages, quiz
    descriptions, syllabus) + writes `manifest.json`. Strips the auto-injected theme `<link>/<script>`.
    Skips quiz-/discussion-backed assignment SHELLS (their PUT 400s; the real body is on the quiz/topic).
-2. **Transform** — `python restyle_html.py transform <WorkDir> --look hybrid|rich|clean`
+2. **Transform** — `python restyle_html.py transform <WorkDir> --look clean|hybrid|rich`
    Deterministic (touches only `style=""` attrs + wraps unstructured bodies in hero+card; entity-encodes
-   non-ASCII). **DEFAULT = hybrid** (filled navy hero+footer only, ~2 advisories/page). `rich` = all
-   fills; `clean` = zero fills for max-score mandates. Prints the expected Ally advisory count.
+   non-ASCII). **DEFAULT = `clean`** = NO background fills -> **~0 Ally "use of color" flags**; navy lives
+   in headings + borders only. This is the right default for a compliance-driven job, because Ally flags
+   EVERY `background:` fill (even a white card or a light-blue callout) as "potential use of color", ~2-7
+   per page - enough to hold a course under 90%. `hybrid` (filled navy hero+footer) and `rich` (all
+   components filled) look more designed but reintroduce those flags; use them only for a *looks overhaul*
+   where the instructor accepts marking the advisories resolved in Ally. Prints the expected advisory count.
    `python restyle_html.py scan <WorkDir>` reports the hard a11y issues (alt/headings/tables/links).
    **Image alt text still needs the agent's eyes** — view course-hosted images (see above) and fix alt
    in the styled files before verify.

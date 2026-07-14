@@ -31,7 +31,7 @@
 param(
     [Parameter(Mandatory=$true)] [int[]]$CourseIds,
     [string]$WorkRoot = '.\batch-remediation',
-    [ValidateSet('hybrid','rich','clean')] [string]$Look = 'hybrid',
+    [ValidateSet('hybrid','rich','clean')] [string]$Look = 'clean',   # ADA-safe default (~0 use-of-color flags); pass -Look hybrid/rich for a filled looks overhaul
     [string]$ConfigPath,
     [string]$TokenPath,
     [string]$CourseId,

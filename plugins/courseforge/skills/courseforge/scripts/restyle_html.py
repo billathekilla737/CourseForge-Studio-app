@@ -301,9 +301,16 @@ def cmd_transform(workdir, look):
         it["styled_file"] = out
     m["look"] = look
     save_manifest(workdir, m)
-    print("TRANSFORM (--look %s): %d styled, %d wrapped, %d skipped-empty; %d fill(s) added"
-          % (look, n_styled, n_wrapped, n_skipped, fills_total))
-    print("Ally 'use of color' advisories expected from fills: ~%d course-wide" % fills_total)
+    if look == "clean":
+        # in clean mode `added` is the count of fills REMOVED (strip_fills)
+        print("TRANSFORM (--look clean): %d styled, %d wrapped, %d skipped-empty; %d fill(s) removed"
+              % (n_styled, n_wrapped, n_skipped, fills_total))
+        print("Ally 'use of color' advisories expected: ~0 (no background fills remain)")
+    else:
+        print("TRANSFORM (--look %s): %d styled, %d wrapped, %d skipped-empty; %d fill(s) added"
+              % (look, n_styled, n_wrapped, n_skipped, fills_total))
+        print("Ally 'use of color' advisories expected from fills: ~%d course-wide "
+              "(reviewable/mark-resolved; use --look clean for ~0)" % fills_total)
     return 0
 
 
@@ -369,7 +376,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["scan", "transform", "verify"])
     ap.add_argument("workdir")
-    ap.add_argument("--look", default="hybrid", choices=["hybrid", "rich", "clean"])
+    # clean is the DEFAULT: zero background fills => ~0 Ally "use of color"
+    # advisories, the safe choice for a compliance-driven remediation. hybrid/rich
+    # are opt-in for a looks overhaul when the instructor accepts ~2-7 reviewable
+    # flags per page.
+    ap.add_argument("--look", default="clean", choices=["hybrid", "rich", "clean"])
     a = ap.parse_args()
     if a.cmd == "scan":
         return cmd_scan(a.workdir)

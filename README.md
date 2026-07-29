@@ -1,4 +1,4 @@
-# garris-canvas-tools — Canvas tools for instructors (Claude Code)
+# CourseForge — Canvas tools for instructors (Claude Code)
 
 Two Claude Code plugins for MGCCC instructors and curriculum designers. Built and tested
 on the **MGCCC** Canvas instance; they reuse cleanly for any Canvas school after a few

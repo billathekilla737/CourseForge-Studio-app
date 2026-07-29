@@ -32,7 +32,7 @@ setting tweaks.
 Open **PowerShell** (Start menu → type "PowerShell") and paste:
 
 ```powershell
-irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/billathekilla737/CourseForge/main/bootstrap.ps1 | iex
 ```
 
 That's the whole install: it uses the Claude Code plugin system when the CLI is
@@ -60,7 +60,7 @@ To remove everything later: run [`Uninstall-CourseForge.ps1`](Uninstall-CourseFo
 approving the trust prompts:
 
 ```
-/plugin marketplace add billathekilla737/garris-canvas-tools
+/plugin marketplace add billathekilla737/CourseForge
 /plugin install courseforge@garris-canvas-tools
 /plugin install canvas-pii-guard@garris-canvas-tools
 ```

@@ -19,7 +19,7 @@ those can't load plugins.
 Open **PowerShell** and paste:
 
 ```powershell
-irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/billathekilla737/CourseForge/main/bootstrap.ps1 | iex
 ```
 
 It installs both plugins (via the Claude Code plugin system when available, else the
@@ -30,7 +30,7 @@ An AI assistant **can run this line for you** (it's a regular command, not a sla
 command). Paste this into Claude Code:
 
 > Install the **garris-canvas-tools** plugins by running the one-line bootstrap:
-> `irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex`
+> `irm https://raw.githubusercontent.com/billathekilla737/CourseForge/main/bootstrap.ps1 | iex`
 > Then show me the test result (it should say ALL TESTS PASSED) and confirm both the
 > courseforge skill and the canvas-pii-guard hooks are installed. Finally, help me
 > connect my Canvas.
@@ -38,7 +38,7 @@ command). Paste this into Claude Code:
 > **Prefer the in-app marketplace?** Type these three lines in Claude Code yourself
 > (slash commands can't be typed for you), approving the trust prompts:
 > ```
-> /plugin marketplace add billathekilla737/garris-canvas-tools
+> /plugin marketplace add billathekilla737/CourseForge
 > /plugin install courseforge@garris-canvas-tools
 > /plugin install canvas-pii-guard@garris-canvas-tools
 > ```

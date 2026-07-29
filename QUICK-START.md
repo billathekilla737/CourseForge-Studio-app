@@ -16,7 +16,7 @@ Press the **Windows key**, type `powershell`, press Enter. In the blue window, p
 this line (right-click pastes) and press Enter:
 
 ```powershell
-irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex
+irm https://raw.githubusercontent.com/billathekilla737/CourseForge/main/bootstrap.ps1 | iex
 ```
 
 You don't need to understand it — it installs **both** tools (`courseforge`, which
@@ -69,7 +69,7 @@ Done. Now you can say things like *"Bring this course up to ADA compliance,"*
 
 **Trouble?**
 - If your IT setup blocks the one-liner: download the repo ZIP from
-  [github.com/billathekilla737/garris-canvas-tools](https://github.com/billathekilla737/garris-canvas-tools)
+  [github.com/billathekilla737/CourseForge](https://github.com/billathekilla737/CourseForge)
   (green **Code** button → Download ZIP), extract it, right-click `Install-CourseForge.ps1`
   → **Run with PowerShell**. Then continue from step 2.
 - An AI assistant can drive the install for you — see

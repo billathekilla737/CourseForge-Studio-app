@@ -1,7 +1,7 @@
 <#
   bootstrap.ps1 - one-line CourseForge install. Paste into PowerShell:
 
-    irm https://raw.githubusercontent.com/billathekilla737/garris-canvas-tools/main/bootstrap.ps1 | iex
+    irm https://raw.githubusercontent.com/billathekilla737/CourseForge/main/bootstrap.ps1 | iex
 
   What it does (no git, no .bat, nothing else to download):
     1. If the Claude Code CLI is available, installs both plugins the supported
@@ -25,7 +25,7 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$RepoSlug = 'billathekilla737/garris-canvas-tools'
+$RepoSlug = 'billathekilla737/CourseForge'
 $Marketplace = 'garris-canvas-tools'
 
 function Say([string]$m)  { Write-Host ("  + " + $m) }
@@ -88,7 +88,7 @@ if (-not $installed) {
     Write-Host "Downloading $RepoSlug@$Ref ..."
     Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
     Expand-Archive -Path $zipPath -DestinationPath $work -Force
-    $repoDir = Get-ChildItem -Path $work -Directory | Where-Object { $_.Name -like 'garris-canvas-tools*' } | Select-Object -First 1
+    $repoDir = Get-ChildItem -Path $work -Directory | Where-Object { $_.Name -like 'CourseForge*' } | Select-Object -First 1
     if (-not $repoDir) { throw "Could not find the extracted repo folder under $work" }
     $installer = Join-Path $repoDir.FullName 'Install-CourseForge.ps1'
     if (-not (Test-Path $installer)) { throw "Installer missing in the downloaded repo." }

@@ -1,0 +1,21 @@
+{
+  "course_id": "REPLACE_WITH_YOUR_COURSE_ID",
+  "base_url": "https://REPLACE.instructure.com",
+
+  "page": {
+    "slug": "REPLACE_WITH_PAGE_SLUG",
+    "body_file": "new/page_notes.html"
+  },
+
+  "assignment": {
+    "id": "REPLACE_WITH_ASSIGNMENT_ID",
+    "description_file": "new/assignment.html"
+  },
+
+  "quiz": {
+    "id": "REPLACE_WITH_QUIZ_ID",
+    "questions_file": "new/quiz.json",
+    "expected_question_count": 14,
+    "require_unpublished_course": true
+  }
+}

@@ -1,0 +1,6 @@
+# Never commit credentials or working scratch files
+canvas.token
+canvas.config.*.json
+work/
+__pycache__/
+*.pyc

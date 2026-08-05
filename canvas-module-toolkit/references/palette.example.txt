@@ -1,0 +1,17 @@
+# Example palette (MGCCC navy-and-gold), for scripts/check_style.py --palette
+# One #rrggbb hex per line. Generate your own from your institution's brand colors.
+#061e3f
+#0e2c54
+#e9a821
+#236192
+#cfdcec
+#c11f31
+#fbe9eb
+#f3c2c8
+#2c3a4d
+#4b5563
+#d7dce3
+#f5f5f5
+#eef4fa
+#1565c0
+#ffffff

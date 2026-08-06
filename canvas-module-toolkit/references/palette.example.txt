@@ -1,5 +1,10 @@
-# Example palette (MGCCC navy-and-gold), for scripts/check_style.py --palette
-# One #rrggbb hex per line. Generate your own from your institution's brand colors.
+# Example palette (MGCCC navy-and-gold), for scripts/check_style.py --palette.
+# This is the FULL palette actually live across a real 8-module course: the original
+# bright guide colors, plus the darkened page/card/border variants adopted partway
+# through for eye comfort (see style-guide.example.md's header note - swap all of
+# these for your own institution's brand).
+#
+# Core (from the original style guide)
 #061e3f
 #0e2c54
 #e9a821
@@ -15,3 +20,9 @@
 #eef4fa
 #1565c0
 #ffffff
+#
+# Darkened variant (page background / cards / borders / info box, adopted later)
+#b9c7d8
+#d6e0ec
+#a5b3c6
+#e1eaf4

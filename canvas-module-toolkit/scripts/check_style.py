@@ -26,12 +26,18 @@ SAFE_TAGS = {"div", "h2", "h3", "p", "ul", "li", "a", "strong", "span", "img",
 
 
 def load_palette(path):
+    """
+    One #rrggbb per line. A line is a hex entry if it CONTAINS a 6-digit hex color
+    ANYWHERE in it - do not try to strip '#'-comments first, since a hex color also
+    starts with '#' and a naive "strip everything after the first #" approach deletes
+    every real color line, silently emptying the palette (this shipped broken once;
+    keep it simple on purpose so it doesn't happen again).
+    """
     if not path:
         return None
     hexes = set()
     with open(path, encoding="utf-8") as f:
         for line in f:
-            line = line.split("#", 1)[0] if line.strip().startswith("#") else line
             m = re.search(r"#[0-9a-fA-F]{6}\b", line)
             if m:
                 hexes.add(m.group(0).lower())

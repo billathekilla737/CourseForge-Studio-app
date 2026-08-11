@@ -4,7 +4,9 @@
   ONE convention for every script (replaces four divergent per-script defaults):
     config : -ConfigPath if given; else canvas.config.<CourseId>.json when -CourseId
              is given; else the SINGLE canvas.config.*.json found in (1) the current
-             directory, then (2) Documents\canvas-work.
+             directory, then (2) Documents\canvas-work -- BOTH $env:USERPROFILE\Documents
+             and the shell's redirected Documents (OneDrive Known Folder Move), which on a
+             redirected machine are two different folders.
              Multiple configs + no -CourseId  ->  hard error listing them. A designer
              working many courses must say which; nothing is ever picked silently.
     token  : -TokenPath if given; else canvas.token NEXT TO the chosen config.
@@ -40,7 +42,19 @@ function Resolve-CanvasContext {
         [string]$CourseId
     )
     if (-not $ConfigPath) {
+        # Documents\canvas-work is checked TWICE on purpose. On a machine where OneDrive
+        # (or any Known Folder redirection) has moved Documents, $env:USERPROFILE\Documents
+        # is a near-empty legacy folder while the Documents the instructor actually sees in
+        # File Explorer is somewhere else entirely (e.g. ...\OneDrive\Documents). Checking
+        # only the first produced a "No canvas.config.*.json found" error while the folder
+        # was plainly sitting right there. GetFolderPath('MyDocuments') honors redirection.
         $dirs = @((Get-Location).Path, (Join-Path $env:USERPROFILE 'Documents\canvas-work'))
+        $shellDocs = ''
+        try { $shellDocs = [Environment]::GetFolderPath('MyDocuments') } catch {}
+        if ($shellDocs) {
+            $redirected = Join-Path $shellDocs 'canvas-work'
+            if ($dirs -notcontains $redirected) { $dirs += $redirected }
+        }
         foreach ($d in $dirs) {
             if (-not (Test-Path $d)) { continue }
             $pattern = if ($CourseId) { "canvas.config.$CourseId.json" } else { 'canvas.config.*.json' }
@@ -54,7 +68,7 @@ function Resolve-CanvasContext {
         if (-not $ConfigPath) {
             $forCourse = ''
             if ($CourseId) { $forCourse = " for course $CourseId" }
-            throw ("No canvas.config.*.json found in the current directory or Documents\canvas-work{0}. Run Setup-Canvas.ps1 first, or pass -ConfigPath." -f $forCourse)
+            throw ("No canvas.config.*.json found{0}. Looked in: {1}. Run Setup-Canvas.ps1 first, or pass -ConfigPath." -f $forCourse, ($dirs -join '; '))
         }
     }
     if (-not (Test-Path $ConfigPath)) { throw "Canvas config not found: $ConfigPath" }

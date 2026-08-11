@@ -71,8 +71,14 @@ setup.** This is the #1 onboarding moment for a non-technical instructor — own
 
 **Detect it:** look for BOTH a `canvas.token` file AND a `canvas.config.<id>.json`,
 checking (a) the current working directory, then (b) the **standard folder**
-`%USERPROFILE%\Documents\canvas-work` (where the default setup writes them — always
-check here if the current dir has no token). If you find them in `canvas-work`, use that
+`Documents\canvas-work` (where the default setup writes them — always check here if the
+current dir has no token). **Check BOTH `%USERPROFILE%\Documents\canvas-work` and the
+shell's redirected Documents** (`[Environment]::GetFolderPath('MyDocuments')`, e.g.
+`%USERPROFILE%\OneDrive\Documents\canvas-work`): with OneDrive Known Folder Move on —
+common on school-managed laptops — those are two different folders, and the one the
+instructor sees in File Explorer is the redirected one. Prefer the **local**
+(non-OneDrive) path when creating it, so the token is not synced to cloud storage
+(see Gotcha 11). If you find them in `canvas-work`, use that
 folder's `canvas.token` / `canvas.config.*.json` for all script `-ConfigPath`/`-TokenPath`
 arguments (the `CanvasContext.ps1` resolver in every push/dump script does this
 automatically). If you are unsure which folder is the project, ask the user. If either

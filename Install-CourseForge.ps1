@@ -171,19 +171,44 @@ Say "hooks registered -> $settingsPath"
 
 # --- 3b) optional dependencies: python-pptx / python-docx / pypdf --------------
 # (power PPTX + DOCX ADA remediation and PDF triage)
-$py = Get-Command python -ErrorAction SilentlyContinue
-if ($py) {
-    & python -c "import pptx, docx, pypdf" 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Installing python-pptx / python-docx / pypdf (document remediation + triage)..."
-        & python -m pip install --quiet python-pptx python-docx pypdf
-        if ($LASTEXITCODE -eq 0) { Say "document libraries installed" }
-        else { Write-Host "  (could not install document libraries - PPTX/DOCX/PDF features will prompt later)" }
-    } else {
-        Say "document libraries present (pptx/docx/pypdf)"
+# Python is OPTIONAL, so nothing in this block may abort the install. Two traps:
+#   1. Windows ships an App Execution Alias stub at WindowsApps\python.exe. Get-Command
+#      FINDS it, but running it only prints "Python was not found" and exits non-zero --
+#      so a Get-Command test alone reports Python present when it is not.
+#   2. With $ErrorActionPreference = 'Stop', a native command whose stderr is redirected
+#      raises NativeCommandError. That used to kill this script HERE, before the guard
+#      test suite ran, making a completed install look like a failed one.
+# Hence: probe the interpreter for real, and keep the whole block non-fatal.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    $py = Get-Command python -ErrorAction SilentlyContinue
+    if ($py) {
+        $probe = & python --version 2>&1
+        if ($LASTEXITCODE -ne 0 -or "$probe" -match 'was not found') {
+            Write-Host "  (found a Microsoft Store Python stub, not a real interpreter - treating Python as absent)"
+            Write-Host "   Install Python 3 from python.org or 'winget install Python.Python.3.12', then re-run this installer."
+            $py = $null
+        }
     }
-} else {
-    Write-Host "  (Python not found - PPTX/DOCX remediation and PDF triage need Python 3; HTML features unaffected)"
+    if ($py) {
+        Say ("Python: {0}" -f ("$probe".Trim()))
+        & python -c "import pptx, docx, pypdf" 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Installing python-pptx / python-docx / pypdf (document remediation + triage)..."
+            & python -m pip install --quiet python-pptx python-docx pypdf
+            if ($LASTEXITCODE -eq 0) { Say "document libraries installed" }
+            else { Write-Host "  (could not install document libraries - PPTX/DOCX/PDF features will prompt later)" }
+        } else {
+            Say "document libraries present (pptx/docx/pypdf)"
+        }
+    } else {
+        Write-Host "  (Python not found - PPTX/DOCX remediation and PDF triage need Python 3; HTML features unaffected)"
+    }
+} catch {
+    Write-Host ("  (skipped the Python step: {0})" -f $_.Exception.Message)
+} finally {
+    $ErrorActionPreference = $prevEap
 }
 
 # --- 4) prove it: run the bundled guard tests -----------------------------------

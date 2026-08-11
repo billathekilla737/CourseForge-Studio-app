@@ -99,16 +99,37 @@ if (-not $installed) {
 }
 
 # --- python-pptx (PPTX ADA remediation) - both paths --------------------------------
-$py = Get-Command python -ErrorAction SilentlyContinue
-if ($py) {
-    & python -c "import pptx, docx, pypdf" 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Installing document libraries (PPTX/DOCX remediation + PDF triage)..."
-        & python -m pip install --quiet python-pptx python-docx pypdf
-        if ($LASTEXITCODE -eq 0) { Say "document libraries installed" } else { Warn "could not install document libraries (those features will ask later)" }
-    } else { Say "document libraries present (pptx/docx/pypdf)" }
-} else {
-    Warn "Python not found - PPTX/DOCX remediation and PDF triage need Python 3; everything else works without it."
+# Python is OPTIONAL - this block must never abort the bootstrap. Get-Command finds the
+# Windows App Execution Alias stub (WindowsApps\python.exe) even when no real Python is
+# installed; the stub exits non-zero with "Python was not found". And under
+# $ErrorActionPreference = 'Stop' a native command with redirected stderr raises
+# NativeCommandError, which would kill the run. So probe for real, and stay non-fatal.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    $py = Get-Command python -ErrorAction SilentlyContinue
+    if ($py) {
+        $probe = & python --version 2>&1
+        if ($LASTEXITCODE -ne 0 -or "$probe" -match 'was not found') {
+            Warn "that 'python' is a Microsoft Store stub, not a real interpreter - treating Python as absent."
+            Warn "install Python 3 (python.org, or: winget install Python.Python.3.12) and re-run this line."
+            $py = $null
+        }
+    }
+    if ($py) {
+        & python -c "import pptx, docx, pypdf" 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Installing document libraries (PPTX/DOCX remediation + PDF triage)..."
+            & python -m pip install --quiet python-pptx python-docx pypdf
+            if ($LASTEXITCODE -eq 0) { Say "document libraries installed" } else { Warn "could not install document libraries (those features will ask later)" }
+        } else { Say "document libraries present (pptx/docx/pypdf)" }
+    } else {
+        Warn "Python not found - PPTX/DOCX remediation and PDF triage need Python 3; everything else works without it."
+    }
+} catch {
+    Warn ("skipped the Python step: {0}" -f $_.Exception.Message)
+} finally {
+    $ErrorActionPreference = $prevEap
 }
 
 # --- done ----------------------------------------------------------------------------
@@ -118,7 +139,12 @@ if ($installed) {
     Write-Host ""
     Write-Host "  1. FULLY restart Claude Code (quit and reopen). Approve the trust prompt if one appears."
     Write-Host "  2. In the app, use Open Folder and pick (or create) this folder:"
-    Write-Host "        Documents\canvas-work"
+    # Print the REAL path. On a OneDrive-redirected machine "Documents\canvas-work" is
+    # ambiguous: the Documents in File Explorer is not $env:USERPROFILE\Documents.
+    $docs = ''
+    try { $docs = [Environment]::GetFolderPath('MyDocuments') } catch {}
+    if (-not $docs) { $docs = Join-Path $env:USERPROFILE 'Documents' }
+    Write-Host ("        " + (Join-Path $docs 'canvas-work'))
     Write-Host "     That folder is simply where your Canvas connection gets saved - always open"
     Write-Host "     the same one and you stay connected."
     Write-Host "  3. Say:  set up my Canvas"

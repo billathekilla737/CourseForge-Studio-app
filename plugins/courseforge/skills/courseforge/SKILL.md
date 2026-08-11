@@ -137,19 +137,31 @@ sanctioned grading path that is designed to keep identities OUT of the model:
   pseudonym (`S-001`, `S-002`, ...), and writes two files next to the config under
   `grading\<AssignmentId>\`: a **local** `map.json` (pseudonym -> real identity, which
   stays on disk, is **gitignored**, and is **never** read into the model or committed)
-  and a scrubbed `bundle.json` (PII-redacted, own-name-tokenized submission text). You
-  read **only `bundle.json`** and grade by pseudonym.
+  and a scrubbed `bundle.json`. Scrubbing order matters and is fixed: structured PII
+  first (email, phone, SSN-shaped, MGCCC sis/login ids, **bare 8-10 digit runs** ->
+  `[ID]`), then names — **every roster student's full-name forms** (catches peer
+  mentions like "I worked with Bob Smith"), plus the author's individual name tokens
+  and login_id. The finished bundle is **re-verified** (with the guard's independent
+  redactor when installed) and the build **fails (exit 2)** on residual hits unless
+  `-Force`. `-KeepLongNumbers` relaxes the bare-digit rule for numeric-heavy work
+  (math/CS answers) — 9-digit runs still go. You read **only `bundle.json`** and
+  grade by pseudonym. **Run the build in its OWN command**: the guard's sanction
+  covers the whole command line, so never chain a `map.json` read onto it.
 - `scripts/Post-Grades.ps1` reads your `proposed-grades.json` (keyed by pseudonym),
   resolves each pseudonym back to a `user_id` via the local `map.json`, and posts —
   **dry-run by default**, `-Apply` to actually write, with a live-course warning and an
   audit line per apply.
 
 This de-identification is **best-effort, not a guarantee.** Free-text PII (an unusual
-name in prose) can survive, and **attachment/file contents are never downloaded or
-inlined** — only filenames are listed, and screenshots/files may contain names (Windows
-title bars, email headers, signatures) that must be reviewed **locally**, not sent to
-the model. The full workflow and rules are in `references/blind-grading.md`. For grading
-that needs real identities in front of the model, use `courseforge-admin` instead.
+name in prose, identifying CONTENT only one student could have written) can survive any
+scrubber. **Attachments:** by default contents are never downloaded — only filenames are
+listed. `-IncludeAttachmentText` (opt-in) downloads `.docx`/`.pdf`/`.txt` attachments
+LOCALLY, extracts their text, and scrubs it through the same pipeline into the bundle —
+this is what makes file-upload assignments gradeable. **Images and every other type stay
+filename-only on purpose**: screenshots carry names in Windows title bars, email headers,
+and signatures, and no text scrubber sees pixels — review those **locally**, never send
+them to the model. The full workflow and rules are in `references/blind-grading.md`. For
+grading that needs real identities in front of the model, use `courseforge-admin` instead.
 
 **Allowed (the bulk of the job, *not* PII):** reading and writing course *content* —
 pages, modules, assignments, quizzes, syllabus, files, config — and aggregate counts
@@ -546,7 +558,7 @@ Assignment object, **delete the old wiki page by its slug** so the two do not co
 - `scripts/Remediate-OfficeText.ps1` + `scripts/office_text_tool.py` — **Office (.docx/.pptx/.xlsx) text SCAN + EDIT at the raw-XML level** (stdlib only): the change-request tool for documents — replace a former instructor's name/email/room, fix stale dates, set Author/LastModifiedBy (`-SetAuthor`/`-SetLastModifiedBy`) — reaching `docProps/core.xml`, slide masters/layouts, headers/footers, and notes that the alt-text remediators never touch. Same List/Fetch/Push gateway: scan writes per-file `scan.json`, agent writes `map.json`, Push applies (replacements auto XML-escaped; `&`-containing finds also matched in escaped form), **verifies zero residual + zip integrity (refuses upload otherwise)**, overwrite-uploads. Legacy binary `.doc/.ppt/.xls` are **detected by OLE magic and refused with a convert-first message** (List tags them `[LEGACY]`), never silently skipped. CAVEAT: matching is literal against raw XML — Word can split a phrase across runs mid-word; a mapping that never matches is reported, and `scan` shows the exact XML context to copy from.
 - `scripts/Push-CanvasRubrics.ps1` — create **REAL Canvas Rubric objects** and attach them to assignments (drives SpeedGrader/gradebook; optionally `use_for_grading`), from a JSON manifest of criteria+ratings. Idempotent by title (updates, never duplicates), dry-run default, points-sanity warnings. Rubric DEFINITIONS only — rubric *assessments* are per-student scores and stay guard-denied.
 - `scripts/Remediate-CanvasPptx.ps1` + `scripts/remediate_pptx.py` — **automated PPTX ADA remediation** (needs `pip install python-pptx`): `-Action List` enumerates course decks, `-Action Fetch` downloads (keeps `original.pptx` backup) + scans (extracts images + `report.json`), then the AGENT views each image and writes `work\fixes.json` (concise alt / `""` decorative / slide titles), then `-Action Push` applies + re-verifies + uploads over the original so links keep working (dry-run default, `-Apply` to upload). Contrast issues are report-only; never touches submission attachments. See the PPTX section of `references/ada-remediation.md`.
-- `scripts/Build-GradingBundle.ps1` — OPT-IN blind-grading **sterilizing + pseudonymizing gateway**: fetches submission text, writes a LOCAL `grading\<id>\map.json` (gitignored, never read by the model) and a scrubbed, pseudonymized `bundle.json` to grade from (params: -ConfigPath, -AssignmentId, -TokenPath, -OutDir). Sanctioned by `canvas-pii-guard`.
+- `scripts/Build-GradingBundle.ps1` — OPT-IN blind-grading **sterilizing + pseudonymizing gateway**: fetches submission text, writes a LOCAL `grading\<id>\map.json` (gitignored, never read by the model) and a scrubbed, pseudonymized `bundle.json` to grade from. Scrubs structured PII FIRST (email/phone/SSN/MGCCC ids/**bare 8-10 digit runs**) then names (**all roster full-name forms** for peer mentions + the author's tokens and login_id); **verifies the finished bundle and exits 2 on residual hits** unless `-Force`. `-IncludeAttachmentText` extracts + scrubs `.docx`/`.pdf`/`.txt` attachment text via `extract_attachment_text.py` (images stay filename-only on purpose); `-KeepLongNumbers` relaxes bare-digit redaction for numeric assignments (params: -ConfigPath, -AssignmentId, -TokenPath, -OutDir, -IncludeAttachmentText, -KeepLongNumbers, -Force). Sanctioned by `canvas-pii-guard` — and the sanction covers the whole command line, so run it in its OWN command and never chain a `map.json` read onto it.
 - `scripts/Post-Grades.ps1` — pseudonym-aware grade poster: reads `map.json` + `proposed-grades.json`, resolves each pseudonym to a user_id, **dry-run by default**, `-Apply` to post; refuses unknown pseudonyms; live-course warning + audit (params: -ConfigPath, -AssignmentId, -TokenPath, -OutDir, -Apply). Sanctioned by `canvas-pii-guard`.
 - `scripts/Compute-DueDates.ps1` — compute a week-by-week due-date table from a term start, week count, finals-window end, and break ranges (default due = the chosen weekday after each week at 23:59, auto-shifted past holidays, full-break weeks skipped, final on the finals end). Week-1 anchor = first chosen weekday >6 days after start (start day-of-week no longer shifts the schedule). Deterministic (`ParseExact`); prints a table and supports `-AsJson` (params: -StartDate, -Weeks, -FinalsEnd, -Breaks, -DueTime, -DueWeekday, -AsJson).
 - `scripts/Get-TermCalendar.ps1` — read the machine-readable term table (fenced `json` block) from `references/academic-calendar.md`; infer the term from a start date (month >= 8 -> Fall, 1-4 -> Spring, 5-7 -> Summer) and return its `finalsEnd` + `breaks`, or nothing if the term is not in the table (caller then asks the instructor). Dot-source it for the `Get-TermCalendar` / `Get-TermName` functions, or run standalone (params: -StartDate, -CalendarPath).

@@ -43,7 +43,11 @@ $PPTX_CT = 'application/vnd.openxmlformats-officedocument.presentationml.present
 $py    = Join-Path $PSScriptRoot 'remediate_pptx.py'
 
 function Get-CoursePptx {
-    $url = "$base/api/v1/courses/$cid/files?per_page=100&content_types[]=$PPTX_CT"
+    # Fetch UNFILTERED and match extension OR content_type client-side. A file
+    # uploaded through some paths lands with content_type empty/octet-stream,
+    # and a content_types[] server filter silently DROPS it - the gateway then
+    # reports a clean run while never having seen the deck.
+    $url = "$base/api/v1/courses/$cid/files?per_page=100"
     $out = @()
     while ($url) {
         $resp = Invoke-WebRequest -Uri $url -Headers $hdr -UseBasicParsing
@@ -55,6 +59,8 @@ function Get-CoursePptx {
             }
         }
     }
+    $out = @($out | Where-Object { $_.display_name -match '(?i)\.pptx$' -or $_.content_type -eq $PPTX_CT })
+    if ($out.Count -eq 0) { Write-Warning "No .pptx files matched in course $cid." }
     return $out
 }
 

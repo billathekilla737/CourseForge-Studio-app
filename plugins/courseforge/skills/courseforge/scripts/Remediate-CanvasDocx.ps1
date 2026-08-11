@@ -42,7 +42,11 @@ $DOCX_CT = 'application/vnd.openxmlformats-officedocument.wordprocessingml.docum
 $py    = Join-Path $PSScriptRoot 'remediate_docx.py'
 
 function Get-CourseDocx {
-    $url = "$base/api/v1/courses/$cid/files?per_page=100&content_types[]=$DOCX_CT"
+    # Fetch UNFILTERED and match extension OR content_type client-side. A file
+    # uploaded through some paths lands with content_type empty/octet-stream,
+    # and a content_types[] server filter silently DROPS it - the gateway then
+    # reports a clean run while never having seen the file.
+    $url = "$base/api/v1/courses/$cid/files?per_page=100"
     $out = @()
     while ($url) {
         $resp = Invoke-WebRequest -Uri $url -Headers $hdr -UseBasicParsing
@@ -54,6 +58,8 @@ function Get-CourseDocx {
             }
         }
     }
+    $out = @($out | Where-Object { $_.display_name -match '(?i)\.docx$' -or $_.content_type -eq $DOCX_CT })
+    if ($out.Count -eq 0) { Write-Warning "No .docx files matched in course $cid." }
     return @($out)
 }
 

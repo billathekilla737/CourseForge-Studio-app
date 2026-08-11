@@ -31,9 +31,12 @@ $cid   = $cfg.course_id
 $hdr   = @{ Authorization = "Bearer $tok" }
 $py    = Join-Path $PSScriptRoot 'triage_pdf.py'
 
-# list all PDFs (paginated)
+# list all PDFs (paginated). Fetch UNFILTERED and match extension OR
+# content_type client-side: a file uploaded through some paths lands with
+# content_type empty/octet-stream, and a content_types[] server filter
+# silently DROPS it - triage would then under-report the course.
 $files = @()
-$url = "$base/api/v1/courses/$cid/files?per_page=100&content_types[]=application/pdf"
+$url = "$base/api/v1/courses/$cid/files?per_page=100"
 while ($url) {
     $resp = Invoke-WebRequest -Uri $url -Headers $hdr -UseBasicParsing
     $files += ($resp.Content | ConvertFrom-Json)
@@ -44,7 +47,7 @@ while ($url) {
         }
     }
 }
-$files = @($files)
+$files = @($files | Where-Object { $_.display_name -match '(?i)\.pdf$' -or $_.content_type -eq 'application/pdf' })
 if ($files.Count -eq 0) { Write-Output "No PDFs in course $cid."; exit 0 }
 Write-Output ("Course {0}: {1} PDF(s). Downloading for triage..." -f $cid, $files.Count)
 

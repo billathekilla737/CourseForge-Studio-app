@@ -29,13 +29,18 @@
   ASCII only. PowerShell 5.1 compatible.
 #>
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('List','Fetch','Push')] [string]$Action,
+    [Parameter(Mandatory=$true)][ValidateSet('List','Fetch','Fill','Push')] [string]$Action,
     [string]$ConfigPath,
     [string]$TokenPath,
     [string]$CourseId,
     [string]$WorkDir = '.\pdf-text-work',
     [string]$FileId,
     [string]$Pattern,        # regex for Fetch scan
+    [string]$SetAuthor,      # Push: overwrite the PDF /Author metadata field
+    [string]$SetTitle,       # Push: overwrite the PDF /Title metadata field
+    [switch]$UpdateToc,      # Push: rewrite outline/TOC entries with the same mappings
+    [switch]$StripSignature, # remove signature fields -> honest UNSIGNED output
+    [switch]$AllowSigned,    # keep a signature that will read as ALTERED (rarely right)
     [switch]$Apply           # Push without -Apply = dry run
 )
 
@@ -53,7 +58,10 @@ $PDF_CT = 'application/pdf'
 $py    = Join-Path $PSScriptRoot 'pdf_text_tool.py'
 
 function Get-CoursePdfs {
-    $url = "$base/api/v1/courses/$cid/files?per_page=100&content_types[]=$PDF_CT"
+    # Match on EXTENSION or content_type, and never on content_type alone: a file
+    # uploaded through some paths lands with content_type empty/octet-stream, and a
+    # content_types[] server filter silently drops it (Fetch then does nothing).
+    $url = "$base/api/v1/courses/$cid/files?per_page=100"
     $out = @()
     while ($url) {
         $resp = Invoke-WebRequest -Uri $url -Headers $hdr -UseBasicParsing
@@ -65,7 +73,11 @@ function Get-CoursePdfs {
             }
         }
     }
+    $out = @($out | Where-Object { $_.display_name -match '(?i)\.pdf$' -or $_.content_type -eq $PDF_CT })
     if ($FileId) { $out = @($out | Where-Object { "$($_.id)" -eq "$FileId" }) }
+    if (-not $out -or $out.Count -eq 0) {
+        Write-Warning ("No PDFs matched{0} in course {1}." -f $(if ($FileId) { " -FileId $FileId" } else { '' }), $cid)
+    }
     return $out
 }
 
@@ -94,6 +106,29 @@ if ($Action -eq 'Fetch') {
     exit 0
 }
 
+# ---- Fill (local only; writes filled.pdf, which Push then treats as input) ---
+if ($Action -eq 'Fill') {
+    $dirs = Get-ChildItem -Path $WorkDir -Directory -ErrorAction SilentlyContinue
+    if (-not $dirs) { throw "Nothing under $WorkDir - run -Action Fetch first." }
+    foreach ($dir in $dirs) {
+        if ($FileId -and $dir.Name -ne "$FileId") { continue }
+        $meta = Get-Content -Raw (Join-Path $dir.FullName 'file.json') | ConvertFrom-Json
+        $fillMap = Join-Path $dir.FullName 'fill.json'
+        if (-not (Test-Path $fillMap)) { Write-Output ("SKIP {0}: no fill.json" -f $meta.display_name); continue }
+        $src = Join-Path $dir.FullName 'original.pdf'
+        $out = Join-Path $dir.FullName 'filled.pdf'
+        $fargs = @('fill', $src, '--map', $fillMap, '--out', $out, '--json', (Join-Path $dir.FullName 'fill-report.json'))
+        if ($StripSignature) { $fargs += '--strip-signature' }
+        if ($AllowSigned)    { $fargs += '--allow-signed' }
+        & python $py @fargs
+        if ($LASTEXITCODE -ne 0) { Write-Output ("FILL FAILED {0}" -f $meta.display_name) }
+        else { Write-Output ("FILLED {0} -> {1}" -f $meta.display_name, $out) }
+    }
+    Write-Output ""
+    Write-Output "NEXT: RENDER the filled page(s) to PNG and LOOK at them, then -Action Push (add map.json first if you also need replacements)."
+    exit 0
+}
+
 # ---- Push -------------------------------------------------------------------
 $dirs = Get-ChildItem -Path $WorkDir -Directory -ErrorAction SilentlyContinue
 if (-not $dirs) { throw "Nothing under $WorkDir - run -Action Fetch first." }
@@ -105,7 +140,16 @@ foreach ($dir in $dirs) {
     $map   = Join-Path $dir.FullName 'map.json'
     $fixed = Join-Path $dir.FullName 'fixed.pdf'
     if (-not (Test-Path $map)) { Write-Output ("SKIP {0}: no map.json" -f $meta.display_name); continue }
-    & python $py apply $orig --map $map --out $fixed --json (Join-Path $dir.FullName 'apply-report.json')
+    $pyArgs = @('apply', $orig, '--map', $map, '--out', $fixed, '--json', (Join-Path $dir.FullName 'apply-report.json'))
+    if ($PSBoundParameters.ContainsKey('SetAuthor')) { $pyArgs += @('--set-author', $SetAuthor) }
+    if ($PSBoundParameters.ContainsKey('SetTitle'))  { $pyArgs += @('--set-title',  $SetTitle) }
+    if ($UpdateToc)       { $pyArgs += '--update-toc' }
+    if ($StripSignature)  { $pyArgs += '--strip-signature' }
+    if ($AllowSigned)     { $pyArgs += '--allow-signed' }
+    # Fill output, when present, is the input Push should edit further
+    $filled = Join-Path $dir.FullName 'filled.pdf'
+    if (Test-Path $filled) { $pyArgs[1] = $filled }
+    & python $py @pyArgs
     if ($LASTEXITCODE -ne 0) { Write-Output ("VERIFY FAILED {0} - not uploading" -f $meta.display_name); $failures++; continue }
     if (-not $Apply) { Write-Output ("DRY RUN: would upload {0} over file id {1}" -f $fixed, $meta.id); continue }
     $size = (Get-Item $fixed).Length

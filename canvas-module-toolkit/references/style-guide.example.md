@@ -6,6 +6,17 @@
 > they come from WCAG and from what the Canvas Rich Content Editor strips, not from
 > any one school's taste). Generate a matching `palette.txt` (one `#rrggbb` per line)
 > for `scripts/check_style.py --palette` once you've picked your colors.
+>
+> **Darkened variant** (referenced by `palette.example.txt`): partway through the real
+> course this guide was built against, the instructor swapped the bright white
+> page/card surfaces for a softer, darker set for eye comfort - page background
+> `#b9c7d8`, card fill `#d6e0ec`, card border `#a5b3c6`, info-box fill `#e1eaf4`.
+> The components below still show the ORIGINAL bright values; if you adopt the
+> darkened look, substitute those four wherever the guide says white/`#f5f5f5`/
+> `#d7dce3`/`#eef4fa` on page-level surfaces, and keep BOTH sets in your palette
+> file while a course carries a mix. All four pass the same contrast checks against
+> the navy/slate text colors (verify with `scripts/check_contrast.py` if you change
+> any pairing).
 
 # Canvas-safe HTML style guide (MGCCC blue-and-gold) + accessibility
 

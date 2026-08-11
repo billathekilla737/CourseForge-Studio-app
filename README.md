@@ -1,13 +1,14 @@
 # CourseForge — Canvas tools for instructors (Claude Code)
 
-Two Claude Code plugins for MGCCC instructors and curriculum designers. Built and tested
-on the **MGCCC** Canvas instance; they reuse cleanly for any Canvas school after a few
-setting tweaks.
+Two Claude Code plugins for MGCCC instructors and curriculum designers, plus a
+portable module-update toolkit. Built and tested on the **MGCCC** Canvas instance;
+they reuse cleanly for any Canvas school after a few setting tweaks.
 
-| Plugin | What it does |
+| Component | What it does |
 |---|---|
-| **`courseforge`** | **Remediates, restyles, builds, and moves Canvas courses** — idempotent, dry-run-first on writes: **(1) ADA / Ally remediation of an *existing* course, largely hands-off** — dump → restyle → verify (visible text provably unchanged) → push in place for every HTML body (pages, assignments, discussions, quiz descriptions, syllabus), **plus automated PowerPoint (`.pptx`) alt-text + slide-title remediation**. **(2) Looks overhaul** — restyle a whole course into the branded navy/gold template (clean / rich / hybrid looks). **(3) Generate & place content** — pages, syllabi, assignments, graded discussions, quizzes/exams and study guides, as styled, sanitizer-safe, accessible content placed into the right modules (or seed a new course from a **Notion** export — one input option). **(4) Export / import / clone** — back a course up to a local `.imscc` and import it, or copy one course into another (replica sandboxes). **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (a sterilizing + pseudonymizing gateway: identities stay local, you grade pseudonymized text, a dry-run-first poster writes grades back). |
+| **`courseforge`** | **Remediates, restyles, builds, edits, and moves Canvas courses** — idempotent, dry-run-first on writes: **(1) ADA / Ally remediation of an *existing* course, largely hands-off** — dump → restyle → verify (visible text provably unchanged) → push in place for every HTML body (pages, assignments, discussions, quiz descriptions, syllabus), **plus automated PowerPoint (`.pptx`) alt-text + slide-title and Word (`.docx`) heading/alt/table remediation, and PDF accessibility triage**. **(2) Looks overhaul** — restyle a whole course into the branded navy/gold template (clean / rich / hybrid looks). **(3) Generate & place content** — pages, syllabi, assignments, graded discussions, quizzes/exams and study guides, as styled, sanitizer-safe, accessible content placed into the right modules (or seed a new course from a **Notion** export — one input option). **(4) Export / import / clone** — back a course up to a local `.imscc` and import it, or copy one course into another (replica sandboxes). **(5) Document text editing (change requests)** — find-and-fix text *inside* course files: **PDF** scan / in-place edit / form fill (with digital-signature detection and a collision-checked fill preview) and **Office (`.docx`/`.pptx`/`.xlsx`) raw-XML edits** that reach author metadata, slide masters, and footers — e.g. replace a former instructor's name/email/room across every handout, deck, and form in a course. **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (identities stay local in a gitignored map, the model grades pseudonymized scrubbed text — including opt-in extracted `.docx`/`.pdf`/`.txt` attachment text — and a self-verification gate fails the build if structured PII survives; a dry-run-first poster writes grades back). |
 | **`canvas-pii-guard`** | A **local data-protection layer**: PreToolUse hooks that **block** Canvas student-data API calls (rosters/grades/submissions) and local-cache reads *before they run*, so student PII is never fetched or sent. Plus a best-effort output scrubber tuned to MGCCC ID formats. Install it alongside `courseforge`. |
+| **`canvas-module-toolkit/`** | A **portable, model-agnostic** module-content updater (restyle to a brand template, refresh content, validate quiz answer keys) that works with **any** agent that can run a shell — Claude Code, OpenAI Codex CLI, or anything speaking the open [AGENTS.md](https://agents.md/) standard. Cross-platform (**PowerShell 7 on macOS/Linux**, 5.1 on Windows); deterministic Python validators (style/palette, quiz keys, content-diff, contrast) so the agent reads checker output instead of re-deriving compliance. See [`canvas-module-toolkit/README.md`](canvas-module-toolkit/README.md). |
 
 > **Not included here:** the full admin/grading tool that *intentionally* reads student
 > submissions **with real identities**. That stays on admin machines only. What this
@@ -21,9 +22,16 @@ setting tweaks.
   CLI and IDE extensions work identically. Custom skills/plugins are not available in
   the claude.ai web app or Claude Desktop (the chat app).
 - **PowerShell** (Windows PowerShell 5.1 is fine).
-- **Python 3** — powers the automated **PPTX ADA remediation** and the HTML restyle
-  pipeline. Everything else works without it; the installer sets up `python-pptx` for
-  you when Python is present.
+- **Python 3** — powers automated **PPTX / DOCX ADA remediation**, **PDF triage and
+  text editing**, **Office document text editing**, blind-grading attachment
+  extraction, and the HTML restyle pipeline. Everything else works without it; the
+  installer sets up `python-pptx`, `python-docx`, `pypdf` and `PyMuPDF` when a real
+  Python is present.
+  **Windows caveat:** a stock Windows 11 has an App Execution Alias stub at
+  `WindowsApps\python.exe` that looks like Python but isn't. The installer detects it and
+  says so; install the real thing with
+  `winget install --id Python.Python.3.12`, then re-run the install line **in a new
+  terminal** (an open shell keeps the stale `PATH`).
 - A **Canvas API access token** for your own account, plus your course base URL + id.
 - **Optional**, only for the Notion-import build path: a connected **Notion MCP** connector.
 
@@ -38,14 +46,20 @@ irm https://raw.githubusercontent.com/billathekilla737/CourseForge/main/bootstra
 That's the whole install: it uses the Claude Code plugin system when the CLI is
 available, otherwise downloads this repo and runs the script installer — either way
 **both** plugins land (`courseforge` builds courses; `canvas-pii-guard` is the local
-block that enforces the no-student-data guarantee), the guard hooks are registered,
-`python-pptx` is set up, and the guard test suite runs. Safe to re-run any time —
-re-running is also how you **update**.
+block that enforces the no-student-data guarantee), the guard hooks are registered, the
+document libraries are set up, and the guard test suite runs. Watch for **ALL TESTS
+PASSED**. Safe to re-run any time — re-running is also how you **update**.
 
 Then: **fully restart Claude Code** (approve the trust prompt if one appears), use
-**Open Folder** to open `Documents\canvas-work` (create it if it's new — it's simply
-where your Canvas connection gets saved; always open the same folder), and say
+**Open Folder** to open `%USERPROFILE%\Documents\canvas-work` (create it if it's new —
+it's simply where your Canvas connection gets saved; always open the same folder), and say
 *"set up my Canvas."* PowerShell is never needed again after the install line.
+
+> The install prints that folder's absolute path when it finishes. If OneDrive backs up
+> your Documents you effectively have two — `%USERPROFILE%\Documents` and
+> `%USERPROFILE%\OneDrive\Documents`. Both resolve, but prefer the **local** one: your
+> Canvas token is saved there and it carries your full account permissions, so it should
+> not sync to the cloud.
 
 **Verify it worked** (after restart) — ask Claude:
 > *"Is canvas-pii-guard active, and do you have the courseforge skill?"*
@@ -91,6 +105,18 @@ tests the connection, printing your course name when it works. No file paths, no
 file-extension headaches. To get the token: **Canvas → Account → Settings → New
 Access Token**, then paste it when asked.
 
+The token is read with `Read-Host -AsSecureString`, so it is typed hidden and **never
+enters the chat transcript** — an assistant should launch the setup in its own window
+rather than asking you to paste a token into a conversation. Only a masked prefix and a
+length are ever echoed back. Already saved it loose as `canvas.token.txt`,
+`Canvas Token.txt`, or a pasted `.rtf`? Setup finds it, reuses it, and tidies the stray
+file away.
+
+**Consider a scoped token.** For content-only work (remediation, restyling, building
+pages/quizzes), a Canvas role *without* view-grades / view-students makes student PII
+unfetchable at the source — the strongest version of the guarantee below, since it doesn't
+depend on hooks at all.
+
 **By hand (if you prefer):**
 1. Generate a token: **Canvas → Account → Settings → New Access Token**. Save it as a
    one-line file `canvas.token` in your project folder. **Never commit it.**
@@ -100,10 +126,12 @@ Access Token**, then paste it when asked.
 
 ## Usage
 Ask Claude in plain English:
-- **ADA compliance (existing course):** *"bring this course up to ADA compliance"*, *"fix my Ally score"*, *"make these PowerPoints accessible"*
+- **ADA compliance (existing course):** *"bring this course up to ADA compliance"*, *"fix my Ally score"*, *"make these PowerPoints accessible"*, *"which of my PDFs hurt the score?"*
 - **Looks overhaul:** *"give this course the school look"*, *"restyle Week 1 in the navy template"*
 - **Generate & place content:** *"add a study guide to Week 3"*, *"build a final-exam quiz"*, *"write a syllabus page"*
+- **Document text fixes (change requests):** *"find every mention of the previous instructor in this course and replace it with my info — including inside the PowerPoints, Word docs, and PDFs"*, *"fill out this PDF form"*, *"fix the dates in these handouts"*
 - **Backup / copy:** *"export this course as a backup"*, *"clone this course into a sandbox"*
+- **Blind grading (opt-in):** *"pull the submissions for this assignment and let's grade them anonymously"*
 - **Build from Notion (optional):** *"get my Notion course into Canvas"*
 
 Before any push it **asks whether to publish or leave content unpublished** (default:
@@ -132,13 +160,20 @@ How it works (defense in depth):
 4. **Sterilizing gateway** — if non-grading data is ever genuinely needed,
    `Get-CanvasData-Sterilized.ps1` keeps the raw response in a private folder the agent
    never reads and emits only a scrubbed version.
-5. **Opt-in blind grading** — `Build-GradingBundle.ps1` pulls submission **text only**,
+5. **Opt-in blind grading** — `Build-GradingBundle.ps1` pulls submission **text**,
    keeps the pseudonym→identity `map.json` **local** (gitignored, never read by the
-   model), and emits a scrubbed, pseudonymized `bundle.json`; `Post-Grades.ps1` posts
-   grades back by pseudonym, **dry-run first**, audited. The model grades `S-001`,
-   `S-002`, …, never names. This is **best-effort de-identification, not a guarantee** —
-   free-text PII and names embedded in screenshots/uploaded files can remain (file
-   contents are never downloaded — only filenames are listed for local review).
+   model), and emits a scrubbed, pseudonymized `bundle.json`: structured PII first
+   (emails, phones, MGCCC ids, **bare 8–10 digit runs**), then **every roster
+   student's full-name forms** (peer mentions included) plus the author's own name
+   tokens. The finished bundle is **re-verified** — with the guard's independent
+   redactor — and the build **fails** if structured PII survives. Optionally
+   (`-IncludeAttachmentText`) `.docx`/`.pdf`/`.txt` attachment text is extracted
+   locally and scrubbed through the same pipeline, making file-upload assignments
+   gradeable; **images are never inlined** (screenshots carry names in title bars —
+   review those locally). `Post-Grades.ps1` posts grades back by pseudonym,
+   **dry-run first**, audited. The model grades `S-001`, `S-002`, …, never names.
+   Still **best-effort de-identification, not a guarantee** — identifying free-text
+   content can survive any scrubber.
 6. **Output scrubber (backstop)** — best-effort redaction of stray IDs/emails, tuned to
    MGCCC formats (login `M########`, SIS `###.M########`).
 

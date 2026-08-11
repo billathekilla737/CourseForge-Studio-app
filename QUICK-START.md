@@ -26,6 +26,18 @@ student-data requests), wires up the safety hooks, and checks itself. Watch for
 
 > Re-running that same line later is how you **update**. Always safe.
 
+**If it says it found a "Microsoft Store Python stub"** — that's Windows pretending to
+have Python when it doesn't. The install still finished (you'll still see **ALL TESTS
+PASSED**); you just can't fix PowerPoints, Word docs, or PDFs yet. To turn that on, paste
+this, then re-run the line above **in a new PowerShell window**:
+
+```powershell
+winget install --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements
+```
+
+Building pages, quizzes and modules works fine either way, so you can skip this and come
+back to it.
+
 ## 2. Restart Claude Code
 
 Fully quit and reopen the app (plugins and safety hooks only switch on at startup).
@@ -44,12 +56,22 @@ It should confirm **both**. If not: re-run step 1, restart again.
 In the app, choose **Open Folder** and pick — or create — this folder:
 
 ```
-Documents\canvas-work
+C:\Users\<you>\Documents\canvas-work
 ```
+
+The install line prints this exact path when it finishes — copy it from there if you're
+unsure.
 
 **What's this folder?** It's just the place your Canvas connection gets saved.
 Nothing special lives there ahead of time — but always open this same folder, and
 you'll always be connected without setting anything up twice.
+
+> **If you use OneDrive, watch this one.** Many school laptops have OneDrive back up your
+> Documents, which means you may have *two* folders both called "Documents":
+> `C:\Users\<you>\Documents` and `C:\Users\<you>\OneDrive\Documents`. Either one works —
+> but the **non-OneDrive** one is the better choice, because your Canvas access token gets
+> saved in this folder, and a token can do anything your Canvas account can do. Keeping it
+> off OneDrive keeps it off the cloud.
 
 Then say:
 
@@ -63,7 +85,9 @@ It asks two things:
   **Account → Settings → + New Access Token → Generate**, then paste it when asked.
 
 Done. Now you can say things like *"Bring this course up to ADA compliance,"*
-*"Give this course the school look,"* or *"Export this course as a backup."*
+*"Give this course the school look,"* *"Replace the old instructor's contact info
+everywhere — including inside the PowerPoints and PDFs,"* or *"Export this course
+as a backup."*
 
 ---
 

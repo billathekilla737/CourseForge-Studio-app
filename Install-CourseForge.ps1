@@ -193,14 +193,14 @@ try {
     }
     if ($py) {
         Say ("Python: {0}" -f ("$probe".Trim()))
-        & python -c "import pptx, docx, pypdf" 2>$null
+        & python -c "import pptx, docx, pypdf, pymupdf" 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Installing python-pptx / python-docx / pypdf (document remediation + triage)..."
-            & python -m pip install --quiet python-pptx python-docx pypdf
+            & python -m pip install --quiet python-pptx python-docx pypdf PyMuPDF
             if ($LASTEXITCODE -eq 0) { Say "document libraries installed" }
             else { Write-Host "  (could not install document libraries - PPTX/DOCX/PDF features will prompt later)" }
         } else {
-            Say "document libraries present (pptx/docx/pypdf)"
+            Say "document libraries present (pptx/docx/pypdf/pymupdf)"
         }
     } else {
         Write-Host "  (Python not found - PPTX/DOCX remediation and PDF triage need Python 3; HTML features unaffected)"

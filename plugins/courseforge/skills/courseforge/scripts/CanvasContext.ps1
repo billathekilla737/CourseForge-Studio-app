@@ -55,11 +55,12 @@ function Resolve-CanvasContext {
             $redirected = Join-Path $shellDocs 'canvas-work'
             if ($dirs -notcontains $redirected) { $dirs += $redirected }
         }
+        $foundIn = ''
         foreach ($d in $dirs) {
             if (-not (Test-Path $d)) { continue }
             $pattern = if ($CourseId) { "canvas.config.$CourseId.json" } else { 'canvas.config.*.json' }
             $found = @(Get-ChildItem -Path $d -Filter $pattern -File -ErrorAction SilentlyContinue)
-            if ($found.Count -eq 1) { $ConfigPath = $found[0].FullName; break }
+            if ($found.Count -eq 1) { $ConfigPath = $found[0].FullName; $foundIn = $d; break }
             if ($found.Count -gt 1) {
                 $names = ($found | ForEach-Object { $_.Name }) -join ', '
                 throw ("Multiple Canvas configs in {0}: {1}. Pass -CourseId <id> or -ConfigPath to choose." -f $d, $names)
@@ -69,6 +70,15 @@ function Resolve-CanvasContext {
             $forCourse = ''
             if ($CourseId) { $forCourse = " for course $CourseId" }
             throw ("No canvas.config.*.json found{0}. Looked in: {1}. Run Setup-Canvas.ps1 first, or pass -ConfigPath." -f $forCourse, ($dirs -join '; '))
+        }
+        # Never resolve a course SILENTLY. Multiple configs already hard-error, but a
+        # single config in a FALLBACK directory used to be picked with no announcement:
+        # run any script from a folder that has no config of its own and it quietly
+        # targets whatever course is configured in Documents\canvas-work - easily a
+        # stale sandbox from a previous term. Announce the fallback so a wrong target is
+        # visible in the transcript instead of being discovered after the write.
+        if ($foundIn -and $foundIn -ne (Get-Location).Path) {
+            Write-Host ("  CanvasContext: using {0} from FALLBACK folder {1} - not the current directory. Pass -CourseId or -ConfigPath to be explicit." -f (Split-Path -Leaf $ConfigPath), $foundIn)
         }
     }
     if (-not (Test-Path $ConfigPath)) { throw "Canvas config not found: $ConfigPath" }

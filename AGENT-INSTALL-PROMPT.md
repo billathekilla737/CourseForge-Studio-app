@@ -5,9 +5,12 @@ IDE extension) — it does **not** work in the claude.ai website or Claude Deskt
 those can't load plugins.
 
 > **What you're installing:** two small plugins.
-> - **courseforge** — builds and remediates your Canvas *course content* (pages, modules,
->   assignments, quizzes, syllabus, PPTX). It never reads student rosters, grades, or
->   submissions in normal use.
+> - **courseforge** — builds, remediates, and edits your Canvas *course content*: pages,
+>   modules, assignments, quizzes, the syllabus, and the documents inside the course —
+>   PowerPoints, Word docs, and PDFs (ADA fixes, and text fixes like replacing a former
+>   instructor's contact info or filling a PDF form). It never reads student rosters,
+>   grades, or submissions in normal use; one opt-in blind-grading flow grades
+>   pseudonymized text with identities kept local.
 > - **canvas-pii-guard** — a local safety block that *enforces* that: it stops any
 >   student-data request before it can run. **Install both** — courseforge alone leaves
 >   the protection off.

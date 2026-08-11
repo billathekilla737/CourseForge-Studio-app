@@ -10,8 +10,9 @@
     - best-effort: `claude plugin uninstall` both + marketplace remove, when
       the Claude Code CLI is available (harmless if it is not)
 
-  DOES NOT touch your course data: canvas.token, canvas.config.*.json,
-  Documents\canvas-work, exports, or any remediation work folders.
+  DOES NOT touch your course data: canvas.token, canvas.config.*.json, any
+  Documents\canvas-work folder (either the local one or a OneDrive-redirected
+  one), exports, or any remediation work folders.
 
   Usage:  powershell -NoProfile -ExecutionPolicy Bypass -File .\Uninstall-CourseForge.ps1
 
@@ -130,5 +131,17 @@ if (Test-Path $settingsPath) {
 
 Write-Host ""
 Write-Host "DONE. Fully restart Claude Code so the removal takes effect."
-Write-Host "Your Canvas tokens/configs (Documents\canvas-work etc.) were NOT touched - delete them"
-Write-Host "yourself if you no longer need them."
+Write-Host "Your Canvas tokens/configs were NOT touched - delete them yourself if you no"
+Write-Host "longer need them. Check both of these (OneDrive redirection makes them differ):"
+$leftovers = @((Join-Path $env:USERPROFILE 'Documents\canvas-work'))
+try {
+    $shellDocs = [Environment]::GetFolderPath('MyDocuments')
+    if ($shellDocs) {
+        $rd = Join-Path $shellDocs 'canvas-work'
+        if ($leftovers -notcontains $rd) { $leftovers += $rd }
+    }
+} catch {}
+foreach ($l in $leftovers) {
+    $mark = if (Test-Path $l) { 'exists' } else { 'not present' }
+    Write-Host ("    {0}  [{1}]" -f $l, $mark)
+}

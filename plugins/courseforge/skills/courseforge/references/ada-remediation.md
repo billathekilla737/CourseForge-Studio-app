@@ -129,11 +129,14 @@ Three scripts ship the whole workflow (all in `scripts/`; validated end-to-end o
   paragraph→Heading promotions — they restyle the text, so never auto-apply; `table_headers`); Push
   re-verifies to 0 issues and overwrite-uploads (original kept). Honest scope: alt + headings + table
   header rows — not full document tagging.
-- **`.pdf`: TRIAGE ONLY** — `Triage-CanvasPdfs.ps1` + `triage_pdf.py` (needs `pypdf`) classifies every
-  course PDF: `scanned-image` (no text layer → OCR/re-source; the worst Ally offenders), `text-untagged`
-  (words but no headings/reading order), `tagged` (spot-check quality), `encrypted`. Real remediation
-  (tagging, reading order) stays **manual** (Acrobat) — never claim otherwise. The ranked
-  `triage-report.md` tells the instructor which of their 40 PDFs actually hurt the score.
+- **`.pdf` ACCESSIBILITY: TRIAGE ONLY** — `Triage-CanvasPdfs.ps1` + `triage_pdf.py` (needs `pypdf`)
+  classifies every course PDF: `scanned-image` (no text layer → OCR/re-source; the worst Ally offenders),
+  `text-untagged` (words but no headings/reading order), `tagged` (spot-check quality), `encrypted`. Real
+  ACCESSIBILITY remediation (tagging, reading order) stays **manual** (Acrobat) — never claim otherwise.
+  The ranked `triage-report.md` tells the instructor which of their 40 PDFs actually hurt the score.
+  **PDF TEXT is a different story:** wrong names / dates / contact info inside a PDF ARE fixable —
+  that's `Remediate-CanvasPdfText.ps1` + `pdf_text_tool.py` (a CONTENT tool, not an accessibility one;
+  it never adds tags). Don't conflate the two when reporting to the instructor.
 - **Batch across courses:** `Batch-Remediate.ps1` runs the whole HTML pipeline over `-CourseIds`
   with one aggregate summary — dry-run first, always.
 - **Publisher decks (Pearson/Cengage):** edits may revert on the consortium's next import — the

@@ -56,10 +56,20 @@ Blocked calls never execute, so no roster/grade/submission data leaves the machi
      gitignored `private/` folder the agent never reads, emits only a **pattern-redacted**
      rendering (Strict profile).
    - `Build-GradingBundle.ps1` — **opt-in blind grading** (in the `courseforge`
-     content skill): pulls submission **text only**, writes the pseudonym->identity
+     content skill): pulls submission **text**, writes the pseudonym->identity
      `map.json` to a gitignored `grading/` folder the model never reads, and emits a
-     **scrubbed + pseudonymized** `bundle.json` (PII patterns + the student's own name
-     tokens removed; attachment contents are never downloaded, only filenames listed).
+     **scrubbed + pseudonymized** `bundle.json`. Scrubbing runs structured PII first
+     (emails, phones, SSN-shaped runs, MGCCC login/SIS ids, bare 8-10 digit runs),
+     then **every roster student's full-name forms** (so peer mentions are caught,
+     not just the author) plus the author's own name tokens and login_id. The
+     finished bundle is **re-verified with this guard's own redactor** and the build
+     **fails (exit 2)** on residual structured PII unless explicitly overridden.
+     Attachments: by default contents are **never downloaded** (filenames only);
+     with the opt-in `-IncludeAttachmentText` switch, `.docx`/`.pdf`/`.txt` text is
+     extracted **locally** and scrubbed through the same pipeline before entering
+     the bundle. **Images and every other file type are never inlined** —
+     screenshots can carry names in window title bars and email headers that no
+     text scrubber can see.
    - `Post-Grades.ps1` — posts grades back **by pseudonym**, resolving identities from the
      local `grading/` map (dry-run by default, audited). Because it legitimately reads the
      local `grading/` map, the policy permits these three scripts **before** the

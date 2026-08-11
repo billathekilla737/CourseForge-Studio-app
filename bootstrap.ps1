@@ -117,12 +117,12 @@ try {
         }
     }
     if ($py) {
-        & python -c "import pptx, docx, pypdf" 2>$null
+        & python -c "import pptx, docx, pypdf, pymupdf" 2>$null
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Installing document libraries (PPTX/DOCX remediation + PDF triage)..."
-            & python -m pip install --quiet python-pptx python-docx pypdf
+            Write-Host "Installing document libraries (PPTX/DOCX remediation + PDF triage/text editing)..."
+            & python -m pip install --quiet python-pptx python-docx pypdf PyMuPDF
             if ($LASTEXITCODE -eq 0) { Say "document libraries installed" } else { Warn "could not install document libraries (those features will ask later)" }
-        } else { Say "document libraries present (pptx/docx/pypdf)" }
+        } else { Say "document libraries present (pptx/docx/pypdf/pymupdf)" }
     } else {
         Warn "Python not found - PPTX/DOCX remediation and PDF triage need Python 3; everything else works without it."
     }

@@ -203,5 +203,8 @@ runs as code and gets read, not re-derived.
    footer) and the hard accessibility + Canvas-sanitizer rules — those come from WCAG
    and from what Canvas's editor actually strips, not from any one school's taste.
 2. Generate a matching `palette.txt` (one `#rrggbb` per line) and pass it to
-   `check_style.py --palette your-palette.txt`.
+   `check_style.py --palette your-palette.txt`. Loader semantics: a line counts as a
+   palette entry if it contains a 6-digit hex color ANYWHERE on it — comment lines
+   included — so annotate freely, but never mention a *retired* color by its hex in a
+   comment (it would silently rejoin the allowed set).
 3. Everything else (the scripts, `AGENTS.md`'s procedure) is already institution-agnostic.

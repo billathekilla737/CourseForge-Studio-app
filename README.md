@@ -123,10 +123,14 @@ depend on hooks at all.
 Ask Claude in plain English:
 - **ADA compliance (existing course):** *"bring this course up to ADA compliance"*, *"fix my Ally score"*, *"make these PowerPoints accessible"*, *"which of my PDFs hurt the score?"*
 - **Looks overhaul:** *"give this course the school look"*, *"restyle Week 1 in the navy template"*
-- **Generate & place content:** *"add a study guide to Week 3"*, *"build a final-exam quiz"*, *"write a syllabus page"*
+- **Generate & place content:** *"add a study guide to Week 3"*, *"build a final-exam quiz"*, *"write a syllabus page", *"Post an announcement"*, *"Create a discussion"*.*
 - **Document text fixes (change requests):** *"find every mention of the previous instructor in this course and replace it with my info — including inside the PowerPoints, Word docs, and PDFs"*, *"fill out this PDF form"*, *"fix the dates in these handouts"*
 - **Backup / copy:** *"export this course as a backup"*, *"clone this course into a sandbox"*
 - **Blind grading (opt-in):** *"pull the submissions for this assignment and let's grade them anonymously"*
+- **Course Rollover:** *"Roll these course due dates over to next semester. Look at the academic calendar and schedule due dates around breaks."*
+- **Contradiction sweep:** *"Check and see if any of my course polices contradict each other."*
+- **Course Calendar Creation:** *"Generate a Course calendar graphic for the semester and place it in the top module."*
+- **SLO Alignment:** *"Show me which assignments align with each learning outcome for my course?"*
 - **Build from Notion (optional):** *"get my Notion course into Canvas"*
 
 Before any push it **asks whether to publish or leave content unpublished** (default:

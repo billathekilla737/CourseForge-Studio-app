@@ -10,11 +10,6 @@ they reuse cleanly for any Canvas school after a few setting tweaks.
 | **`canvas-pii-guard`** | A **local data-protection layer**: PreToolUse hooks that **block** Canvas student-data API calls (rosters/grades/submissions) and local-cache reads *before they run*, so student PII is never fetched or sent. Plus a best-effort output scrubber tuned to MGCCC ID formats. Install it alongside `courseforge`. |
 | **`canvas-module-toolkit/`** | A **portable, model-agnostic** module-content updater (restyle to a brand template, refresh content, validate quiz answer keys) that works with **any** agent that can run a shell — Claude Code, OpenAI Codex CLI, or anything speaking the open [AGENTS.md](https://agents.md/) standard. Cross-platform (**PowerShell 7 on macOS/Linux**, 5.1 on Windows); deterministic Python validators (style/palette, quiz keys, content-diff, contrast) so the agent reads checker output instead of re-deriving compliance. See [`canvas-module-toolkit/README.md`](canvas-module-toolkit/README.md). |
 
-> **Not included here:** the full admin/grading tool that *intentionally* reads student
-> submissions **with real identities**. That stays on admin machines only. What this
-> repo's content plugin *does* include is an **opt-in blind-grading** path that keeps
-> identities local and only shows the model pseudonymized, scrubbed submission text
-> (best-effort de-identification, not a guarantee — see Student data security below).
 
 ## Requirements
 - **Claude Code** — for non-technical users the **desktop app** is the recommended

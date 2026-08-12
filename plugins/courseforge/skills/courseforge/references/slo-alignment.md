@@ -1,124 +1,137 @@
-# SLO alignment (Mississippi state Student Learning Outcomes)
+# SLO alignment (Mississippi Student Learning Outcomes) — any program
 
-Use this to answer "**is my Canvas shell aligned to the SLOs for my program?**" Mississippi
-community-college CTE programs are governed by a statewide **Mississippi Curriculum
-Framework** per program, published by the **Mississippi Community College Board (MCCB)**.
-Each framework defines, per course, a numbered list of **Student Learning Outcomes** with
-lettered sub-outcomes. Those are the SLOs an instructor is audited against.
+Answer "**is my Canvas shell aligned to the Student Learning Outcomes for my program?**" for
+ANY instructor: automotive, networking, cyber security, cloud, welding, business, culinary,
+health sciences, drafting, early childhood, and the rest.
 
-This file is the lookup table and the method. It does NOT contain the SLO text itself: the
-frameworks are revised on their own cycle, so always pull the current PDF.
+Mississippi CTE programs are governed by a statewide **Mississippi Curriculum Framework** per
+program, published by the **Mississippi Community College Board (MCCB)**. Each framework
+defines, per course, a nested list of **Student Learning Outcomes**. Those are what an
+instructor is audited against, and what this job cross-references.
 
 ## Source of truth (re-check yearly)
 
-**Top-level index of every program framework:**
-**https://www.mccb.edu/curriculum**
+**Index of every program framework: https://www.mccb.edu/curriculum**
 
-That page is browsable by career cluster and, critically, **searchable by CIP Code and by
-course Prefix**. Prefix search is the hook that makes this automatable: a Canvas course
-named "IMT 1213 001" gives you the prefix `IMT`, which resolves to the owning program.
+151 programs across 93 course prefixes, browsable by career cluster and searchable by **CIP
+code** and by **course prefix**. Prefix search is what makes this automatable: a Canvas
+`course_code` of `ATT 1214 001` yields `ATT`, which resolves to its program with no input from
+the instructor. Program pages are `https://www.mccb.edu/curriculum/<program-name-hyphenated>`
+and carry a current framework PDF plus, often, the prior version.
 
-Individual program pages follow `https://www.mccb.edu/curriculum/<program-name-hyphenated>`
-and carry a "Download Curriculum Framework PDF" link (current year) and often a "Download
-Past Framework PDF" link (prior version).
-
-## How to find the framework for any course
-
-1. Read the Canvas course code (`GET /courses/:id` -> `course_code`), e.g. `IMT 1213 001`.
-2. Take the **prefix** (`IMT`) and search the index by Prefix, or match a CIP code if the
-   instructor knows it.
-3. Open the program page, download the **current** framework PDF.
-4. Extract the text **locally** (see below) and find the block for that course number.
-5. Cross-check the SLOs against the course's assignments, quizzes and discussions.
-
-## Extracting the PDF (do not use a web-to-markdown fetch)
-
-These frameworks are text-based PDFs, but a web fetch-and-convert mangles them into
-unreadable output. Extract locally instead:
-
-```bash
-python -c "import pymupdf; d=pymupdf.open('framework.pdf'); print('\n'.join(p.get_text() for p in d))"
-```
-
-`scripts/Remediate-CanvasPdfText.ps1 -Action Fetch` also scans PDF text if the framework has
-been uploaded into a Canvas course.
-
-## The structure inside a framework
-
-Per course, in this order:
+## The workflow
 
 ```
-Course Number and Name:
-IMT 1213 Game Theory and Mechanics
-
-Description:
-...
-
-Hour Breakdown:
-Semester Credit Hours / Lecture / Lab / Contact Hours
-
-Prerequisite:
-...
-
-Student Learning Outcomes:
-1.  <outcome>
-    a.  <sub-outcome>
-    b.  <sub-outcome>
-2.  <outcome>
-    a.  ...
+scripts\Check-SLOAlignment.ps1 -Action Resolve   # course_code -> candidate program(s)
+scripts\Check-SLOAlignment.ps1 -Action Fetch     # framework PDF + SLOs + Canvas inventory
+   ... the AGENT writes alignment.json (the judgment step) ...
+scripts\Check-SLOAlignment.ps1 -Action Report    # validate, then render md + HTML
 ```
 
-The frameworks say **"Student Learning Outcomes"**. They do not use "Program Outcomes",
-"Course Outcomes", or "Suggested Enabling Objectives" (a few say "Competencies" in passing).
-There is **no separate program-level outcome list** in the 2025 Simulation framework:
-alignment is judged course by course.
+Same two-phase gateway as the PPTX/DOCX/PDF remediators: scripts collect facts and check the
+result, the agent does the judging in between. `-Action Report` is **dry-run by default**;
+`-Apply` pushes the report as an **unpublished** Canvas page.
 
-## The cross-check to run
+`scripts/slo_framework_tool.py` does the mechanical work and can be driven directly:
+`index` (cache the program list), `resolve`, `fetch`, `slos` (PDF -> outcomes),
+`validate`, `report`.
 
-For the course's SLOs, build a matrix of **sub-outcome -> the Canvas items that assess it**,
-citing the specific assignment, quiz or discussion. Then report:
+## Writing alignment.json (the judgment step)
 
-- **Unassessed SLOs** — a lettered sub-outcome no graded item covers. This is the finding
-  that matters for an audit.
-- **Weakly assessed SLOs** — covered only by a reading or an ungraded activity, never by
-  anything scored.
-- **Unaligned graded items** — an assignment that maps to no SLO. Not necessarily wrong
-  (an instructor may add value beyond the floor), but worth surfacing.
-- **Verb-level mismatch** — the SLO says "create", "implement", "compile", or "demonstrate",
-  and the only evidence is an essay or a diagram. A framework that requires *producing* an
-  artifact in software is not satisfied by writing about it.
+```json
+{ "program": "...", "framework": "...pdf", "framework_year": 2025, "framework_url": "https://...",
+  "alignment": [
+    { "slo": "1.a",
+      "verdict": "assessed | partially-assessed | ungraded-only | not-assessed | not-applicable",
+      "evidence": [15977654, 5352405],
+      "rationale": "why this verdict",
+      "suggestion": "what to add or change (write one for every gap)" } ] }
+```
 
-Read the SLO verbs literally. "Evaluate 2D game engines", "Implement a sprite sheet
-animation", and "Compile a game project for multiple target platforms" each demand a
-different kind of evidence than analysis prose.
+`evidence` ids must come from `items.json`. **Read the SLO verb literally.** An outcome that
+says *create*, *implement*, *compile*, *demonstrate*, or *produce* is not satisfied by an
+essay about the topic. Distinguish these cases honestly:
 
-## Traps found in practice
+- **assessed** — a graded item requires the thing the verb demands.
+- **partially-assessed** — part of the outcome is met and part is not. Say which half.
+- **ungraded-only** — a reading or ungraded activity covers it, nothing scored does.
+- **not-assessed** — no item covers it.
+- **not-applicable** — genuinely out of scope for this course (rare; justify it).
 
-- **Local course numbers drift from state numbers.** MGCCC teaches `IMT 2114` 3D Game Engine
-  I, but the framework defines `IMT 2113` Game Engine 1. MGCCC teaches `IST 2824`
-  Introduction to 3D Modeling, while the framework's equivalent is `IMT 1513` Introduction to
-  3D Modeling. **Match on course TITLE as well as number**, and never conclude "not in the
+The validator **fails (exit 2)** if the mapping omits an outcome, invents an outcome id, cites
+an item id that is not in the course, or claims coverage with no evidence. That gate is the
+point: an alignment report is audit material, so it must not be able to hand-wave.
+
+## What the report gives the instructor
+
+A coverage percentage, an outcome-by-outcome table with evidence named, a **gaps section with
+a concrete suggested fix per gap**, and a list of graded items that map to no outcome (not
+necessarily wrong; an instructor may teach beyond the state floor). Markdown for program
+review, Canvas-safe HTML for pushing into the course.
+
+## Traps (each one hit in practice)
+
+- **Prefix alone is often ambiguous.** `IST` maps to 10 programs, `BOT` to 8, `DDT` to 6.
+  Resolve refuses to guess: match the course number AND title against each candidate
+  framework's course list, or ask the instructor which program the course belongs to.
+- **Local course numbers drift from state numbers.** MGCCC teaches `IMT 2114` 3D Game Engine I
+  where the framework defines `IMT 2113`; MGCCC's `IST 2824` Introduction to 3D Modeling is the
+  framework's `IMT 1513`. `slos --course X --title Y` falls back to number-only and then
+  title-only matching and labels which kind of match it made. Never conclude "not in the
   framework" from a number miss alone.
-- **The 2025 Simulation framework contains both 3-hour and 4-hour variants** of some courses
-  (`IMT 1213` and `IMT 1214` Game Theory; `IMT 2113` and a 4-hour engine course). Confirm
-  which variant the college actually offers before judging hour breakdown.
-- **One framework PDF can be linked under two CIP codes.** The 2025 Simulation framework is
-  served both as `Simulation-Game-Design-Technology-2025.pdf` (CIP 50.0411) and
-  `...-2025_0.pdf` (CIP 11.0804). Same document.
-- **Colleges may run the prior-year framework through a transition semester.** If the course
-  was built against the 2019 version, check that version too before reporting a gap.
-- **Search-engine URLs for these PDFs go stale.** Paths under
-  `/sites/mccb/files/Curriculum-PDFs/...` now 404; current files live under
-  `/sites/default/files/<yyyy-mm>/...`. Always resolve the PDF from the program page rather
-  than reusing a cached deep link.
-- **Not every Canvas course maps to a CTE framework.** Academic-transfer courses (e.g. `CSC`)
-  are governed by the statewide articulation/common-course numbering, not these CTE
-  frameworks. Say so rather than forcing a match.
+- **A course can appear with NO outcomes.** Some courses show up only in a course-sequence
+  table. `slos` refuses (exit 2) rather than letting an empty outcome list be reported as
+  aligned.
+- **Not every course has a CTE framework.** `ENG`, `MAT`, `CSC`, `NET`, `PNU`, `ACR` and other
+  academic-transfer prefixes are absent from the index; they are governed by the statewide
+  articulation agreement and common course numbering. `Fetch` exits 3 and says so. Report that
+  plainly instead of forcing a match.
+- **One framework PDF can serve several programs and CIP codes.** The Simulation 2025
+  framework is served under both 50.0411 and 11.0804; the IT framework covers 11.0901,
+  11.0201, 11.0802, 52.1302 and 11.1003 at once.
+- **Frameworks differ in nesting and layout across years, and the parser handles all of it:**
+  two levels (`1.` -> `a.`) in 2025, three (`1.` -> `a.` -> `(1)`) in 2017; the course code and
+  title on one line, or the code alone with the title on the next (Welding 2018); an outcome
+  number alone on its line with the text following; an optional "The student will" lead-in;
+  and flat NATEF-style task lists of 40+ numbered items (Automotive). Verified against
+  Simulation 2025, Automotive 2024, Welding 2018 and Information Systems 2017.
+- **Search-engine deep links to framework PDFs go stale.** Paths under
+  `/sites/mccb/files/Curriculum-PDFs/` now 404; current files live under
+  `/sites/default/files/<yyyy-mm>/`. Always resolve from the program page.
+- **A web-to-markdown fetch mangles these PDFs** into unusable text. Extract locally with
+  PyMuPDF, which is what `slos` does.
+- **Colleges may run the prior-year framework through a transition semester.** Use `-UsePrior`
+  to check the older version before reporting a gap against a course built to it.
+
+## Implementation notes (PowerShell traps found building this)
+
+Worth knowing before editing `Check-SLOAlignment.ps1` or writing similar code:
+
+- **`@(SomeFunction ...)` collapses an array return into ONE element.** Assigning first
+  (`$x = SomeFunction ...`) preserves all N. Wrapping the call directly gave a single-element
+  array holding the whole response, after which `$item.id` **silently member-enumerated** into
+  an array of every id, and the inventory reported 2 items instead of 45. Assign, then iterate.
+- **In `-like`, `?` is a single-character wildcard.** `$path -like '*?*'` is true for every
+  non-empty string, so a query-separator test built that way appended `&` to every URL and
+  produced 404s. Use `.Contains('?')`.
+- **A stray `Write-Output` inside a function becomes part of its return value.** Diagnostics
+  belong in `Write-Warning`/`Write-Verbose`, or they end up in the data.
+- **A local variable whose name matches a parameter collides case-insensitively.** `$course`
+  and a `[string]$Course` parameter are the same variable, so assigning the course object to it
+  coerced it to a string and blanked every field.
+- **`Out-File -Encoding utf8` writes a BOM in PS 5.1**, which Python's `utf-8` codec rejects.
+  Write with `[IO.File]::WriteAllText($p, $json, (New-Object Text.UTF8Encoding($false)))`, and
+  read tolerantly with `utf-8-sig`.
+- **Git Bash rewrites a leading-slash argument into a Windows path**, so `--slug /curriculum/x`
+  arrives as `C:/Program Files/Git/curriculum/x`. The tool normalizes any slug shape.
 
 ## Machine-readable program index
 
-Programs confirmed relevant to MGCCC Simulation and Game Design. Extend as other programs
-are needed; resolve anything absent through the index URL above.
+`slo_framework_tool.py index --cache <path>` caches the live index (name, CIP, prefixes,
+slug). Prefer the cache for repeat runs and `--refresh` when it may be stale; the tool refuses
+to proceed if it parses 0 programs, which is the signal that the site markup changed.
+
+Verified programs relevant to MGCCC Simulation and Game Design:
 
 ```json
 {
@@ -134,8 +147,6 @@ are needed; resolve anything absent through the index URL above.
       "page": "https://www.mccb.edu/curriculum/simulation-and-game-design-technology",
       "framework_current": "https://www.mccb.edu/sites/default/files/2026-02/Simulation-Game-Design-Technology-2025.pdf",
       "framework_year": 2025,
-      "framework_prior": "https://www.mccb.edu/sites/default/files/Divisions/Programs/Curriculum%20%26%20Instruction/Curriculum/Agriculutre-Food-Natural-Resources/Previous%20Versions/Simulation-Game-Design-Technology-2019.pdf",
-      "prior_year": 2019,
       "pages": 45
     },
     {
@@ -148,34 +159,15 @@ are needed; resolve anything absent through the index URL above.
       "note": "Same PDF as CIP 50.0411, served under a second CIP code."
     },
     {
-      "name": "Extended Reality (XR) Courses/Certificates (Game Design, Augmented, Virtual and Mixed Reality)",
+      "name": "Extended Reality (XR) Courses/Certificates",
       "cip": ["11.0201", "11.0202"],
       "prefixes": ["IST"],
       "page": "https://www.mccb.edu/curriculum/extended-reality-xr-coursescertificates-game-design-augmented-virtual-and-mixed-reality",
-      "framework_current": "https://www.mccb.edu/sites/default/files/mccb/files/Curriculum-PDFs/information-systems-technology/11.0201_11.0202_Extended-Reality-XR-Final-for-web.pdf",
       "framework_year": 2019
     }
   ]
 }
 ```
 
-## Courses defined in the 2025 Simulation framework
-
-For fast prefix matching without re-downloading. Titles are abbreviated.
-
-`IMT 1114` Introduction to Animation and Simulation Design · `IMT 1123` Vector Illustration ·
-`IMT 1213` Game Theory and Mechanics · `IMT 1214` Game Theory (4 hr) · `IMT 1313` Video Game
-Programming I · `IMT 1414` Graphic Editing for Games · `IMT 1513` Introduction to 3D Modeling ·
-`IMT 1523` Intermediate 3D Modeling · `IMT 1613`/`IMT 1614` Advanced 3D Modeling ·
-`IMT 2113` Game Engine 1 · `IMT 2143`/`IMT 2213` Business and Marketing for Game Design ·
-`IMT 2223` Game Engine II · `IMT 2413` Animation & Simulation Design Capstone ·
-`IMT 2513` Game Evaluation · `IMT 2613` Audio Design and Production ·
-`IMT 2723` Introduction to XR Environment Production · `IMT 2733` Integrated 3D Production
-Pipeline · `IMT 2743` Integrated XR Experience · `IMT 2753` Lighting and Shading ·
-`IMT 2763` Introduction to XR Content Production · `IMT 2772` Simulation and Game Project ·
-`IMT 2783`/`IMT 2738` Audio for Simulation and Games
-
-## Institutional context
-
-MGCCC's own program page (catalog-level description, not the SLO source):
-https://mgccc.edu/programs/schools/engineering-mathematics-data-science-it/simulation-and-game-design-technology/
+MGCCC's own program pages are catalog descriptions, not the SLO source. The framework PDF is
+the authority.

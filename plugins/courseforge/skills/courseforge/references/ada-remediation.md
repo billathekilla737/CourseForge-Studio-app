@@ -71,6 +71,15 @@ Three scripts ship the whole workflow (all in `scripts/`; validated end-to-end o
    marked resolved there (decorative navy).
 
 ## Operational gotchas (do not relearn)
+- **Inherited `<span style="border: 1px solid #d7dce3">` emphasis boxes** are a common find in courses that
+  have been edited in the RCE for years (one course had **80 across 22 items** — pages, assignment
+  descriptions, a discussion). A border on an *inline* span fragments when the text wraps, so a sentence
+  renders inside a thin box with ragged open edges, and it conveys emphasis by decoration alone — a screen
+  reader announces nothing, so the emphasis does not exist for anyone not looking at it. Sweep them with
+  `scripts/Remove-BorderedBoxes.ps1`. **Do not blanket-strip every bordered element:** the `<div>` card
+  component legitimately uses the same grey border (`border: 1px solid #d7dce3; border-top: 4px solid #E9A821`)
+  and pills ring in gold — match **spans only**. And do not unwrap a span that carries other declarations
+  (`font-size: 14pt; border: ...`) or you delete the sizing with the box; remove just the border declaration.
 - **Quiz descriptions IGNORE form-encoded PUTs** — HTTP 200, nothing saved (same family as the tabs
   API). Send JSON: `{"quiz":{"description":"..."}}`. Push-CanvasRemediation does this.
 - **Quiz-/discussion-backed assignments 400 on `assignment[description]`** — they are shells; edit the

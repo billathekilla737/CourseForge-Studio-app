@@ -201,6 +201,69 @@ if ($a.quiz_id -or $a.discussion_topic) { continue }
 
 ---
 
+## 11. Module items cannot be re-targeted
+
+`PUT /courses/:id/modules/:mid/items/:iid` with `module_item[content_id]` returns **200** and
+a body echoing the *new* id, then keeps serving the old content. The binding between a module
+item and its content is set at creation and is not writable afterward.
+
+This one is especially convincing because the response looks like a successful write. It was
+found while pointing 7e Cengage module items at their 8e replacements: every PUT reported
+success, and every item still opened the 7e assignment.
+
+```powershell
+# does NOT work - 200, no change
+Invoke-RestMethod -Method Put -Uri ".../modules/$mid/items/$iid" `
+  -Body "module_item[content_id]=$newId"
+
+# works - delete and recreate at the same position
+Invoke-RestMethod -Method Delete -Uri ".../modules/$mid/items/$iid" -Headers $hdr
+Invoke-RestMethod -Method Post -Uri ".../modules/$mid/items" -Headers $hdr `
+  -Body "module_item[type]=Assignment&module_item[content_id]=$newId&module_item[position]=$pos"
+```
+
+Capture `position`, `indent` and `title` from the old item before deleting - the recreated
+item does not inherit them.
+
+---
+
+## 12. A combined quiz PUT can 400 while each field succeeds alone
+
+On this instance (mgccc.instructure.com), a single `PUT /courses/:id/quizzes/:qid` carrying
+`description` + `due_at`/`unlock_at`/`lock_at` + `title` + `access_code` returns **400**.
+Sending each of those fields in its own PUT succeeds every time, with identical values.
+
+The 400 body does not name the offending field, so the failure reads as "my body is
+malformed" and sends you auditing the escaper instead of splitting the request.
+
+**Write one concern per PUT** - metadata, then dates, then description. It costs three round
+trips and removes an entire class of unexplained 400s.
+
+Related: on this network a dropped connection raises with **no HTTP status (code 0)**, which
+looks identical to a real 400. Wrap every call in a retry helper that retries connection
+failures and aborts only on a genuine HTTP status, or you will "fix" bugs that were just
+packet loss.
+
+---
+
+## 13. PowerShell adds instead of concatenating when the left side is an int
+
+Not a Canvas failure, but it bites in the middle of one. Building a regex replacement string
+by prefixing a number to a backreference throws, because `+` on an `[int]` left operand means
+*arithmetic* and PowerShell tries to coerce the literal `'$1$2'` to `Int32`:
+
+```powershell
+$points = 15
+$repl = $points + '$1$2'        # throws: cannot convert "$1$2" to System.Int32
+$repl = [string]$points + '$1$2'  # correct
+$repl = "$points" + '$1$2'        # also correct
+```
+
+Keep the backreference in **single** quotes - in double quotes PowerShell expands `$1` to
+empty before `-replace` ever sees it.
+
+---
+
 ## The rule that catches all of these
 
 **Write, then read back the specific field and compare.** For unpublished quizzes, verify

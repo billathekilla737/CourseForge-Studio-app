@@ -28,7 +28,7 @@ student-data requests), wires up the safety hooks, and checks itself. Watch for
 
 **If it says it found a "Microsoft Store Python stub"** — that's Windows pretending to
 have Python when it doesn't. The install still finished (you'll still see **ALL TESTS
-PASSED**); you just can't fix PowerPoints, Word docs, or PDFs yet. To turn that on, paste
+PASSED**); you just can't fix PowerPoints, Word docs, or PDFs yet (the fast PDF pipeline needs Python too). To turn that on, paste
 this, then re-run the line above **in a new PowerShell window**:
 
 ```powershell

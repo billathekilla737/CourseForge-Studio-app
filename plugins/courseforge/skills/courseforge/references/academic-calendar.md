@@ -45,6 +45,31 @@ Finals:
 - **Full-term finals:** December 7-11, 2026 (grades due Friday, December 11 at noon).
 - **1st-term (1st 8-week) finals:** October 8-9, 2026.
 
+### Online / eLearning terms (source: https://mgccc.edu/elearning/elearning-calendar/)
+Online sections are scheduled from the **eLearning calendar**, which is a DIFFERENT page
+from the main academic calendar and lists each online term's own begin/end. These rows do
+not publish a finals *window*; they publish a single **"Classes End & Grades Due"** date,
+and that is the hard deadline to schedule against. Verified for Fall 2026 on 2026-08-18:
+
+| Online term | Begins | Ends / grades due |
+|---|---|---|
+| August 15-week | Mon Aug 24 | ends Thu Dec 3; grades due Fri Dec 4, noon |
+| August 8-week | Mon Aug 24 | ends Thu Oct 15; grades due Fri Oct 16, noon |
+| August 4-week | Mon Aug 24 | ends Thu Sep 17; grades due Fri Sep 18, noon |
+| **September 13-week** | **Tue Sep 8** | **classes end & grades due Fri Dec 11, noon** |
+| September 4-week | Mon Sep 21 | ends Thu Oct 15; grades due Fri Oct 16, noon |
+| October 8-week | Mon Oct 19 | ends Thu Dec 10; grades due Fri Dec 11, noon |
+| October 4-week | Mon Oct 19 | ends Thu Nov 12; grades due Fri Nov 13, noon |
+| November 4-week | Mon Nov 16 | ends Thu Dec 10; grades due Fri Dec 11, noon |
+
+Other September 13-week milestones: 90% refund Fri Sep 18, mid-term grades posted
+Fri Oct 16, last day to request a withdrawal Tue Nov 3.
+
+**Trap:** a Canvas course's `end_at` is the padded ACCESS end and can sit two weeks past
+the real deadline (course 735790 had `end_at` = Dec 24 against a Dec 11 noon grade
+deadline). Never schedule a final from `end_at`. Place the final far enough before the
+grades-due date to actually grade it.
+
 When calling `Compute-DueDates.ps1`, pass these as:
 - `-StartDate` = the start row that matches the term + mode (e.g. `2026-08-24` for the
   online 15-week).

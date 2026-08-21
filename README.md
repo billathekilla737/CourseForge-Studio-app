@@ -133,6 +133,11 @@ Ask Claude in plain English:
 - **SLO Alignment:** *"Show me which assignments align with each learning outcome for my course?"*
 - **Build from Notion (optional):** *"get my Notion course into Canvas"*
 
+## TODO
+Request Features:
+- **Audio and Video Transcription using Whisper AI"*
+- **Speed improvements of PDF ingestion using Conventional tool + Small AI models"*
+  
 Before any push it **asks whether to publish or leave content unpublished** (default:
 unpublished), and content writes are **dry-run-first**. Remediation **never changes your
 modules or publish state** and preserves instructional text verbatim. See

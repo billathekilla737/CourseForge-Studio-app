@@ -193,14 +193,14 @@ try {
     }
     if ($py) {
         Say ("Python: {0}" -f ("$probe".Trim()))
-        & python -c "import pptx, docx, pypdf, pymupdf" 2>$null
+        & python -c "import pptx, docx, pypdf, pymupdf, pikepdf, fontTools" 2>$null
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Installing python-pptx / python-docx / pypdf (document remediation + triage)..."
-            & python -m pip install --quiet python-pptx python-docx pypdf PyMuPDF
+            Write-Host "Installing python-pptx / python-docx / pypdf / pikepdf / fonttools (document remediation + PDF fastlane)..."
+            & python -m pip install --quiet python-pptx python-docx pypdf PyMuPDF pikepdf fonttools
             if ($LASTEXITCODE -eq 0) { Say "document libraries installed" }
             else { Write-Host "  (could not install document libraries - PPTX/DOCX/PDF features will prompt later)" }
         } else {
-            Say "document libraries present (pptx/docx/pypdf/pymupdf)"
+            Say "document libraries present (pptx/docx/pypdf/pymupdf/pikepdf/fonttools)"
         }
     } else {
         Write-Host "  (Python not found - PPTX/DOCX remediation and PDF triage need Python 3; HTML features unaffected)"

@@ -6,7 +6,7 @@ they reuse cleanly for any Canvas school after a few setting tweaks.
 
 | Component | What it does |
 |---|---|
-| **`courseforge`** | **Remediates, restyles, builds, edits, and moves Canvas courses** — idempotent, dry-run-first on writes: **(1) ADA / Ally remediation of an *existing* course, largely hands-off** — dump → restyle → verify (visible text provably unchanged) → push in place for every HTML body (pages, assignments, discussions, quiz descriptions, syllabus), **plus automated PowerPoint (`.pptx`) alt-text + slide-title and Word (`.docx`) heading/alt/table remediation, and PDF accessibility triage**. **(2) Looks overhaul** — restyle a whole course into the branded navy/gold template (clean / rich / hybrid looks). **(3) Generate & place content** — pages, syllabi, assignments, graded discussions, quizzes/exams and study guides, as styled, sanitizer-safe, accessible content placed into the right modules (or seed a new course from a **Notion** export — one input option). **(4) Export / import / clone** — back a course up to a local `.imscc` and import it, or copy one course into another (replica sandboxes). **(5) Document text editing (change requests)** — find-and-fix text *inside* course files: **PDF** scan / in-place edit / form fill (with digital-signature detection and a collision-checked fill preview) and **Office (`.docx`/`.pptx`/`.xlsx`) raw-XML edits** that reach author metadata, slide masters, and footers — e.g. replace a former instructor's name/email/room across every handout, deck, and form in a course. **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (identities stay local in a gitignored map, the model grades pseudonymized scrubbed text — including opt-in extracted `.docx`/`.pdf`/`.txt` attachment text — and a self-verification gate fails the build if structured PII survives; a dry-run-first poster writes grades back). |
+| **`courseforge`** | **Remediates, restyles, builds, edits, and moves Canvas courses** — idempotent, dry-run-first on writes: **(1) ADA / Ally remediation of an *existing* course, largely hands-off** — dump → restyle → verify (visible text provably unchanged) → push in place for every HTML body (pages, assignments, discussions, quiz descriptions, syllabus), **plus automated PowerPoint (`.pptx`) alt-text + slide-title and Word (`.docx`) heading/alt/table remediation, and PDF accessibility remediation** — a fast deterministic PDF pipeline (`pdf-fastlane`) that OCRs scanned files, writes real basic tag trees, fixes titles/language, and embeds missing fonts in parallel with no model round-trips, validated against **PDF/UA-1 (ISO 14289-1) via veraPDF** rather than scanner heuristics; only judgment calls (image alt text, ambiguous structure) go to the model through a batched, hash-deduped queue. Measured: 220 course PDFs fixed and verified in ~66 seconds. **(2) Looks overhaul** — restyle a whole course into the branded navy/gold template (clean / rich / hybrid looks). **(3) Generate & place content** — pages, syllabi, assignments, graded discussions, quizzes/exams and study guides, as styled, sanitizer-safe, accessible content placed into the right modules (or seed a new course from a **Notion** export — one input option). **(4) Export / import / clone** — back a course up to a local `.imscc` and import it, or copy one course into another (replica sandboxes). **(5) Document text editing (change requests)** — find-and-fix text *inside* course files: **PDF** scan / in-place edit / form fill (with digital-signature detection and a collision-checked fill preview) and **Office (`.docx`/`.pptx`/`.xlsx`) raw-XML edits** that reach author metadata, slide masters, and footers — e.g. replace a former instructor's name/email/room across every handout, deck, and form in a course. **Content-first: it does not read student data in normal use** and refuses ad-hoc roster/grade/submission access. It adds one **opt-in blind-grading flow** (identities stay local in a gitignored map, the model grades pseudonymized scrubbed text — including opt-in extracted `.docx`/`.pdf`/`.txt` attachment text — and a self-verification gate fails the build if structured PII survives; a dry-run-first poster writes grades back). |
 | **`canvas-pii-guard`** | A **local data-protection layer**: PreToolUse hooks that **block** Canvas student-data API calls (rosters/grades/submissions) and local-cache reads *before they run*, so student PII is never fetched or sent. Plus a best-effort output scrubber tuned to MGCCC ID formats. Install it alongside `courseforge`. |
 | **`canvas-module-toolkit/`** | A **portable, model-agnostic** module-content updater (restyle to a brand template, refresh content, validate quiz answer keys) that works with **any** agent that can run a shell — Claude Code, OpenAI Codex CLI, or anything speaking the open [AGENTS.md](https://agents.md/) standard. Cross-platform (**PowerShell 7 on macOS/Linux**, 5.1 on Windows); deterministic Python validators (style/palette, quiz keys, content-diff, contrast) so the agent reads checker output instead of re-deriving compliance. See [`canvas-module-toolkit/README.md`](canvas-module-toolkit/README.md). |
 
@@ -20,8 +20,12 @@ they reuse cleanly for any Canvas school after a few setting tweaks.
 - **Python 3** — powers automated **PPTX / DOCX ADA remediation**, **PDF triage and
   text editing**, **Office document text editing**, blind-grading attachment
   extraction, and the HTML restyle pipeline. Everything else works without it; the
-  installer sets up `python-pptx`, `python-docx`, `pypdf` and `PyMuPDF` when a real
-  Python is present.
+  installer sets up `python-pptx`, `python-docx`, `pypdf`, `PyMuPDF`, `pikepdf` and
+  `fontTools` when a real Python is present. Two OPTIONAL extras unlock the rest of
+  the PDF pipeline: **Tesseract OCR** (`winget install UB-Mannheim.TesseractOCR`) for
+  scanned image-only PDFs, and **veraPDF + a Java runtime** for standards validation
+  (`pdf_fastlane.py validate`); without them those steps queue with a clear message
+  instead of failing.
   **Windows caveat:** a stock Windows 11 has an App Execution Alias stub at
   `WindowsApps\python.exe` that looks like Python but isn't. The installer detects it and
   says so; install the real thing with
@@ -121,7 +125,7 @@ depend on hooks at all.
 
 ## Usage
 Ask Claude in plain English:
-- **ADA compliance (existing course):** *"bring this course up to ADA compliance"*, *"fix my Ally score"*, *"make these PowerPoints accessible"*, *"which of my PDFs hurt the score?"*
+- **ADA compliance (existing course):** *"bring this course up to ADA compliance"*, *"fix my Ally score"*, *"make these PowerPoints accessible"*, *"which of my PDFs hurt the score?"*, *"fix every PDF in this course and prove it against PDF/UA-1"*
 - **Looks overhaul:** *"give this course the school look"*, *"restyle Week 1 in the navy template"*
 - **Generate & place content:** *"add a study guide to Week 3"*, *"build a final-exam quiz"*, *"write a syllabus page", *"Post an announcement"*, *"Create a discussion"*.*
 - **Document text fixes (change requests):** *"find every mention of the previous instructor in this course and replace it with my info — including inside the PowerPoints, Word docs, and PDFs"*, *"fill out this PDF form"*, *"fix the dates in these handouts"*
@@ -136,7 +140,6 @@ Ask Claude in plain English:
 ## TODO
 Request Features:
 - **Audio and Video Transcription using Whisper AI"*
-- **Speed improvements of PDF ingestion using Conventional tool + Small AI models"*
   
 Before any push it **asks whether to publish or leave content unpublished** (default:
 unpublished), and content writes are **dry-run-first**. Remediation **never changes your

@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Brand palette and display font for generated course markup.",
+    "restyle_html.py and courseforge_gui.py read this; override the path with",
+    "the CF_BRAND environment variable, or edit these values in place.",
+    "",
+    "This controls what CourseForge WRITES. It deliberately does not control",
+    "the component DETECTOR in restyle_html.classify(): that matches the",
+    "border colours of the existing MGCCC page template in order to recognise",
+    "a hero/card/callout in a body someone already built. Those literals are a",
+    "fingerprint of the markup being read, not a style choice, so they live in",
+    "the code with a comment rather than here. A different institution",
+    "restyling its own existing template needs new detector patterns, not just",
+    "new colours - see DETECTOR_NOTE in restyle_html.py."
+  ],
+  "name": "MGCCC",
+  "colors": {
+    "navy": "#061E3F",
+    "gold": "#E9A821",
+    "blue": "#236192",
+    "red": "#C11F31",
+    "body_text": "#2c3a4d",
+    "muted_text": "#4b5563",
+    "on_navy_text": "#ffffff",
+    "on_navy_muted": "#cfdcec",
+    "hairline": "#d7dce3",
+    "page_bg": "#f5f6f8",
+    "card_fill": "#ffffff",
+    "goal_fill": "#eef4fa",
+    "alert_fill": "#fbe9eb",
+    "callout_fill": "#F5F5F5"
+  },
+  "fonts": {
+    "display": "Georgia, 'Times New Roman', serif",
+    "body": "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    "mono": "Consolas, 'Courier New', monospace"
+  }
+}

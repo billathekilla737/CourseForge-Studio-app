@@ -53,8 +53,9 @@ def iter_drawings(doc):
     body = doc.element.body
     idx = 0
     for docPr in body.iter(qn("wp:docPr")):
-        # find the blip (image relationship) inside the same drawing, if any
-        drawing = docPr.getparent().getparent()  # docPr -> inline/anchor -> drawing? be lenient
+        # find the blip (image relationship) inside the same drawing, if any.
+        # Located from docPr's own parent (inline/anchor), so the grandparent
+        # <drawing> is never needed - it used to be bound here and unused.
         blip = None
         anc = docPr.getparent()
         if anc is not None:

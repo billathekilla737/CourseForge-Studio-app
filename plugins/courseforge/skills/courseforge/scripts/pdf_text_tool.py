@@ -275,7 +275,19 @@ def cmd_apply(args):
     return 0 if bad == 0 else 2
 
 
-BLANK_CHARS = set("_.Â·â€¤â€¥â€¦-â€“â€” \t")
+# Rule/leader characters, as explicit escapes. This line used to be
+# MOJIBAKE: the intended dot leaders and dashes had been UTF-8 encoded
+# twice, so the set actually held stray characters (A-circumflex, euro
+# sign, curly quotes) while MISSING the real ellipsis and en/em dashes it
+# was supposed to match. Escapes cannot be corrupted by a round-trip
+# through the wrong encoding.
+BLANK_CHARS = set(
+    "_."                     # underscore rules, period leaders
+    "\u00b7"                 # MIDDLE DOT
+    "\u2024\u2025\u2026"       # ONE/TWO DOT LEADER, HORIZONTAL ELLIPSIS
+    "-\u2013\u2014"            # hyphen, EN DASH, EM DASH
+    " \t"
+)
 
 
 def _is_blank_filler(word):

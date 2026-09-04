@@ -227,7 +227,7 @@ NOISE = re.compile(r"^\s*(\d{1,3}|Page \d+.*|Mississippi Curriculum Framework.*|
 def _clean_lines(block):
     out = []
     for ln in block.split("\n"):
-        ln = ln.replace(" ", " ").rstrip()
+        ln = ln.replace("\u00a0", " ").rstrip()   # NBSP -> plain space
         if not ln.strip() or NOISE.match(ln):
             continue
         out.append(ln)
@@ -325,7 +325,7 @@ def cmd_slos(a):
         import pymupdf
     except ImportError:
         try:
-            import fitz as pymupdf
+            import pymupdf
         except ImportError:
             print("REFUSING: PyMuPDF is required (pip install PyMuPDF).")
             return 2

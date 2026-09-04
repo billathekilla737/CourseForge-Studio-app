@@ -56,7 +56,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\CanvasContext.ps1"
 $ctx  = Resolve-CanvasContext -ConfigPath $ConfigPath -TokenPath $TokenPath -CourseId $CourseId
 $cfg  = $ctx.Config
-$tok  = (Get-Content $ctx.TokenPath -Raw).Trim()
+$tok  = $ctx.Token
 $base = $cfg.base_url.TrimEnd('/')
 $cid  = $cfg.course_id
 $api  = "$base/api/v1/courses/$cid"

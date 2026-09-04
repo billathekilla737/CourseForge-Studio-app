@@ -31,12 +31,58 @@ Outputs: styled\<Kind>_<id>.html (pure-ASCII entities - avoids the Canvas
 raw-emoji 500), updated manifest.json, verify-report.json. verify exit code =
 number of failing items (0 = safe to push).
 """
-import argparse, html, json, os, re, sys
+import argparse, hashlib, html, json, os, re, sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-NAVY = "#061E3F"; GOLD = "#E9A821"
-FILLS = {"CARD": "#ffffff", "GOAL": "#eef4fa", "ALERT": "#fbe9eb", "CALLOUT": "#F5F5F5"}
+def load_brand():
+    """Palette and fonts for the markup we WRITE, from brand.json (override
+    with CF_BRAND). Falls back to the MGCCC defaults so a missing or damaged
+    config never stops a remediation run."""
+    default = {
+        "colors": {"navy": "#061E3F", "gold": "#E9A821", "blue": "#236192",
+                   "red": "#C11F31", "body_text": "#2c3a4d",
+                   "muted_text": "#4b5563", "on_navy_text": "#ffffff",
+                   "on_navy_muted": "#cfdcec", "hairline": "#d7dce3",
+                   "page_bg": "#f5f6f8", "card_fill": "#ffffff",
+                   "goal_fill": "#eef4fa", "alert_fill": "#fbe9eb",
+                   "callout_fill": "#F5F5F5"},
+        "fonts": {"display": "Georgia, 'Times New Roman', serif",
+                  "body": "Inter, 'Segoe UI', Roboto, Helvetica, Arial, "
+                          "sans-serif",
+                  "mono": "Consolas, 'Courier New', monospace"}}
+    path = os.environ.get("CF_BRAND") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "brand.json")
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            loaded = json.load(f)
+        for section in ("colors", "fonts"):
+            for k, v in (loaded.get(section) or {}).items():
+                if isinstance(v, str) and v.strip():
+                    default[section][k] = v.strip()
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print("WARN: could not read %s (%s) - using the built-in palette"
+              % (path, e))
+    return default
+
+
+BRAND = load_brand()
+C = BRAND["colors"]
+F = BRAND["fonts"]
+NAVY = C["navy"]; GOLD = C["gold"]
+FILLS = {"CARD": C["card_fill"], "GOAL": C["goal_fill"],
+         "ALERT": C["alert_fill"], "CALLOUT": C["callout_fill"]}
+
+# DETECTOR_NOTE: the hex literals inside classify() and strip_fills() below are
+# NOT style choices and are deliberately not read from brand.json. They match
+# the border colours of the EXISTING MGCCC page template in order to recognise
+# a hero / card / callout inside a body somebody already built - a fingerprint
+# of the markup being read, not of the markup being written. Another
+# institution restyling its own existing template needs new detector patterns
+# here, not just new colours in brand.json.
 
 TAG = re.compile(r"<(/?)(\w+)([^>]*?)>", re.I)
 
@@ -218,11 +264,18 @@ def transform_components(h, look):
         if c == "HERO":
             open_tag = add_prop(open_tag, "background:" + NAVY)
             rest = recolor_first(rest, r'(<div\b[^>]*style="[^"]*")', GOLD)
-            rest = recolor_first(rest, r'(<h2\b[^>]*style="[^"]*")', "#ffffff")
-            rest = recolor_first(rest, r'</h2>\s*(<p\b[^>]*style="[^"]*")', "#cfdcec")
+            rest = recolor_first(rest, r'(<h2\b[^>]*style="[^"]*")',
+                                 C["on_navy_text"])
+            rest = recolor_first(rest,
+                                 r'</h2>\s*(<p\b[^>]*style="[^"]*")',
+                                 C["on_navy_muted"])
         elif c == "FOOTER":
-            open_tag = set_color(add_prop(open_tag, "background:" + NAVY), "#ffffff")
-            rest = re.sub(r"color:\s*#(061e3f|2c3a4d|4b5563|1565c0|236192)", "color:#cfdcec", rest, flags=re.I)
+            open_tag = set_color(add_prop(open_tag, "background:" + NAVY),
+                                 C["on_navy_text"])
+            # DETECTOR_NOTE applies: this matches the template's own
+            # dark text colours so they can be lifted off a navy fill.
+            rest = re.sub(r"color:\s*#(061e3f|2c3a4d|4b5563|1565c0|236192)",
+                          "color:" + C["on_navy_muted"], rest, flags=re.I)
         else:
             open_tag = add_prop(open_tag, "background:" + FILLS[c])
         added += 1
@@ -234,31 +287,48 @@ def transform_components(h, look):
 
 # ---------------- wrap (unstructured bodies) ----------------
 
-WRAP_OPEN = ('<div style="max-width: 980px; margin: 0 auto; font-family: Inter, '
-             "'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; "
-             'color: #2c3a4d;">')
+WRAP_OPEN = ('<div style="max-width: 980px; margin: 0 auto; font-family: '
+             + F["body"] + '; line-height: 1.55; color: '
+             + C["body_text"] + ';">')
 HERO_FILLED = ('<div style="padding: 24px; border-radius: 8px; background: ' + NAVY +
                "; border-top: 5px solid " + GOLD + ';">'
                '<div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; '
                'color: ' + GOLD + '; font-weight: 700;">{eyebrow}</div>'
-               '<h2 style="margin: 6px 0 0; font-size: 30px; font-family: Georgia, '
-               "'Times New Roman', serif; color: #ffffff;\">{title}</h2></div>")
+               '<h2 style="margin: 6px 0 0; font-size: 30px; font-family: '
+               + F["display"] + '; color: ' + C["on_navy_text"]
+               + ';">{title}</h2></div>')
 HERO_CLEAN = ('<div style="padding: 22px 24px; border-radius: 8px; border-top: 5px solid ' + GOLD +
               '; border-left: 8px solid ' + NAVY + ';">'
               '<div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; '
               'font-weight: 700;">{eyebrow}</div>'
-              '<h2 style="margin: 6px 0 0; font-size: 26px; font-family: Georgia, '
-              "'Times New Roman', serif; color: " + NAVY + ';">{title}</h2></div>')
-CARD_OPEN = ('<div style="margin-top: 18px; padding: 18px; border-radius: 8px; background: #ffffff; '
-             'border: 1px solid #d7dce3; border-top: 4px solid ' + GOLD + '; font-size: 14px; '
-             'color: #2c3a4d;">')
+              '<h2 style="margin: 6px 0 0; font-size: 26px; font-family: '
+              + F["display"] + '; color: ' + NAVY + ';">{title}</h2></div>')
+CARD_OPEN = ('<div style="margin-top: 18px; padding: 18px; border-radius: 8px; '
+             'background: ' + C["card_fill"] + '; border: 1px solid '
+             + C["hairline"] + '; border-top: 4px solid ' + GOLD
+             + '; font-size: 14px; color: ' + C["body_text"] + ';">')
 
 
 def wrap_body(h, title, eyebrow, look):
-    hero = (HERO_CLEAN if look == "clean" else HERO_FILLED).format(
-        eyebrow=esc(eyebrow), title=esc(title))
-    card_open = CARD_OPEN if look != "clean" else CARD_OPEN.replace("background: #ffffff; ", "")
-    return WRAP_OPEN + hero + card_open + h + "</div></div>"
+    """Hero + content card around an unstructured body.
+
+    The CLEAN look must emit no background fill AND no colour on anything but
+    h2/h3/a - that is exactly what cmd_verify enforces. The wrapper used to
+    carry `color: <body_text>` on its outer div and card under every look, so
+    clean-look output FAILED ITS OWN VERIFY and could never be pushed (only
+    wrapped bodies were affected, which is why templated courses never hit
+    it). Clean now drops both the fill and the colour and inherits Canvas's
+    default text colour, which is what "no use of colour" means anyway."""
+    if look == "clean":
+        hero = HERO_CLEAN.format(eyebrow=esc(eyebrow), title=esc(title))
+        wrap_open = WRAP_OPEN.replace("; color: " + C["body_text"], "")
+        card_open = (CARD_OPEN
+                     .replace("background: " + C["card_fill"] + "; ", "")
+                     .replace("; color: " + C["body_text"], ""))
+    else:
+        hero = HERO_FILLED.format(eyebrow=esc(eyebrow), title=esc(title))
+        wrap_open, card_open = WRAP_OPEN, CARD_OPEN
+    return wrap_open + hero + card_open + h + "</div></div>"
 
 
 # ---------------- manifest plumbing ----------------
@@ -398,8 +468,15 @@ def cmd_verify(workdir):
         ok = not issues
         if not ok:
             fails += 1
+        # sha256 of the EXACT bytes verified. Push-CanvasRemediation.ps1 gates
+        # on this report, but nothing tied the report to the files it looked
+        # at: verify -> re-run transform -> push passed on a stale pass. The
+        # digest makes a stale report detectable instead of trusted.
         report.append({"kind": it["kind"], "id": it["id"], "name": it["name"],
-                       "ok": ok, "issues": issues, "a11y_after": after})
+                       "ok": ok, "issues": issues, "a11y_after": after,
+                       "styled_file": it["styled_file"],
+                       "styled_sha256": hashlib.sha256(
+                           new.encode("utf-8")).hexdigest()})
         print("  [%s] %-11s %-40s %s" % ("PASS" if ok else "FAIL", it["kind"],
                                          (it["name"] or "")[:40],
                                          "" if ok else "; ".join(issues)))

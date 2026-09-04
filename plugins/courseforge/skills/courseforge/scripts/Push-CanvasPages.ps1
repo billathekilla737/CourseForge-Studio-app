@@ -30,7 +30,7 @@ $ConfigPath = $ctx.ConfigPath; $TokenPath = $ctx.TokenPath
 
 $cfg      = Get-Content -Raw -Encoding UTF8 $ConfigPath   | ConvertFrom-Json
 $manifest = Get-Content -Raw -Encoding UTF8 $ManifestPath | ConvertFrom-Json
-$token    = (Get-Content -Raw $TokenPath).Trim()
+$token    = $ctx.Token
 $base     = $cfg.base_url.TrimEnd('/')
 $courseId = $cfg.course_id
 $api      = "$base/api/v1/courses/$courseId"
@@ -59,7 +59,7 @@ function Save-State { $state | ConvertTo-Json -Depth 6 | Set-Content -Path $Stat
 # (UTF-8 bytes). Pages/assignments/discussions still take form bodies.
 function Add-ModuleItem {
     param([int]$ModuleId, [hashtable]$Item)
-    $json  = (@{ module_item = $Item } | ConvertTo-Json -Compress)
+    $json  = (@{ module_item = $Item } | ConvertTo-Json -Depth 10 -Compress)
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
     return Invoke-RestMethod -Uri "$api/modules/$ModuleId/items" -Headers $headers -Method Post -Body $bytes -ContentType 'application/json; charset=utf-8' -ErrorAction Stop
 }

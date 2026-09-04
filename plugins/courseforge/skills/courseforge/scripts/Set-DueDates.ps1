@@ -65,19 +65,19 @@ if (-not $Auto -and -not $DueDatesJson) {
     throw "Provide -DueDatesJson <path>, or pass -Auto to derive the table from Canvas + the manifest + the term calendar."
 }
 
-# Token resolution: explicit -TokenPath wins; otherwise canvas.token next to the
-# config (the project working-directory convention).
-if (-not $TokenPath) {
-    $cfgDir = Split-Path -Parent (Resolve-Path $ConfigPath).Path
-    $TokenPath = Join-Path $cfgDir 'canvas.token'
-}
+# Token resolution: explicit -TokenPath wins; otherwise Get-CanvasToken finds
+# canvas.token.enc next to the config (migrating a legacy plaintext
+# canvas.token into it). $cfgDir is set unconditionally - it used to be
+# assigned only inside this `if`, so an explicit -TokenPath left it undefined.
+. "$PSScriptRoot\CanvasToken.ps1"
+$cfgDir = Split-Path -Parent (Resolve-Path $ConfigPath).Path
 
 $cfg      = Get-Content -Raw -Encoding UTF8 $ConfigPath   | ConvertFrom-Json
 $manifest = Get-Content -Raw -Encoding UTF8 $ManifestPath | ConvertFrom-Json
 # Explicit path loads the table from file now; -Auto derives $due below (it needs the
 # live Canvas API + the term calendar). -DueDatesJson always wins if both are given.
 $due      = if ($DueDatesJson) { Get-Content -Raw -Encoding UTF8 $DueDatesJson | ConvertFrom-Json } else { $null }
-$token    = (Get-Content -Raw $TokenPath).Trim()
+$token    = (Get-CanvasToken -TokenPath $TokenPath -Dir $cfgDir).Token
 $base     = $cfg.base_url.TrimEnd('/')
 $courseId = $cfg.course_id
 $api      = "$base/api/v1/courses/$courseId"

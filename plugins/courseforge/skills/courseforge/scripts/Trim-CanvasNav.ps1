@@ -31,14 +31,18 @@ param(
 $base = $BaseUrl.TrimEnd('/')
 if (-not $TokenPath) {
     . "$PSScriptRoot\CanvasContext.ps1"
-    $TokenPath = (Resolve-CanvasContext).TokenPath
+    $ctx = Resolve-CanvasContext
+    $TokenPath = $ctx.TokenPath
+    $token = $ctx.Token
+} else {
+    . "$PSScriptRoot\CanvasToken.ps1"
+    $token = (Get-CanvasToken -TokenPath $TokenPath).Token
 }
-$token = (Get-Content -Raw $TokenPath).Trim()
 $headers = @{ Authorization = "Bearer $token" }
 
 function Set-Tab($cid, $tid, $obj) {
   Invoke-RestMethod -Uri "$base/api/v1/courses/$cid/tabs/$tid" -Headers $headers `
-    -Method Put -Body ($obj | ConvertTo-Json) -ContentType 'application/json' -ErrorAction Stop | Out-Null
+    -Method Put -Body ($obj | ConvertTo-Json -Depth 10) -ContentType 'application/json' -ErrorAction Stop | Out-Null
 }
 
 foreach ($cid in $CourseIds) {

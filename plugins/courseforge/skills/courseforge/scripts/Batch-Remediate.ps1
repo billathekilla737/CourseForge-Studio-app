@@ -67,14 +67,18 @@ foreach ($cid in $CourseIds) {
         if (-not (Test-Path $subCfg)) {
             $courseName = ''
             try {
-                $hdrB = @{ Authorization = "Bearer $((Get-Content $ctx.TokenPath -Raw).Trim())" }
+                $hdrB = @{ Authorization = "Bearer $($ctx.Token)" }
                 $courseName = (Invoke-RestMethod -Uri "$base/api/v1/courses/$cid" -Headers $hdrB).name
             } catch {}
             [IO.File]::WriteAllText($subCfg,
                 ('{{ "base_url": "{0}", "course_id": "{1}", "course_label": "{2}" }}' -f $base, $cid, ($courseName -replace '"','')),
                 (New-Object Text.UTF8Encoding($false)))
         }
-        Copy-Item $ctx.TokenPath (Join-Path $dir 'canvas.token') -Force
+        # Re-encrypt into the per-course folder instead of copying the file.
+        # A straight Copy-Item of the blob would work (same user, same
+        # machine), but copying credential files around is exactly the habit
+        # that scattered plaintext tokens across a dozen folders.
+        Save-CanvasToken -Dir $dir -Token $ctx.Token | Out-Null
         $work = Join-Path $dir 'work'
 
         Write-Host ("--- course {0} ---" -f $cid)

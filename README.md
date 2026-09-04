@@ -11,6 +11,70 @@ they reuse cleanly for any Canvas school after a few setting tweaks.
 | **`canvas-module-toolkit/`** | A **portable, model-agnostic** module-content updater (restyle to a brand template, refresh content, validate quiz answer keys) that works with **any** agent that can run a shell — Claude Code, OpenAI Codex CLI, or anything speaking the open [AGENTS.md](https://agents.md/) standard. Cross-platform (**PowerShell 7 on macOS/Linux**, 5.1 on Windows); deterministic Python validators (style/palette, quiz keys, content-diff, contrast) so the agent reads checker output instead of re-deriving compliance. See [`canvas-module-toolkit/README.md`](canvas-module-toolkit/README.md). |
 
 
+## CourseForge PDF Fixer
+
+A single-window app over seven verbs: connect a course, back up & fix, describe
+images with Claude, upload, prove compliance, back up only, roll back.
+
+**What it fixes, deterministically and fast** (~0.5 s/file, 220-file course in
+about a minute):
+
+- *Image-based file detected* → an OCR text layer (Tesseract word boxes drawn
+  invisibly over untouched pixels)
+- *File lacks tags* → a real, basic tag tree: `StructTreeRoot`, `MarkInfo`,
+  per-block `P`/`H1` wired to marked-content IDs, figures tagged with alt
+- Missing title / language → docinfo + XMP `dc:title`, `/Lang`,
+  `DisplayDocTitle`
+- Unembedded fonts, broken `ToUnicode` maps, `.notdef` references, table and
+  heading-order defects in producer tag trees
+
+**What it refuses to touch**: encrypted, digitally signed, or already-tagged
+files it cannot audit. Those go to `queue.json` for a person, never damaged.
+
+**Honest scope.** The tags are real and standards-valid but *basic* —
+paragraphs, simple headings, figures, in content-stream order. That satisfies
+automated checkers and gives assistive-technology users a navigable document.
+It is not full PDF/UA semantic fidelity. The app says so, and it reports the
+gap rather than hiding it:
+
+- figures it could not produce a picture of (so no one can describe them) are
+  counted and **named**
+- alt text that is only a filename (`image0.jpeg`) or `Picture 3` is reported
+  and **deliberately left alone** — it is the author's content, not ours to
+  overwrite
+- a green PDF/UA-1 report alongside either of those means
+  "standards-compliant, not yet genuinely accessible", and the app prints both
+  facts
+
+Every output is independently verified — text preserved, render effectively
+identical, tag tree present — or it is deleted and queued. Originals are always
+kept locally, and `ROLL BACK` restores them.
+
+Install and first-use instructions: [`installer/INSTALL-GUIDE.md`](installer/INSTALL-GUIDE.md).
+
+### Building it
+
+Source lives in `plugins/courseforge/skills/courseforge/scripts/`. The build is driven from `installer/`:
+
+```powershell
+python -m PyInstaller courseforge-pdf.spec --distpath dist --workpath build
+# then place tesseract\, verapdf\ and jre\ beside dist\courseforge-pdf\courseforge-pdf.exe
+# and compile courseforge-pdf.iss with Inno Setup
+```
+
+The spec locates the source via `CF_SCRIPTS`, then the installed skill, then
+`..\skill\scripts`. Build output is **not** committed — the installer is
+~141 MB, past GitHub's 100 MB file limit. Ship it as a GitHub Release.
+
+Before shipping a build:
+
+```powershell
+python skill\scripts\pdf_fastlane.py selftest      # must print SELFTEST PASS
+```
+
+---
+
+
 ## Requirements
 - **Claude Code** — for non-technical users the **desktop app** is the recommended
   surface (install it like any program, sign in, no terminal needed day-to-day); the
@@ -223,3 +287,12 @@ To reproduce the evidence: run `plugins/canvas-pii-guard/tests/Run-GuardTests.ps
 
 ## License / origin
 Authored by Zack Garris (MGCCC). Share freely with other instructors.
+
+CourseForge's own source is MIT — see [`LICENSE`](LICENSE).
+The **installer** is a different matter: it redistributes veraPDF (GPLv3/MPLv2),
+Tesseract (Apache-2.0) and an Eclipse Temurin JRE (GPLv2+CPE), and the frozen
+executable embeds PyMuPDF, which is **AGPL-3.0 or commercial**. Read
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) before publishing installer
+binaries — it lists what is bundled, what each licence requires, and the one
+open question (PyMuPDF) that needs a decision first. Publishing this source
+repo is unaffected.

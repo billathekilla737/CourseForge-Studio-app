@@ -62,13 +62,17 @@ param(
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+. "$PSScriptRoot\CanvasToken.ps1"
+
 # Resolve paths in the body (do NOT use $PSScriptRoot in a param default).
 $cfgDir = Split-Path $ConfigPath -Parent
-if (-not $TokenPath) { $TokenPath = Join-Path $cfgDir 'canvas.token' }
+# $TokenPath stays empty unless the caller gave one: Get-CanvasToken then
+# discovers canvas.token.enc in $cfgDir (migrating a legacy plaintext
+# canvas.token into it), so no plaintext path is assumed here.
 if (-not $OutDir)    { $OutDir    = Join-Path $cfgDir ("grading\{0}" -f $AssignmentId) }
 
 $cfg       = Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
-$token     = (Get-Content -Raw $TokenPath).Trim()
+$token     = (Get-CanvasToken -TokenPath $TokenPath -Dir $cfgDir).Token
 $base      = $cfg.base_url.TrimEnd('/')
 $courseId  = $cfg.course_id
 $api       = "$base/api/v1/courses/$courseId"

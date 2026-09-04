@@ -15,3 +15,71 @@ private/
 **/map.json
 **/proposed-grades*.json
 __pycache__/
+
+# --- credentials (encrypted forms too) --------------------------------------
+*.token.enc
+*.bin
+token-*.bin
+activity-log.jsonl
+**/submissions/
+
+# --- operational working dirs: real course content pulled from Canvas ------
+courses/
+audit/
+pdf-lab/
+pdf-text-work/
+office-lab/
+remediation-work/
+announcements/
+
+# --- build output (GitHub hard-rejects >100 MB; ship installers as Releases) --
+build/
+installer/dist/
+installer/dist-*/
+installer/build/
+installer/Output/
+installer/Deploy-NewMachine/
+*.exe
+*.msi
+
+# --- python -----------------------------------------------------------------
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# --- pdf pipeline artefacts (engine output inside any workdir; never source) --
+**/pdf-fastlane/
+**/original.pdf
+**/fixed.pdf
+**/fixed.pdf.part
+**/fixed.pdf.prealt
+**/*.part
+**/figures/
+**/figures-small/
+**/result.json
+**/summary.json
+**/queue.json
+**/validation.json
+**/alt-todo.json
+**/alt-summary.json
+**/alt.json
+**/curl-fetch.cfg
+startup-error.txt
+
+# --- editor / OS ------------------------------------------------------------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# --- the repo IS the source: never let the patterns above swallow it --------
+!plugins/
+!plugins/**
+!installer/courseforge-pdf.iss
+!installer/courseforge-pdf.spec
+!installer/INSTALL-GUIDE.md
+!installer/cf-icon.ico
+!installer/cf-icon-preview.png
+!tools/**

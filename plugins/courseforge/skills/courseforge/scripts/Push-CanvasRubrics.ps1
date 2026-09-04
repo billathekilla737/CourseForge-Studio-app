@@ -50,10 +50,36 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# Script-scope error handler. With $ErrorActionPreference = 'Stop' and no
+# handler, any Canvas hiccup printed a raw PowerShell stack trace at an
+# instructional designer. Report it in one readable line (plus the 401/403/404
+# meaning, which is what people actually need) and exit non-zero so callers
+# can still tell this failed.
+trap {
+    $code = 0
+    try { $code = [int]$_.Exception.Response.StatusCode } catch {}
+    Write-Host ''
+    Write-Host ("{0} stopped: {1}" -f $MyInvocation.MyCommand.Name, $_.Exception.Message) -ForegroundColor Red
+    switch ($code) {
+        401 { Write-Host '  Canvas said 401 Unauthorized - the token is wrong, expired or revoked. Re-run Setup-Canvas.ps1.' -ForegroundColor Yellow }
+        403 { Write-Host '  Canvas said 403 Forbidden - either no permission on this course, or a rate limit. Wait a minute and retry; if it repeats, check the course is not concluded.' -ForegroundColor Yellow }
+        404 { Write-Host '  Canvas said 404 Not Found - check the course id in the config, and that the item still exists.' -ForegroundColor Yellow }
+        default {
+            if ($code -ge 500) { Write-Host '  Canvas returned a server error. This is usually transient - retry shortly.' -ForegroundColor Yellow }
+        }
+    }
+    if ($_.InvocationInfo -and $_.InvocationInfo.ScriptLineNumber) {
+        Write-Host ("  (line {0})" -f $_.InvocationInfo.ScriptLineNumber) -ForegroundColor DarkGray
+    }
+    Write-Host '  Nothing further was written by this run.' -ForegroundColor Yellow
+    exit 1
+}
+
+
 . "$PSScriptRoot\CanvasContext.ps1"
 $ctx = Resolve-CanvasContext -ConfigPath $ConfigPath -TokenPath $TokenPath -CourseId $CourseId
 $cfg   = $ctx.Config
-$tok   = (Get-Content $ctx.TokenPath -Raw).Trim()
+$tok   = $ctx.Token
 $base  = $cfg.base_url.TrimEnd('/')
 $cid   = $cfg.course_id
 $api   = "$base/api/v1/courses/$cid"

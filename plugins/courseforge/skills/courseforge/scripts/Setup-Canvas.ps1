@@ -8,7 +8,8 @@
 
   It then:
      - works out the school URL + course id from the web address,
-     - saves the token correctly as  canvas.token  (clean, no stray .txt, no BOM),
+     - saves the token ENCRYPTED as canvas.token.enc (Windows DPAPI, this
+       Windows account on this PC only) and removes any plaintext copy,
      - writes  canvas.config.<courseId>.json,
      - drops a .gitignore so the token can never be pushed to GitHub by accident,
      - and immediately TESTS the token against Canvas, printing the course name.
@@ -147,12 +148,16 @@ Write-Good ("Token captured  (starts {0}...  length {1})" -f $mask, $tokenValue.
 
 # --- 3. Save the files (correctly) -----------------------------------------------
 Write-Step 3 "Saving your settings"
-$tokenPath  = Join-Path $WorkingDir 'canvas.token'
 $configPath = Join-Path $WorkingDir ("canvas.config.{0}.json" -f $courseId)
 
-# token: plain ASCII, single line, no trailing newline, no BOM
-[IO.File]::WriteAllText($tokenPath, $tokenValue, (New-Object System.Text.ASCIIEncoding))
-Write-Good ("Saved token -> {0}" -f $tokenPath)
+# token: DPAPI-encrypted for THIS Windows account on THIS machine. A bearer
+# token for a whole Canvas account (every course the instructor can see, and
+# the student data in them) should not sit in a working folder as plaintext,
+# where it gets zipped, emailed and cloud-synced without anyone deciding to.
+. "$PSScriptRoot\CanvasToken.ps1"
+$tokenPath = Save-CanvasToken -Dir $WorkingDir -Token $tokenValue
+Write-Good ("Saved token, encrypted for this Windows account -> {0}" -f (Split-Path -Leaf $tokenPath))
+Write-Warn2 "It only opens for YOUR Windows login on THIS PC. Copying the folder to another machine means re-running this setup."
 
 # clean up a stray .txt/.rtf token file so it is not left lying around
 if ($tokenSource -and ($tokenSource -ne $tokenPath) -and (Test-Path $tokenSource)) {
@@ -184,14 +189,15 @@ try {
 
 if (-not $CourseLabel) { $CourseLabel = $course.name }
 $config = [ordered]@{ base_url = $baseUrl; course_id = "$courseId"; course_label = $CourseLabel }
-[IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
 Write-Good ("Saved course settings -> {0}" -f $configPath)
 
 # --- 5. Protect the token from being pushed --------------------------------------
 $giPath = Join-Path $WorkingDir '.gitignore'
 $giLines = @(
     '# Added by CourseForge setup - never commit credentials or student data',
-    'canvas.token','*.token','canvas.config.*.json','canvas.state.*.json',
+    'canvas.token','canvas.token.enc','*.token','*.token.enc',
+    'canvas.config.*.json','canvas.state.*.json',
     'canvas.project.*.json','canvas-admin-audit.log','canvas-export/',
     'grading/','private/','**/map.json','**/proposed-grades*.json'
 )
@@ -216,5 +222,5 @@ Write-Host ("  Students:       {0}" -f $course.total_students)
 Write-Host ("  Saved in:       {0}" -f $WorkingDir)
 Write-Host ""
 Write-Host "  You can now ask Claude to build or update this course." -ForegroundColor White
-Write-Host "  Keep canvas.token private; if it ever leaks, revoke it in Canvas (Account -> Settings)." -ForegroundColor Gray
+Write-Host "  The token file is encrypted for this Windows account. If a token ever leaks, revoke it in Canvas (Account -> Settings)." -ForegroundColor Gray
 Write-Host ""

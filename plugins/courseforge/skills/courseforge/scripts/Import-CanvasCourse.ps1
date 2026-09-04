@@ -55,7 +55,7 @@ if ($NewCourseName -and -not $AccountId) { throw "-NewCourseName requires -Accou
 . "$PSScriptRoot\CanvasContext.ps1"
 $ctx   = Resolve-CanvasContext -ConfigPath $ConfigPath -TokenPath $TokenPath -CourseId $CourseId
 $cfg   = $ctx.Config
-$token = (Get-Content -Raw $ctx.TokenPath).Trim()
+$token = $ctx.Token
 $base  = $cfg.base_url.TrimEnd('/')
 $hdr   = @{ Authorization = "Bearer $token" }
 

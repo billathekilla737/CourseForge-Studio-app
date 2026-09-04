@@ -54,7 +54,7 @@ $cfg   = $ctx.Config
 if ([string]$cfg.course_id -ne [string]$manifest.course_id) {
     throw ("Config course ({0}) does not match manifest course ({1}). Wrong folder or wrong config." -f $cfg.course_id, $manifest.course_id)
 }
-$token = (Get-Content -Raw $ctx.TokenPath).Trim()
+$token = $ctx.Token
 $base  = $cfg.base_url.TrimEnd('/')
 $cid   = $cfg.course_id
 $api   = "$base/api/v1/courses/$cid"
@@ -69,6 +69,35 @@ $verify = Get-Content -Raw -Encoding UTF8 $verifyPath | ConvertFrom-Json
 $failed = @($verify | Where-Object { -not $_.ok })
 if ($failed.Count -gt 0) {
     throw ("verify-report.json has {0} failing item(s). Fix and re-verify before pushing." -f $failed.Count)
+}
+
+# The report must describe the files we are ABOUT to push. Nothing used to tie
+# the two together, so verify -> re-run transform -> push sailed through on a
+# stale pass and wrote never-verified bodies into a live course.
+$verifyByFile = @{}
+foreach ($v in $verify) {
+    if ($v.styled_file) { $verifyByFile[[string]$v.styled_file] = $v }
+}
+if ($verifyByFile.Count -eq 0) {
+    throw ("verify-report.json predates this version and carries no file digests. Re-run: python restyle_html.py verify {0}" -f $WorkDir)
+}
+$stale = @()
+$sha = [Security.Cryptography.SHA256]::Create()
+try {
+    foreach ($it in @($manifest.items | Where-Object { $_.styled_file })) {
+        $rec = $verifyByFile[[string]$it.styled_file]
+        if (-not $rec) { $stale += ("{0} (not in verify-report)" -f $it.name); continue }
+        if (-not (Test-Path $it.styled_file)) { $stale += ("{0} (styled file missing)" -f $it.name); continue }
+        $bytes = [IO.File]::ReadAllBytes($it.styled_file)
+        $hex = ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
+        if ($hex -ne [string]$rec.styled_sha256) { $stale += ("{0} (changed since verify)" -f $it.name) }
+    }
+} finally { $sha.Dispose() }
+if ($stale.Count -gt 0) {
+    Write-Host ''
+    Write-Host ("{0} item(s) do not match the verify report:" -f $stale.Count)
+    foreach ($s in ($stale | Select-Object -First 15)) { Write-Host ("   {0}" -f $s) }
+    throw ("The verify report is STALE - styled files changed after it was written. Re-run: python restyle_html.py verify {0}" -f $WorkDir)
 }
 
 $look  = $manifest.look
@@ -107,7 +136,38 @@ Write-Host ("{0}: {1} item(s) -> course {2} ({3} look){4}" -f
     $(if ($Apply) { 'PUSH' } else { 'DRY RUN' }), $items.Count, $cid, $look,
     $(if ($Apply) { '' } else { '  (re-run with -Apply to write)' }))
 
+function Write-CanvasBody($it, [string]$bodyText) {
+    if ($it.kind -eq 'Quiz') {
+        # Classic Quizzes silently IGNORE form-encoded description updates
+        # (HTTP 200, no change) - same family as the tabs API. Send JSON.
+        $payload = @{ quiz = @{ description = $bodyText } } | ConvertTo-Json -Depth 5
+        Invoke-RestMethod -Method Put -Uri (Get-PutUrl $it) -Headers $hdr `
+            -ContentType 'application/json; charset=utf-8' -TimeoutSec 120 `
+            -ErrorAction Stop `
+            -Body ([Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
+    } else {
+        # Explicitly URL-encoded form body. Do NOT pass a hashtable to
+        # Invoke-RestMethod here: PS 5.1's own form serializer mis-encodes
+        # some bodies and Canvas then drops the param and 200-no-ops the PUT
+        # (observed live: page PUT "succeeded", content unchanged).
+        # EscapeDataString is chunked - it throws on very long strings.
+        $sb = New-Object Text.StringBuilder
+        [void]$sb.Append([uri]::EscapeDataString((Get-FieldName $it.kind))).Append('=')
+        for ($i = 0; $i -lt $bodyText.Length; $i += 30000) {
+            $len = [Math]::Min(30000, $bodyText.Length - $i)
+            [void]$sb.Append([uri]::EscapeDataString($bodyText.Substring($i, $len)))
+        }
+        Invoke-RestMethod -Method Put -Uri (Get-PutUrl $it) -Headers $hdr `
+            -ContentType 'application/x-www-form-urlencoded; charset=utf-8' `
+            -TimeoutSec 120 -ErrorAction Stop -Body $sb.ToString() | Out-Null
+    }
+}
+
 $done = 0; $errs = 0; $first = $true
+# only items we actually WROTE get fetched back. The live re-verify used to
+# walk every item, so anything skipped by the empty-body guard was reported as
+# a live failure it had never been given a chance to pass.
+$pushed = New-Object System.Collections.ArrayList
 foreach ($it in $items) {
     $bodyText = ''
     if (Test-Path $it.styled_file) { $bodyText = [IO.File]::ReadAllText($it.styled_file) }
@@ -120,37 +180,33 @@ foreach ($it in $items) {
         continue
     }
     try {
-        if ($it.kind -eq 'Quiz') {
-            # Classic Quizzes silently IGNORE form-encoded description updates
-            # (HTTP 200, no change) - same family as the tabs API. Send JSON.
-            $payload = @{ quiz = @{ description = $bodyText } } | ConvertTo-Json -Depth 3
-            Invoke-RestMethod -Method Put -Uri (Get-PutUrl $it) -Headers $hdr `
-                -ContentType 'application/json; charset=utf-8' `
-                -Body ([Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
-        } else {
-            # Explicitly URL-encoded form body. Do NOT pass a hashtable to
-            # Invoke-RestMethod here: PS 5.1's own form serializer mis-encodes
-            # some bodies and Canvas then drops the param and 200-no-ops the PUT
-            # (observed live: page PUT "succeeded", content unchanged).
-            # EscapeDataString is chunked - it throws on very long strings.
-            $sb = New-Object Text.StringBuilder
-            [void]$sb.Append([uri]::EscapeDataString((Get-FieldName $it.kind))).Append('=')
-            for ($i = 0; $i -lt $bodyText.Length; $i += 30000) {
-                $len = [Math]::Min(30000, $bodyText.Length - $i)
-                [void]$sb.Append([uri]::EscapeDataString($bodyText.Substring($i, $len)))
-            }
-            Invoke-RestMethod -Method Put -Uri (Get-PutUrl $it) -Headers $hdr `
-                -ContentType 'application/x-www-form-urlencoded; charset=utf-8' `
-                -Body $sb.ToString() | Out-Null
-        }
+        Write-CanvasBody $it $bodyText
         $done++
+        [void]$pushed.Add($it)
         Write-Host ("  ok   {0,-11} {1}" -f $it.kind, $it.name)
     } catch {
         $status = ''
         try { $status = [int]$_.Exception.Response.StatusCode } catch {}
+        # 403 means BOTH "write-locked course" and "you are being rate
+        # limited" in Canvas. Calling a throttle a locked course sent people
+        # to the registrar over a transient limit, so check before concluding.
+        if ("$status" -eq '403' -and (Test-CanvasThrottle $_)) {
+            Write-Host ("  RATE LIMITED on {0} '{1}' - pausing 20s and retrying once" -f $it.kind, $it.name)
+            Start-Sleep -Seconds 20
+            try {
+                Write-CanvasBody $it $bodyText
+                $done++
+                [void]$pushed.Add($it)
+                Write-Host ("  ok   {0,-11} {1} (after rate limit)" -f $it.kind, $it.name)
+                $first = $false
+                continue
+            } catch {
+                try { $status = [int]$_.Exception.Response.StatusCode } catch {}
+            }
+        }
         if ($first -and "$status" -eq '403') {
-            throw ("FIRST write returned 403 on {0} '{1}': the course is likely write-locked " +
-                   "(concluded / closed grading period). NOTHING has been changed. " +
+            throw ("FIRST write returned 403 on {0} '{1}' and it is not a rate limit: the course is " +
+                   "likely write-locked (concluded / closed grading period). NOTHING has been changed. " +
                    "Have the instructor/registrar re-open it.") -f $it.kind, $it.name
         }
         Write-Host ("  FAIL({0}) {1,-11} {2}" -f $status, $it.kind, $it.name)
@@ -163,13 +219,13 @@ if (-not $Apply) { Write-Host ''; Write-Host 'Dry run complete. Nothing written.
 
 # --- live re-verify -----------------------------------------------------------
 Write-Host ''
-Write-Host 'Live re-verify (fetching every pushed item back):'
+Write-Host ('Live re-verify (fetching back the {0} item(s) actually written):' -f $pushed.Count)
 $liveFails = 0
-foreach ($it in $items) {
+foreach ($it in $pushed) {
     try {
         $url = Get-PutUrl $it
         if ($it.kind -eq 'Syllabus') { $url = $api + '?include[]=syllabus_body' }
-        $resp = Invoke-WebRequest -Uri $url -Headers $hdr -UseBasicParsing
+        $resp = Invoke-WebRequest -Uri $url -Headers $hdr -UseBasicParsing -TimeoutSec 120 -ErrorAction Stop
         $json = ([Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray())) | ConvertFrom-Json
         $live = [string](Get-BodyField $json $it.kind)
         $issues = @()

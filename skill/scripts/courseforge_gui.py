@@ -26,15 +26,10 @@ import tkinter.messagebox as mbox
 
 import courseforge_pdf as core
 
-# MGCCC brand palette - the same one every remediated course page uses
-NAVY = "#061E3F"          # headings, primary fills
-NAVY_MID = "#0E2C54"      # button fill
-BLUE = "#236192"          # hover / info
-GOLD = "#E9A821"          # accents: top bar, progress, CTA
-GOLD_DARK = "#c78f1b"
-RED = "#C11F31"           # brand red: destructive only
-RED_DARK = "#8f1826"
-PAGE_BG = "#f5f6f8"       # light ground, like the course pages
+# MGCCC brand palette - shared with CourseForge Assistant through cf_theme
+# (which reads skill/brand.json when it can find it), so both apps match.
+import cf_theme as T
+from cf_theme import NAVY, NAVY_MID, BLUE, GOLD, GOLD_DARK, RED, RED_DARK, PAGE_BG
 
 
 class QueueWriter:
@@ -54,31 +49,16 @@ class QueueWriter:
 class App:
     def __init__(self, ctk):
         self.ctk = ctk
-        ctk.set_appearance_mode("light")
         self.root = ctk.CTk()
-        self.root.title("%s  v%s" % (core.APP, core.VERSION))
-        self.root.geometry("880x640")
-        self.root.minsize(760, 520)
-        ico = os.path.join(os.path.dirname(sys.executable)
-                           if getattr(sys, "frozen", False)
-                           else os.path.dirname(os.path.abspath(__file__)),
-                           "cf-icon.ico")
-        if os.path.isfile(ico):
-            try:
-                self.root.iconbitmap(ico)
-            except Exception:
-                pass
+        # light mode, page ground, gold bar, Georgia title, window icon:
+        # the shared chrome, so this window and the Assistant look the same
+        T.apply_window_chrome(ctk, self.root, "%s  v%s" % (core.APP, core.VERSION),
+                              icon_name="cf-icon.ico", size="880x640",
+                              minsize=(760, 520))
 
         self.q = queue.Queue()
         self.busy = False
         self.courses = []          # [{config dict}]
-
-        self.root.configure(fg_color=PAGE_BG)
-        ctk.CTkFrame(self.root, height=6, corner_radius=0,
-                     fg_color=GOLD).pack(fill="x")
-        ctk.CTkLabel(self.root, text="CourseForge PDF Fixer",
-                     font=("Georgia", 24, "bold"), text_color=NAVY,
-                     anchor="w").pack(fill="x", padx=16, pady=(10, 0))
 
         # ---- header row: course picker + connect
         top = ctk.CTkFrame(self.root, fg_color="transparent")

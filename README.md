@@ -6,10 +6,12 @@ designers at Mississippi Gulf Coast Community College.
 | | What it is | Who runs it | State |
 |---|---|---|---|
 | **CourseForge PDF Fixer** | A Windows desktop app that backs up, repairs and re-uploads a course's PDFs, and proves the result against PDF/UA-1 | An instructor, on their own PC, with no Python and no PowerShell | **v1.1.8 — deployable** |
-| **CourseForge** | A Canvas remediation and course-building toolkit (PowerShell + Python) driven by the `courseforge` Claude Code skill | An instructional designer, with Claude Code | **Working toolkit, not yet a standalone product** |
+| **CourseForge Assistant** | A Windows desktop app: one prompt box over the whole toolkit, with Claude Code working behind the window and an Allow / Deny dialog for every change to Canvas | An instructor or instructional designer, on their own PC, with Claude Code signed in | **v0.1.0 — first build** |
+| **CourseForge** | A Canvas remediation and course-building toolkit (PowerShell + Python) driven by the `courseforge` Claude Code skill | An instructional designer, with Claude Code — or anyone, through the Assistant | **Working toolkit** |
 
-They share one engine (`pdf_fastlane.py`) and one Canvas convention, which is
-why they live in one repository.
+The two apps share one window shell (`cf_theme.py`), the PDF Fixer and the
+toolkit share one engine (`pdf_fastlane.py`), and all three share one Canvas
+convention, which is why they live in one repository.
 
 ---
 
@@ -76,6 +78,54 @@ python skill\scripts\pdf_fastlane.py selftest      # must print SELFTEST PASS
 
 ---
 
+## CourseForge Assistant
+
+The toolkit below, without the terminal. It wears the same window shell as the
+PDF Fixer (shared through `skill/scripts/cf_theme.py`): course picker, six
+quick-job suggestions, a plain-language prompt box, a conversation pane. Behind
+it, Claude Code runs headless with the `courseforge` skill in one long-lived
+streaming session per course, so follow-ups continue where they left off and
+Claude reads its own results and corrects course.
+
+**The safety gate.** `cf_assistant_hook.py` is wired in as a Claude Code
+`PreToolUse` hook on every tool call. Reads, dumps, transforms and dry runs go
+through on their own. Anything that writes to Canvas (`-Apply`, the three
+scripts that write on sight, a raw PUT/POST/DELETE) or changes the PC makes the
+hook phone the window over localhost and block until the person clicks
+**Allow** or **Deny**. No window to ask means deny: it fails closed, and the
+hook never denies on its own judgement — every deny is a person's click. The
+rules are pure functions with tests (`test_courseforge_assistant.py`).
+
+**What it needs on the PC.** Claude Code, signed in with the employee's own
+Claude account (the app detects it and opens the sign-in). Nothing else: the
+installer carries an embeddable Python with the skill's packages, and a copy of
+the skill that it installs into `%USERPROFILE%\.claude\skills\courseforge` on
+first run and refreshes on upgrade — a skill folder it did not install (a
+designer's live copy) is left alone.
+
+Work lives in `Documents\CourseForge-Assistant\<course id>\` in the skill's own
+layout — `canvas.config.<id>.json` beside a DPAPI-encrypted `canvas.token.enc`,
+written by Python in the exact format `CanvasToken.ps1` reads — so every script
+resolves the course with no extra flags and a designer can drive the same
+folder by hand. Console mode for diagnosis and scripting:
+`courseforge-assistant ask <course_id> "<request>"`.
+
+Install and first-use instructions:
+[`installer/INSTALL-GUIDE-ASSISTANT.md`](installer/INSTALL-GUIDE-ASSISTANT.md).
+
+### Building it
+
+```powershell
+cd installer
+.\Build-Assistant.ps1            # tests -> embeddable Python -> PyInstaller -> stage -> smoke -> Inno Setup
+.\Build-Assistant.ps1 -SkipPython -SkipInstaller   # quick rebuild of the exe only
+```
+
+The exe is small (no PDF engine inside it); `python\` and `skill\` are staged
+beside it. Output is not committed — ship the setup exe as a GitHub Release.
+
+---
+
 ## CourseForge (the toolkit)
 
 `skill/` is a [Claude Code skill](https://docs.claude.com/en/docs/claude-code):
@@ -123,11 +173,12 @@ checking, blind-grading bundles, and left-nav trimming. See `skill/SKILL.md`.
 ### Tests
 
 ```powershell
-python skill\scripts\pdf_fastlane.py selftest       # PDF engine + alt pipeline
-python skill\scripts\test_restyle_html.py           # the restyler's verify gate
+python skill\scripts\pdf_fastlane.py selftest              # PDF engine + alt pipeline
+python skill\scripts\test_restyle_html.py                  # the restyler's verify gate
+python skill\scripts\test_courseforge_assistant.py         # permission gate, hook, token format, stream parsing
 ```
 
-Both are dependency-free and must pass before any change ships.
+All three are dependency-free and must pass before any change ships.
 
 ---
 
@@ -138,8 +189,11 @@ skill/          the courseforge Claude Code skill - THE SOURCE
   SKILL.md        playbook
   brand.json      palette + fonts for generated markup
   references/     detailed guides (ADA remediation, style, calendar, SLO...)
-  scripts/        22 PowerShell verbs + 12 Python tools
-installer/      PyInstaller spec, Inno Setup script, icon, install guide
+  scripts/        22 PowerShell verbs + 12 Python tools, plus the two desktop apps:
+                  courseforge_gui.py (PDF Fixer), courseforge_assistant.py (Assistant),
+                  cf_theme.py (shared look), cf_assistant_hook.py (permission gate)
+installer/      PyInstaller specs, Inno Setup scripts, icons, install guides,
+                Build-Assistant.ps1 (one-command Assistant build)
 sync-skill.ps1  keep skill/ and the live ~\.claude\skills\courseforge in step
 ```
 

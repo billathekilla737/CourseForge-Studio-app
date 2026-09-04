@@ -41,6 +41,11 @@ installer/dist-*/
 installer/build/
 installer/Output/
 installer/Deploy-NewMachine/*.exe
+installer/dist-assistant/
+installer/dist-assistant-*/
+installer/build-assistant/
+installer/python-embed/
+installer/cache/
 *.exe
 *.msi
 
@@ -96,4 +101,12 @@ announcements/
 !installer/INSTALL-GUIDE.md
 !installer/cf-icon.ico
 !installer/cf-icon-preview.png
+!installer/courseforge-assistant.iss
+!installer/courseforge-assistant.spec
+!installer/Build-Assistant.ps1
+!installer/INSTALL-GUIDE-ASSISTANT.md
+!installer/cf-assistant-icon.ico
+!installer/cf-assistant-icon-preview.png
 !sync-skill.ps1
+# force-include above re-admits caches; drop them again
+skill/**/__pycache__/

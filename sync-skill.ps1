@@ -3,13 +3,13 @@
 
   The source of truth while you work is the live skill that Claude Code loads:
       %USERPROFILE%\.claude\skills\courseforge\
-  The repo keeps its copy under plugins\courseforge\skills\courseforge\ so the code is actually IN the
+  The repo needs its own copy under skill\ so the code is actually IN the
   repository and buildable by anyone who clones it. Two copies can drift, so
   this script is the only sanctioned way to move between them.
 
       .\sync-skill.ps1                 # show what differs (default: no writes)
-      .\sync-skill.ps1 -ToRepo         # live  -> repo plugin copy   (before a commit)
-      .\sync-skill.ps1 -ToLive         # repo plugin copy -> live    (after a pull)
+      .\sync-skill.ps1 -ToRepo         # live  -> repo\skill   (before a commit)
+      .\sync-skill.ps1 -ToLive         # repo\skill -> live    (after a pull)
 
   __pycache__, .pyc and any stray credential file are never copied.
   ASCII only. PowerShell 5.1 compatible.
@@ -18,7 +18,7 @@ param(
     [switch]$ToRepo,
     [switch]$ToLive,
     [string]$LiveRoot = (Join-Path $env:USERPROFILE '.claude\skills\courseforge'),
-    [string]$RepoRoot = (Join-Path $PSScriptRoot 'plugins\courseforge\skills\courseforge')
+    [string]$RepoRoot = (Join-Path $PSScriptRoot 'skill')
 )
 
 $ErrorActionPreference = 'Stop'

@@ -1,55 +1,62 @@
-# Never commit credentials or student data
+# ---------------------------------------------------------------------------
+# CourseForge .gitignore
+#
+# Two rules drive everything here:
+#   1. NEVER commit credentials or anything derived from student data.
+#   2. NEVER commit build output. GitHub hard-rejects any file over 100 MB and
+#      the installer exe is ~141 MB. Ship those as GitHub *Releases*.
+# ---------------------------------------------------------------------------
+
+# --- credentials -----------------------------------------------------------
 canvas.token
 *.token
+*.bin
 canvas.config.*.json
 canvas.state.*.json
 canvas.project.*.json
-canvas.*.state.json
-canvas-admin-audit.log
-canvas-export/
+token-*.bin
 
-# Local-only PII / grading outputs (NEVER commit map.json or bundles)
+# --- student / course data and audit trails --------------------------------
+canvas-admin-audit.log
+activity-log.jsonl
+canvas-export/
 grading/
 private/
-*.raw.json
 **/map.json
 **/proposed-grades*.json
-__pycache__/
-
-# --- credentials (encrypted forms too) --------------------------------------
-*.token.enc
-*.bin
-token-*.bin
-activity-log.jsonl
 **/submissions/
 
-# --- operational working dirs: real course content pulled from Canvas ------
+# Operational working directories: real course content pulled from Canvas.
+# Not source, frequently large, and not ours to publish.
 courses/
 audit/
 pdf-lab/
 pdf-text-work/
 office-lab/
-remediation-work/
-announcements/
-
-# --- build output (GitHub hard-rejects >100 MB; ship installers as Releases) --
 build/
+
+# --- build output (the GitHub 100 MB blocker) ------------------------------
 installer/dist/
 installer/dist-*/
 installer/build/
 installer/Output/
-installer/Deploy-NewMachine/
+installer/Deploy-NewMachine/*.exe
 *.exe
 *.msi
 
-# --- python -----------------------------------------------------------------
+# --- python ----------------------------------------------------------------
+__pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
 .pytest_cache/
 .ruff_cache/
 
-# --- pdf pipeline artefacts (engine output inside any workdir; never source) --
+# --- pdf pipeline artefacts ------------------------------------------------
+# Anything the engine generates into a workdir. Never source.
+# NOTE: these are deliberately NOT rooted, so they also catch workdirs nested
+# under courses/ and pdf-lab/. skill/ is force-included at the bottom.
 **/pdf-fastlane/
 **/original.pdf
 **/fixed.pdf
@@ -68,18 +75,25 @@ venv/
 **/curl-fetch.cfg
 startup-error.txt
 
-# --- editor / OS ------------------------------------------------------------
+# --- editor / OS -----------------------------------------------------------
 .vscode/
 .idea/
 Thumbs.db
 desktop.ini
+*.swp
+*~
 
-# --- the repo IS the source: never let the patterns above swallow it --------
-!plugins/
-!plugins/**
+# --- encrypted token blobs and pulled course content (added 2026-09) ---------
+*.token.enc
+remediation-work/
+announcements/
+
+# --- the repo IS the source: never let the patterns above swallow it -------
+!skill/
+!skill/**
 !installer/courseforge-pdf.iss
 !installer/courseforge-pdf.spec
 !installer/INSTALL-GUIDE.md
 !installer/cf-icon.ico
 !installer/cf-icon-preview.png
-!tools/**
+!sync-skill.ps1

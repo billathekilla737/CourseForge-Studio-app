@@ -23,6 +23,56 @@ resolved) but still pull the number down until cleared.
 | Link does not contain text | empty/icon-only `<a>` | put descriptive text inside the link |
 | Linked or embedded external content… | a linked PDF / publisher site / embedded video | **manual** — about the external resource, not your HTML; surface to instructor |
 
+## "Styles might be used instead of semantic markup" — triage before you fix
+
+This is the most commonly **mis-fixed** Ally check. The message suggests headings
+("Consider using proper headings (`<h1>`-`<h6>`)"), so the tempting move is to promote every
+flagged block to a heading. That is wrong most of the time and can make a page worse.
+
+**What actually trips it:** a paragraph whose *entire* content is one emphasis element —
+`<p><strong>...</strong></p>` or `<p><em>...</em></p>`. Length is irrelevant. Verified
+firing on all three of these:
+
+```html
+<p><strong>You Do It 1<br></strong></p>                        <!-- 11 chars -->
+<p><strong>Access your full e-book from MindTap ...</strong></p><!-- 94 chars -->
+<p><strong>&nbsp;&nbsp;...&nbsp; public new string ToString()</strong></p>
+```
+
+Bolding a **word or phrase inside** a sentence is fine — Ally's own text says so. The flag
+is for bolding the whole block.
+
+**Triage each hit into one of three fixes.** One real course had ~70 wholly-bold paragraphs
+and only ~16 wanted a heading:
+
+| What the text actually is | Fix | Why not a heading |
+|---|---|---|
+| Short structural label — `You Do It 1`, `Instructions:`, `HINTS:`, `SAMPLE:` | promote to a real `<h3>` | — this IS the heading case |
+| An instruction or note sentence, often 90-500+ chars | **drop the blanket `<strong>`**, keep the paragraph and wording | a sentence-length heading misrepresents the outline and still reads wrong to a screen-reader user navigating by headings |
+| Code faked with bold + `&nbsp;` indentation | convert the whole run to **one** code block | code as a heading is nonsense, and the `&nbsp;` indent is unreadable either way |
+
+**Use an allowlist of label texts, never a length rule.** Deciding by length misfires: a
+27-char `*Updated: February 7, 2025*` is not a heading, a 16-char `I will go first:` in a
+discussion is not structure, and `public new string ToString()` is code. List the labels you
+mean and touch only those.
+
+**Check the heading level before promoting.** Canvas renders the page/assignment title as
+the only `<h1>`, so bodies carry one `<h2>` hero and `<h3>` sections. Promote to `<h3>` only
+if an `<h2>` already exists — otherwise you clear this flag and immediately raise
+*"Page contains skipped headings"* instead. Count first.
+
+**Converting faked code:** turn `&nbsp;` runs back into real spaces inside a
+`white-space: pre-wrap` block so the indentation survives, re-escape `< > &`, and collapse
+the whole run of paragraphs into a single block. On a **clean-look** page drop the
+`background: #F5F5F5` from the code-block component — a fill would trade this flag for the
+*"use of color"* advisory.
+
+Gate every rewrite on the **visible text being byte-identical** before and after; these
+fixes are pure markup changes and should never alter a word.
+
+`scripts/Fix-BoldAsStructure.ps1` implements the triage — it reports and classifies by
+default, and each remedy is a separate opt-in switch.
+
 ## Two looks and the score trade-off (decide up front)
 - **RICH** (filled navy bands, colored callouts) looks best but raises Ally's *advisory* "use of color"
   on **every filled element** — roughly **~12 per page**. Across a 20-page course that's hundreds of
@@ -71,6 +121,15 @@ Three scripts ship the whole workflow (all in `scripts/`; validated end-to-end o
    marked resolved there (decorative navy).
 
 ## Operational gotchas (do not relearn)
+- **Inherited `<span style="border: 1px solid #d7dce3">` emphasis boxes** are a common find in courses that
+  have been edited in the RCE for years (one course had **80 across 22 items** — pages, assignment
+  descriptions, a discussion). A border on an *inline* span fragments when the text wraps, so a sentence
+  renders inside a thin box with ragged open edges, and it conveys emphasis by decoration alone — a screen
+  reader announces nothing, so the emphasis does not exist for anyone not looking at it. Sweep them with
+  `scripts/Remove-BorderedBoxes.ps1`. **Do not blanket-strip every bordered element:** the `<div>` card
+  component legitimately uses the same grey border (`border: 1px solid #d7dce3; border-top: 4px solid #E9A821`)
+  and pills ring in gold — match **spans only**. And do not unwrap a span that carries other declarations
+  (`font-size: 14pt; border: ...`) or you delete the sizing with the box; remove just the border declaration.
 - **Quiz descriptions IGNORE form-encoded PUTs** — HTTP 200, nothing saved (same family as the tabs
   API). Send JSON: `{"quiz":{"description":"..."}}`. Push-CanvasRemediation does this.
 - **Quiz-/discussion-backed assignments 400 on `assignment[description]`** — they are shells; edit the

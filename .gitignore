@@ -110,3 +110,20 @@ announcements/
 !sync-skill.ps1
 # force-include above re-admits caches; drop them again
 skill/**/__pycache__/
+
+# --- added 2026-09 security pass ---------------------------------------------
+# a token saved as a note, and the per-course state files, must never ship or commit
+*.rtf
+canvas.state*.json
+canvas.project*.json
+# work folders the office/PDF gateways create relative to wherever they were run
+pptx-work/
+docx-work/
+office-text-work/
+pdf-triage/
+batch-remediation/
+**/*.work/
+# build-side caches (downloaded wheels for the hash-locked embed install)
+installer/cache/
+installer/_tools-keep/
+installer/Output/*.sha256

@@ -1,0 +1,19 @@
+# Tools and libraries on the BUILD machine that end up inside the frozen exes
+# (the PDF Fixer freezes these into courseforge-pdf.exe; the Assistant freezes
+# only customtkinter). Pinned to the versions that produced the current
+# releases so a rebuild elsewhere ships the same code that was tested.
+#
+#   python -m pip install -r requirements-build.txt
+#
+# Python itself: 3.12.10 (the same version as the embeddable runtime).
+pyinstaller==6.10.0
+pyinstaller-hooks-contrib==2024.8
+customtkinter==6.0.0
+pillow==12.3.0
+pymupdf==1.28.2
+pikepdf==10.12.0
+pypdf==6.14.2
+fonttools==4.63.0
+lxml==6.1.1
+python-pptx==1.0.2
+python-docx==1.2.0

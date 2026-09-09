@@ -22,12 +22,33 @@ WizardStyle=modern
 UninstallDisplayName={#AppName}
 SetupIconFile=cf-icon.ico
 
+; Code signing. Build-*.ps1 passes /DSign and defines the "cfsign" tool
+; (/Scfsign="signtool.exe sign ... $f") when a certificate is available; the
+; setup exe and the uninstaller are then signed too. Without /DSign the build
+; is unsigned and SmartScreen will warn on a browser-downloaded copy.
+#ifdef Sign
+SignTool=cfsign
+SignedUninstaller=yes
+#endif
+
 [Files]
 Source: "dist\courseforge-pdf\*"; DestDir: "{app}"; \
   Flags: recursesubdirs createallsubdirs ignoreversion
 ; brand-versioned NAME: Windows caches shortcut icons by path, so a rebrand
 ; must ship under a fresh filename or old machines keep showing stale art
 Source: "cf-icon.ico"; DestDir: "{app}"; DestName: "cf-icon-mgccc.ico"
+
+; An upgrade installed over the top used to KEEP every file the new build
+; no longer ships (ignoreversion only overwrites what exists in both). Clear
+; the frozen tree first so the app on disk is exactly the build.
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\_internal"
+
+; The DPAPI token blobs live outside {app}; take them with the app so an
+; uninstall on a PC being handed over does not leave a usable credential.
+; Course folders under Documents (originals, fixed PDFs, reports) are kept.
+[UninstallDelete]
+Type: filesandordirs; Name: "{localappdata}\CourseForge-PDF"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; IconFilename: "{app}\cf-icon-mgccc.ico"

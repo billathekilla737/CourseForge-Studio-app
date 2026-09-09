@@ -61,9 +61,8 @@ Install and first-use instructions: [`installer/INSTALL-GUIDE.md`](installer/INS
 Source lives in `skill/scripts/`. The build is driven from `installer/`:
 
 ```powershell
-python -m PyInstaller courseforge-pdf.spec --distpath dist --workpath build
-# then place tesseract\, verapdf\ and jre\ beside dist\courseforge-pdf\courseforge-pdf.exe
-# and compile courseforge-pdf.iss with Inno Setup
+python -m pip install -r installer\requirements-build.txt
+.\Build-PdfFixer.ps1 -ToolsFrom <folder holding tesseract\ verapdf\ jre\>   # -SignThumbprint <sha1> for a signed release
 ```
 
 The spec locates the source via `CF_SCRIPTS`, then the installed skill, then
@@ -117,7 +116,7 @@ Install and first-use instructions:
 
 ```powershell
 cd installer
-.\Build-Assistant.ps1            # tests -> embeddable Python -> PyInstaller -> stage -> smoke -> Inno Setup
+.\Build-Assistant.ps1            # tests -> verified Python download -> hash-locked packages -> PyInstaller -> stage -> smoke -> Inno Setup
 .\Build-Assistant.ps1 -SkipPython -SkipInstaller   # quick rebuild of the exe only
 ```
 

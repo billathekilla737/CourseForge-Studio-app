@@ -13,21 +13,20 @@ to Canvas in a dialog.
 
 1. Copy `CourseForge-Assistant-Setup-0.1.0.exe` to the PC (USB stick or a
    shared drive is fine).
-2. Double-click it. If Windows SmartScreen shows "Windows protected your PC",
-   click **More info → Run anyway** (the installer is unsigned; see the note
-   for deployers).
-3. Click Next, Next, Finish. **No admin password is needed** — it installs into
-   the user's own profile, with a Start Menu entry and a desktop icon.
+2. Double-click it and click Next, Next, Finish. **No admin password is
+   needed** — it installs into the user's own profile, with a Start Menu entry
+   and a desktop icon.
+3. If Windows shows **"Windows protected your PC"**, stop and check with IT
+   rather than clicking through: the copy was downloaded by a browser and is
+   not signed. Signed builds and IT-pushed installs do not show it.
 
 Python and the CourseForge toolkit are inside the app. The one thing that is
 **not** inside it is Claude Code, which signs in with the person's own Claude
 account:
 
-4. Open PowerShell and run the one-line installer from claude.ai:
-
-   ```powershell
-   irm https://claude.ai/install.ps1 | iex
-   ```
+4. **IT installs Claude Code** on the PC (it is a standard per-user Anthropic
+   package; put it in the image or push it the same way as the Assistant).
+   Instructors should not be asked to paste install commands into PowerShell.
 
 5. Run `claude` once, sign in when the browser opens, then close the window.
    (If this step is skipped, the Assistant offers to open the sign-in the
@@ -44,6 +43,7 @@ box to type in at the bottom.
    Access Token). One token covers every course on that Canvas site; it is
    stored encrypted, for that Windows account on that PC only. If the PDF
    Fixer already has a token saved on this PC, leave the token box blank.
+   Give the token an expiry date when you create it.
 2. **Say what you want.** Type it in the box and press Enter (Shift+Enter for a
    new line), or click one of the suggestions to start from a ready-made
    request — *Make it ADA compliant*, *Give it the school look*, *Add
@@ -87,8 +87,14 @@ the change does not happen.
 
 - **Per-user install.** Each Windows account that will use it runs the
   installer once. For an all-users or Intune/SCCM push, ask about an MSI.
-- **Unsigned binary.** SmartScreen warns on first run. A college code-signing
-  certificate removes this.
+- **One named Windows account per person.** The saved Canvas token and the
+  Claude sign-in only unlock for the Windows account that created them. On a
+  shared or generic login, the next person inherits both. Do not deploy to
+  shared logins.
+- **Signing.** Build with `Build-Assistant.ps1 -SignThumbprint <cert>` or
+  `-SignCommand` (Azure Trusted Signing). Unsigned builds work, but SmartScreen
+  warns on a browser-downloaded copy and AppLocker/WDAC publisher rules cannot
+  allow them. Every build writes a `.sha256` next to the installer; publish it.
 - **Claude Code** must be installed and signed in for that Windows account. The
   app finds it on PATH or in the usual native and npm locations. Usage bills to
   the person's own Claude plan (Pro or Max); no API key is involved.
@@ -124,6 +130,8 @@ the change does not happen.
 
 ## Uninstalling
 
-Settings → Apps → CourseForge Assistant → Uninstall. Working files in
-`Documents\CourseForge-Assistant` and the installed skill are left in place;
-delete them by hand if the PC is being handed over.
+Settings → Apps → CourseForge Assistant → Uninstall. This also deletes the
+saved Canvas token under `%LOCALAPPDATA%\CourseForge-Assistant`. Working
+files in `Documents\CourseForge-Assistant` (including each course's
+`canvas.token.enc`) and the installed skill are left in place; delete them by
+hand if the PC is being handed over.

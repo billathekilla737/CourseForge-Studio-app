@@ -1,0 +1,31 @@
+# Packages installed into the embeddable Python that ships beside the
+# Assistant exe (Build-Assistant.ps1). Every line is pinned AND hashed:
+# pip refuses anything that does not match, so a changed upstream wheel
+# cannot enter the installer silently. Regenerate with
+#   .\Build-Assistant.ps1 -RefreshEmbedPins
+# which re-resolves these top-level packages for cp312/win_amd64 and
+# rewrites this file.
+--only-binary=:all:
+
+fonttools==4.63.0 \
+    --hash=sha256:59ac449f8cca9b4ffa08d2e7bbadad87ce710d69d1eda5c3c1ce579baa987272
+lxml==6.1.1 \
+    --hash=sha256:26e6eda8d38c1fcab1090dd196ee87cbd13788e531937610e2589085de074e77
+packaging==26.3 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+pikepdf==10.12.0 \
+    --hash=sha256:837226cb3d8a713a51b767cd2a5ecf48d9b8ac90bffdf94b2c61a2764fd7c385
+pillow==12.3.0 \
+    --hash=sha256:a2b55dd6b2a4c4b7d87ffa56bdb33fdc5fdb9a462173861a7bc097f17d91cb09
+pymupdf==1.28.2 \
+    --hash=sha256:ebd244918798502d7b4504c90410d1711a4d7675a32584ca30f1bab419ecbffe
+pypdf==6.14.2 \
+    --hash=sha256:3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946
+python-docx==1.2.0 \
+    --hash=sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7
+python-pptx==1.0.2 \
+    --hash=sha256:160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+xlsxwriter==3.2.9 \
+    --hash=sha256:9a5db42bc5dff014806c58a20b9eae7322a134abb6fce3c92c181bfb275ec5b3

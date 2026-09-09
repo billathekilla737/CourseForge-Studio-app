@@ -7,10 +7,15 @@
 
 1. Copy `CourseForge-PDF-Fixer-Setup-1.1.8.exe` to the PC (USB stick or a
    shared drive is fine — no internet needed to install).
-2. Double-click it. If Windows SmartScreen shows "Windows protected your PC",
-   click **More info → Run anyway** (the installer is unsigned; see note below).
-3. Click Next, Next, Finish. **No admin password is needed** — it installs
-   into the user's own profile, with a Start Menu entry and desktop icon.
+2. Double-click it and click Next, Next, Finish. **No admin password is
+   needed** — it installs into the user's own profile, with a Start Menu entry
+   and desktop icon.
+3. If Windows shows **"Windows protected your PC"**, stop and check with IT
+   rather than clicking through: that warning means the copy you have was
+   downloaded by a browser and is not signed. A build signed with the
+   college's certificate, or one IT pushes with Intune/SCCM, does not show it.
+   Check the file's SHA-256 against the `.sha256` file published with the
+   release if in doubt.
 
 That's the whole install. Python, Tesseract, Java and veraPDF are all inside
 the app — nothing else to download.
@@ -24,7 +29,9 @@ shows what is happening.
 1. **Connect a course…** (top right) — paste the course web address from the
    browser, then a Canvas access token (Canvas → Account → Settings → New
    Access Token). One token covers every course on that Canvas site; it is
-   stored encrypted, for that Windows account on that PC only.
+   stored encrypted, for that Windows account on that PC only. **Sign out of
+   Canvas** (bottom of the window) removes it from the PC again — do that on a
+   computer you are leaving. Give the token an expiry date when you create it.
 2. **Back up & Fix PDFs** — downloads the course's PDFs and repairs them on
    this computer. **Nothing in Canvas changes during this step.**
    Originals are kept. Takes seconds to a couple of minutes.
@@ -69,10 +76,23 @@ not yet genuinely accessible". Both facts are true and the app reports both.
 
 ## Notes for the deployer
 
+- **One named Windows account per person.** Every protection in the app is
+  per Windows account: the saved Canvas token only decrypts for the account
+  that saved it. On a shared or generic login, whoever sits down next inherits
+  the previous person's Canvas access. Do not deploy to shared logins.
 - Per-user install: each Windows account that will use it runs the installer
-  once. For all-users or Intune/SCCM push, ask about building the MSI variant.
-- Unsigned binary: SmartScreen will warn on first run. A college code-signing
-  certificate removes this — worth requesting from IT if this rolls out wider.
+  once, or IT pushes it per user with Intune/SCCM (a pushed install also skips
+  the SmartScreen prompt entirely).
+- **Signing.** Build with `Build-PdfFixer.ps1 -SignThumbprint <cert>` (an
+  internal-CA or purchased code-signing certificate) or `-SignCommand` (Azure
+  Trusted Signing). Unsigned builds work but SmartScreen warns on a
+  browser-downloaded copy, and AppLocker/WDAC publisher rules cannot allow them.
+  Every build writes a `.sha256` next to the installer; publish it.
+- **Claude Code** (for the Describe step) is a separate, per-user Anthropic
+  package. Have IT install it on the image rather than telling instructors to
+  paste an install command into PowerShell. Everything else works without it.
+- Uninstalling the app also deletes the saved Canvas token from
+  `%LOCALAPPDATA%\CourseForge-PDF`. Course folders under Documents are kept.
 - Working files live in `Documents\CourseForge-PDF\<course id>\`.
   If that Documents folder is redirected into OneDrive, the app says so in the
   log on startup: everything still works, but every PDF is synced to the cloud
@@ -81,7 +101,9 @@ not yet genuinely accessible". Both facts are true and the app reports both.
   DPAPI-encrypted under `%LOCALAPPDATA%\CourseForge-PDF\`, which is never
   roamed or synced, and only unlocks for that Windows account on that PC. A
   token saved by version 1.1.7 or earlier is moved there automatically on
-  first use.
+  first use. The token is only ever sent to the Canvas site it was saved for,
+  over https; a course address pasted as `http://` is upgraded, and a redirect
+  to any other host is refused rather than followed with the token attached.
 - The Describe step needs the Claude Code CLI signed in on that PC
   (`claude` in a terminal → sign in once). Everything else works offline
   against Canvas only.
@@ -94,31 +116,22 @@ not yet genuinely accessible". Both facts are true and the app reports both.
 
 ## Building the installer (for whoever maintains it)
 
-The application source lives in the CourseForge **skill**, not next to the
-spec file:
+From `installer\`, on a machine with Python 3.12, the packages in
+`requirements-build.txt`, and Inno Setup 6:
 
-```
-%USERPROFILE%\.claude\skills\courseforge\scripts\
-```
-
-From `installer\`:
-
-```
-python -m PyInstaller courseforge-pdf.spec --distpath dist --workpath build
+```powershell
+python -m pip install -r requirements-build.txt
+.\Build-PdfFixer.ps1 -ToolsFrom <previous build folder>   # first time: where tesseract\ verapdf\ jre\ live
+.\Build-PdfFixer.ps1 -SignThumbprint <certificate sha1>   # a signed release
 ```
 
-The spec finds the source via `CF_SCRIPTS`, then the default skill location,
-then `..\scripts` — set `CF_SCRIPTS` if yours is elsewhere. Then copy the
-bundled `tesseract\`, `verapdf\` and `jre\` folders next to the built
-`courseforge-pdf.exe` in `dist\courseforge-pdf\`, and compile
-`courseforge-pdf.iss` with Inno Setup.
-
-Before shipping a build, run the regression harness:
-
-```
-python %USERPROFILE%\.claude\skills\courseforge\scripts\pdf_fastlane.py selftest
-```
-
-It covers the whole alt-text pipeline (batch → collect → apply), the
-producer-tree and OCR lanes, and the refusal paths. It must print
-`SELFTEST PASS`.
+The script runs the regression tests and the engine selftest (which must print
+`SELFTEST PASS`), freezes the app with PyInstaller from the **checked-in**
+source (it refuses uncommitted changes unless `-AllowDirty`), verifies every
+bundled Tesseract / veraPDF / JRE file against the SHA-256 digests in
+`bundled-tools.json`, smoke-tests the frozen exe, signs it when a certificate
+is given, compiles the installer, and writes its SHA-256 beside it. Those
+third-party tools are downloaded once from their publishers (URLs in
+`bundled-tools.json`); after a deliberate upgrade, run with
+`-RecordToolHashes`, check the new digests against the publisher's download,
+and commit the file.

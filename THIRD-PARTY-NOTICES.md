@@ -19,7 +19,7 @@ those obligations are.
 
 | | |
 |---|---|
-| Version | 1.30.2 (`verapdf/bin/cli-1.30.2.jar`) |
+| Version | 1.30.2 (`verapdf/bin/cli-1.30.2.jar`; SHA-256 of the shipped files in `installer/bundled-tools.json`) |
 | Home | https://verapdf.org/ |
 | Source | https://github.com/veraPDF |
 | Licence | GNU GPL v3 **or** Mozilla Public Licence v2, at the recipient's option |

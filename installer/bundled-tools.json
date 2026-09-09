@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "Third-party tools shipped beside courseforge-pdf.exe. They are not built by",
+    "any script here: a maintainer downloads each one from its publisher and copies",
+    "the unpacked folder into dist\\courseforge-pdf\\. Build-PdfFixer.ps1 refuses to",
+    "package a tree whose files do not match these SHA-256 digests, so a swapped or",
+    "tampered binary cannot ride into the installer unnoticed.",
+    "",
+    "The digests below were taken from the copies that shipped in 1.1.8. Before",
+    "trusting them as PROVENANCE (not just consistency), one person should download",
+    "each package fresh from the source URL and confirm the listed file hashes match.",
+    "Re-run   .\\Build-PdfFixer.ps1 -RecordToolHashes   after a deliberate upgrade."
+  ],
+  "tools": [
+    {
+      "name": "Tesseract OCR",
+      "version": "5.4.0.20240606",
+      "source": "https://github.com/UB-Mannheim/tesseract/wiki (tesseract-ocr-w64-setup-5.4.0.20240606.exe)",
+      "license": "Apache-2.0",
+      "files": {
+        "tesseract\\tesseract.exe": "babb405f4366b480d02cd8ff2bac8d497170f6c1711ce6f3d5d8bf0fb7fa6ed9"
+      }
+    },
+    {
+      "name": "veraPDF",
+      "version": "1.30.2",
+      "source": "https://software.verapdf.org/rel/1.30/ (greenfield installer)",
+      "license": "GPL-3.0-or-later / MPL-2.0",
+      "files": {
+        "verapdf\\bin\\cli-1.30.2.jar": "889075253fb9df4db5482efb8f8208fb3b4f2e00f5f7e1b1e31edf6fb4b69bb6",
+        "verapdf\\bin\\gui-1.30.2.jar": "f50c858466837aee5ad39fa749012cac9dc20680b6d8b073c093a5ae8c196395"
+      }
+    },
+    {
+      "name": "Eclipse Temurin JRE",
+      "version": "21.0.12.1+1",
+      "source": "https://adoptium.net/temurin/releases/?version=21&os=windows&arch=x64&package=jre",
+      "license": "GPL-2.0 with Classpath Exception",
+      "files": {
+        "jre\\bin\\java.exe": "82051fdab26319d77d20cc0065045d05ec00b3e3d05f44935d7c06b96b621d55",
+        "jre\\release": "01c001ff8bfce9df22eb29b3daaa60b0d8b73a09840fcf8e9f53da6310d5e1ac"
+      }
+    }
+  ]
+}

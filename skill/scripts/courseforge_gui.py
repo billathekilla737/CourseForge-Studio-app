@@ -117,6 +117,11 @@ class App:
         ctk.CTkButton(foot, text="Open work folder", width=140,
                       fg_color=BLUE, hover_color=NAVY,
                       command=self.open_folder).pack(side="left")
+        ctk.CTkButton(foot, text="Sign out of Canvas", width=140,
+                      fg_color="transparent", border_width=1,
+                      border_color=NAVY_MID, text_color=NAVY_MID,
+                      hover_color="#e6e9ee",
+                      command=self.sign_out).pack(side="left", padx=(8, 0))
         ctk.CTkLabel(
             foot, text="Originals are always kept. Nothing changes in Canvas "
                        "without the Upload or Roll back buttons.",
@@ -214,6 +219,21 @@ class App:
             os.startfile(os.path.join(d, "pdf-fastlane")
                          if os.path.isdir(os.path.join(d, "pdf-fastlane")) else d)
 
+    def sign_out(self):
+        """Remove the saved Canvas token(s) from this PC. The course folders
+        and files stay; the next Connect asks for a token again."""
+        if self.busy:
+            return
+        if mbox.askyesno(core.APP,
+                         "Sign out of Canvas on this PC?\n\n"
+                         "This removes the saved Canvas token so nobody can "
+                         "use it from this computer. Your course folders and "
+                         "files stay. The next time you connect, you will be "
+                         "asked for a token again.\n\n"
+                         "To fully retire a token, also delete it in Canvas "
+                         "(Account > Settings > Approved Integrations)."):
+            self.run_verb("Sign out of Canvas", core.do_sign_out, all_sites=True)
+
     # ------------------------------------------------------------- actions
     def act_fix(self):
         d = self.current_course_dir()
@@ -261,9 +281,9 @@ class App:
         if not claude:
             mbox.showinfo(core.APP,
                           "This uses Claude Code with your own Claude (Max) "
-                          "sign-in - no API key.\n\nIt is not installed yet. "
-                          "One-time setup in PowerShell:\n\n"
-                          "  irm https://claude.ai/install.ps1 | iex\n\n"
+                          "sign-in - no API key.\n\nClaude Code is not "
+                          "installed on this PC yet. Ask your IT department "
+                          "to install it (it is a standard Anthropic package), "
                           "then run  claude  once to sign in, and press this "
                           "button again.")
             return

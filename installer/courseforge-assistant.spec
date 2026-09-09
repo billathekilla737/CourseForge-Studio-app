@@ -17,10 +17,13 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 import os
 _here = os.path.dirname(os.path.abspath(SPEC))
-_scripts = os.environ.get("CF_SCRIPTS") or os.path.join(
-    os.path.expanduser("~"), ".claude", "skills", "courseforge", "scripts")
-for _cand in (_scripts, os.path.join(_here, "..", "skill", "scripts"),
-              os.path.join(_here, "src")):
+# repo copy first, the live skill in the profile last (see courseforge-pdf.spec)
+_live = os.path.join(os.path.expanduser("~"), ".claude", "skills",
+                     "courseforge", "scripts")
+_scripts = os.environ.get("CF_SCRIPTS") or ""
+for _cand in ([_scripts] if _scripts else []) + [
+        os.path.join(_here, "..", "skill", "scripts"),
+        os.path.join(_here, "src"), _live]:
     if os.path.isfile(os.path.join(_cand, "courseforge_assistant.py")):
         _scripts = os.path.abspath(_cand)
         break
@@ -58,7 +61,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -72,7 +75,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='courseforge-assistant',
 )

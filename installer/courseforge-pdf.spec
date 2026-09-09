@@ -14,15 +14,20 @@ tmp_ret = collect_all('customtkinter')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
-# Source lives in the courseforge SKILL, not next to this spec. Resolve it
-# relative to the spec (or CF_SCRIPTS) so anyone who clones the repo can build
-# - the old absolute C:/Users/<that one machine>/... path built nowhere else.
+# Source resolution, in order: CF_SCRIPTS when set explicitly, then the
+# checked-in copy in this repo (..\skill\scripts or ..\scripts), then the
+# live skill in the user profile as a LAST resort. The repo copy comes first
+# so what is built is what is committed - a developer's working skill folder
+# with uncommitted edits used to win, and the installer shipped it silently.
 import os
 _here = os.path.dirname(os.path.abspath(SPEC))
-_scripts = os.environ.get("CF_SCRIPTS") or os.path.join(
-    os.path.expanduser("~"), ".claude", "skills", "courseforge", "scripts")
-for _cand in (_scripts, os.path.join(_here, "..", "scripts"),
-              os.path.join(_here, "src")):
+_live = os.path.join(os.path.expanduser("~"), ".claude", "skills",
+                     "courseforge", "scripts")
+_scripts = os.environ.get("CF_SCRIPTS") or ""
+for _cand in ([_scripts] if _scripts else []) + [
+        os.path.join(_here, "..", "skill", "scripts"),
+        os.path.join(_here, "..", "scripts"),
+        os.path.join(_here, "src"), _live]:
     if os.path.isfile(os.path.join(_cand, "courseforge_gui.py")):
         _scripts = os.path.abspath(_cand)
         break
@@ -56,7 +61,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -70,7 +75,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='courseforge-pdf',
 )

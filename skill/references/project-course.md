@@ -102,9 +102,10 @@ Notes:
 scripts\Push-CanvasProject.ps1 `
   -ConfigPath   .\canvas.config.<id>.json `
   -ManifestPath .\canvas-export\project.<id>.json `
-  -StatePath    .\canvas.project.<id>.json `
   -PublishState unpublished   # ASK the user first; default unpublished (SKILL Gotcha 10)
-# -WhatIf to plan, -SkipModules for a content-only pass
+# DRY RUN without -Apply: prints the plan and writes nothing. Add -Apply to build.
+# -SkipModules for a content-only pass. State goes to canvas.project.<id>.json
+# beside the config (one per course); -StatePath overrides.
 ```
 `-PublishState published|unpublished` sets the published flag on every page,
 assignment, discussion, quiz, and module this run touches (the quiz is always created

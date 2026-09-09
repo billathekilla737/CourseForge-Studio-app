@@ -73,9 +73,12 @@ The Assistant approves on its own: reading the course, downloading content,
 restyling and checking files on this PC, and every script run in dry-run mode
 (without `-Apply`). It asks you before:
 
-- any script run with `-Apply`, and the three that write as soon as they run
-  (`Push-CanvasPages`, `Push-CanvasProject`, `Trim-CanvasNav`)
-- any direct web request that changes data (PUT, POST, DELETE)
+- any toolkit script run with `-Apply` (every script that writes to Canvas is a
+  dry run without it)
+- any direct web request that changes data (PUT, POST, DELETE), and any web
+  request to a site other than your Canvas
+- a script or program that is not part of the CourseForge toolkit, an encoded
+  or built-up command, or writing a script or settings file
 - deleting folders, installing software, or changing Windows settings
 - editing a file outside the course's own folder
 

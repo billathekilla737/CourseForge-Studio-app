@@ -314,19 +314,22 @@ content scrambled (Gotcha 1) — fix first.
 scripts\Push-CanvasPages.ps1 `
   -ConfigPath .\canvas.config.<id>.json `
   -ManifestPath .\canvas-export\manifest.<id>.json `
-  -StatePath .\canvas.state.<id>.json `
   -PublishState unpublished   # ASK the user first (Gotcha 10); default unpublished
+  # ...and -Apply to write. Without it this is a DRY RUN that prints the plan.
 ```
 Creates/updates each page, builds the modules, and places items in order. It's
-idempotent via the state file — re-run any time to push edits without
-duplicating. Use `-WhatIf` for a dry run.
+idempotent via the state file (`canvas.state.<id>.json` beside the config, one per
+course) — re-run any time to push edits without duplicating. **Dry run by default;
+pass `-Apply` to write.**
 
 ## Step 6 — Trim the nav
 
 ```powershell
-scripts\Trim-CanvasNav.ps1 -BaseUrl https://SCHOOL.instructure.com -CourseIds 12345
+scripts\Trim-CanvasNav.ps1            # dry run: shows what would be hidden/ordered
+scripts\Trim-CanvasNav.ps1 -Apply     # trims the connected course's navigation
 ```
-Hides the institutional bloat, leaving a clean keep-list. Override `-Keep` for a
+Hides the institutional bloat, leaving a clean keep-list. It targets the connected
+course on its own Canvas site (a `-BaseUrl` naming any other host is refused). Override `-Keep` for a
 different school/layout (find tab ids via `GET /courses/:id/tabs`).
 
 ## Step 7 — Verify & report
@@ -557,12 +560,12 @@ Assignment object, **delete the old wiki page by its slug** so the two do not co
 - `references/slo-alignment.md` — **SLO alignment** for ANY program (automotive, networking, cyber security, cloud, welding, business, health sciences, ...): the workflow, how to write `alignment.json`, what the report gives the instructor, the traps (ambiguous prefixes, local-vs-state course numbers, courses with no outcomes, academic-transfer prefixes with no CTE framework, one PDF under many CIP codes, per-year layout differences, stale deep links), and the PowerShell traps found building it. Read this whenever asked whether a course or program is aligned to its SLOs.
 
 # Scripts
-- `scripts/Setup-Canvas.ps1` — **one-command onboarding** (use this first for non-technical users): asks for the course web address + access token (hidden), writes `canvas.token` + `canvas.config.<id>.json`, adds a protective `.gitignore`, and tests the connection. Forgiving of a stray `canvas.token.txt` / `Canvas Token.txt` / pasted `.rtf` (finds, fixes, reuses). Params: -WorkingDir, -CourseUrl, -Token, -CourseLabel, -ShowToken.
-- `scripts/Push-CanvasPages.ps1` — idempotent **lesson-course** uploader + module builder (params: ConfigPath, ManifestPath, StatePath, **-PublishState published|unpublished**, -WhatIf).
-- `scripts/Push-CanvasProject.ps1` — idempotent **project/capstone** builder: pages + front page + syllabus tab + graded assignments + graded discussions + graded **quizzes** (Classic Quizzes) + assignment groups + mixed-type modules (params: ConfigPath, ManifestPath, StatePath, **-PublishState published|unpublished**, -SkipModules, **-RebuildModules**, -WhatIf). **SAFETY GATE:** its module pass wipes+rebuilds modules, so it now REFUSES up front (before any write) on a course that has modules it did not build — pass `-SkipModules` to update content only, or `-RebuildModules` to consciously wipe. For remediating an existing course's bodies use `Push-CanvasRemediation.ps1` instead, never this.
+- `scripts/Setup-Canvas.ps1` — **one-command onboarding** (use this first for non-technical users): asks for the course web address + access token (hidden), writes `canvas.token.enc` (DPAPI-encrypted) + `canvas.config.<id>.json`, adds a protective `.gitignore`, and tests the connection. Offers to encrypt a plaintext `canvas.token(.txt)` left in the folder. Params: -WorkingDir, -CourseUrl, -CourseLabel, -ShowToken (no -Token: the token is always typed at the hidden prompt).
+- `scripts/Push-CanvasPages.ps1` — idempotent **lesson-course** uploader + module builder (params: ConfigPath, ManifestPath, StatePath, **-PublishState published|unpublished**, **-Apply** — dry run without it).
+- `scripts/Push-CanvasProject.ps1` — idempotent **project/capstone** builder: pages + front page + syllabus tab + graded assignments + graded discussions + graded **quizzes** (Classic Quizzes) + assignment groups + mixed-type modules (params: ConfigPath, ManifestPath, StatePath, **-PublishState published|unpublished**, -SkipModules, **-RebuildModules**, **-Apply** — dry run without it). **SAFETY GATE:** its module pass wipes+rebuilds modules, so it REFUSES up front (before any write) on a course whose per-course state file (`canvas.project.<id>.json`, which records the course id) does not show this script built them — pass `-SkipModules` to update content only, or `-RebuildModules` to consciously wipe. For remediating an existing course's bodies use `Push-CanvasRemediation.ps1` instead, never this.
 - `scripts/Verify-Slots.ps1` — hero-vs-slot check for **Page** bodies; **run before every push**. (Does not inspect assignments/discussions — spot-check those by hand.)
-- `scripts/Trim-CanvasNav.ps1` — nav trim via JSON body.
-- `scripts/Extract-CanvasToken.ps1` — pull a token out of an .rtf into canvas.token.
+- `scripts/Trim-CanvasNav.ps1` — nav trim via JSON body; dry run by default, `-Apply` to change; connected course and site only.
+- `scripts/Extract-CanvasToken.ps1` — pull a token out of an .rtf in the working folder into an encrypted canvas.token.enc, then offer to delete the .rtf.
 - `scripts/Dump-CanvasContent.ps1` + `scripts/restyle_html.py` + `scripts/Push-CanvasRemediation.ps1` — the **existing-course HTML remediation pipeline** (ADA + looks overhaul in one): Dump downloads every body Ally scans (pages/assignments/discussions/quiz descriptions/syllabus; skips quiz-backed shells; strips theme assets) into a workdir + manifest; restyle_html.py `transform --look clean|hybrid|rich` (**DEFAULT `clean`** = NO background fills, so ~0 Ally "use of color" flags — the right choice for a compliance-driven job; navy stays in headings + borders. `hybrid` = filled navy hero+footer, `rich` = all components filled — opt in for a looks overhaul when the instructor accepts ~2-7 reviewable flags/page) deterministically restyles templated bodies and wraps unstructured ones (hero with a real `<h2>` fixes missing headings), entity-encodes to pure ASCII, then `verify` proves visible text unchanged (exit 0 required); Push updates bodies **in place** (never modules/publish state), dry-run default, `-Apply` to write, quiz descriptions via JSON, live re-verify after push. Full workflow + gotchas: `references/ada-remediation.md`.
 - `scripts/Export-CanvasCourse.ps1` — export a whole course to a local `.imscc` (IMS Common Cartridge) backup: starts the export, polls to completion (handles Canvas's `waiting_for_external_tool` state), downloads the file (params: -CourseId/-ConfigPath/-TokenPath, **-ExportCourseId** to export a different course the token can read, -OutDir, -ExportType common_cartridge|zip). **FERPA edge:** exports of TAUGHT courses can bundle student-authored discussion entries inside the cartridge — prefer master/unpublished shells for other instructors' courses and keep every .imscc local (never commit).
 - `scripts/Import-CanvasCourse.ps1` — import INTO a course, two modes: **-SourceCourseId** = Canvas-to-Canvas copy (`course_copy_importer` — the replica/sandbox-clone flow) or **-ImsccPath** = upload + import a local cartridge. Optional **-NewCourseName + -AccountId** creates a fresh unpublished shell first (needs course-creation rights; a content-only admin role gets a clear 403 message and should use a UI-created shell + -DestCourseId). **Dry-run by default; -Apply to run.** SAFETY: refuses a destination that already has pages/modules unless **-Force** (import ADDS content — protects against accidental duplication); never touches publish state; polls the migration to completed/failed and reports true post-import counts. Duplicate-title pages from a copy get Canvas's `-2` slug suffix (expected).

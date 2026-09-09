@@ -1,11 +1,11 @@
 # CourseForge PDF Fixer — install & first use
 
 *For the person setting up the PCs, and for the instructors using it.*
-*Current version: 1.1.8*
+*Current version: 1.1.9*
 
 ## Installing (per PC, ~2 minutes)
 
-1. Copy `CourseForge-PDF-Fixer-Setup-1.1.8.exe` to the PC (USB stick or a
+1. Copy `CourseForge-PDF-Fixer-Setup-1.1.9.exe` to the PC (USB stick or a
    shared drive is fine — no internet needed to install).
 2. Double-click it and click Next, Next, Finish. **No admin password is
    needed** — it installs into the user's own profile, with a Start Menu entry

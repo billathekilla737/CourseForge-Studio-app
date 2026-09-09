@@ -3,7 +3,7 @@
 ; optional Desktop shortcut, LZMA2 compression.
 
 #define AppName "CourseForge PDF Fixer"
-#define AppVersion "1.1.8"
+#define AppVersion "1.1.9"
 #define AppExe "courseforge-pdf.exe"
 
 [Setup]

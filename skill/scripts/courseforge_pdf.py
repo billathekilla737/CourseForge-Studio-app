@@ -34,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pdf_fastlane as engine
 
 APP = "CourseForge PDF Fixer"
-VERSION = "1.1.8"
+VERSION = "1.1.9"
 
 
 def _documents_dir():

@@ -74,15 +74,12 @@ foreach ($cid in $CourseIds) {
                 ('{{ "base_url": "{0}", "course_id": "{1}", "course_label": "{2}" }}' -f $base, $cid, ($courseName -replace '"','')),
                 (New-Object Text.UTF8Encoding($false)))
         }
-        # Re-encrypt into the per-course folder instead of copying the file.
-        # A straight Copy-Item of the blob would work (same user, same
-        # machine), but copying credential files around is exactly the habit
-        # that scattered plaintext tokens across a dozen folders.
-        Save-CanvasToken -Dir $dir -Token $ctx.Token | Out-Null
+        # ONE token blob, where it already is: the child scripts take -TokenPath
+        # instead of getting their own copy in every course folder.
         $work = Join-Path $dir 'work'
 
         Write-Host ("--- course {0} ---" -f $cid)
-        & "$PSScriptRoot\Dump-CanvasContent.ps1" -ConfigPath $subCfg -WorkDir $work | Out-Null
+        & "$PSScriptRoot\Dump-CanvasContent.ps1" -ConfigPath $subCfg -TokenPath $ctx.TokenPath -WorkDir $work | Out-Null
         if ($LASTEXITCODE) { throw "dump failed ($LASTEXITCODE)" }
         $manifest = Get-Content (Join-Path $work 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
         $row.name  = $manifest.course_label
@@ -104,7 +101,7 @@ foreach ($cid in $CourseIds) {
         $row.verify = if ($LASTEXITCODE -eq 0) { 'PASS' } else { "FAIL($LASTEXITCODE)" }
         if ($LASTEXITCODE -ne 0) { throw "verify failed - push skipped" }
 
-        $pushArgs = @{ WorkDir = $work; ConfigPath = $subCfg }
+        $pushArgs = @{ WorkDir = $work; ConfigPath = $subCfg; TokenPath = $ctx.TokenPath }
         if ($Apply) { $pushArgs.Apply = $true }
         & "$PSScriptRoot\Push-CanvasRemediation.ps1" @pushArgs | Out-Null
         if ($LASTEXITCODE) { throw "push reported failures ($LASTEXITCODE)" }

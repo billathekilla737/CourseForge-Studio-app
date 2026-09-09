@@ -57,10 +57,17 @@ def load_brand():
     try:
         with open(path, encoding="utf-8-sig") as f:
             loaded = json.load(f)
+        # brand values land inside style="" attributes: a quote or a URL in
+        # one would break out of the attribute, so only plain colours and
+        # font lists are accepted
+        ok = {"colors": re.compile(r"^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|rgba?\([\d\s,.%]+\))$"),
+              "fonts": re.compile(r"^[\w\s,'\-]+$")}
         for section in ("colors", "fonts"):
             for k, v in (loaded.get(section) or {}).items():
-                if isinstance(v, str) and v.strip():
+                if isinstance(v, str) and v.strip() and ok[section].match(v.strip()):
                     default[section][k] = v.strip()
+                elif isinstance(v, str):
+                    print("WARN: ignoring brand %s.%s=%r (not a plain value)" % (section, k, v[:40]))
     except FileNotFoundError:
         pass
     except Exception as e:
@@ -148,6 +155,14 @@ def a11y_issues(h):
     for inner in LINK.findall(h or ""):
         if re.sub(r"<[^>]+>", "", inner).strip() == "" and not re.search(r"<img", inner, re.I):
             issues.append("empty link (no text)")
+    # active content in course HTML: Canvas strips it on save, but it should
+    # never be carried through a remediation pass silently
+    if re.search(r"<script\b", h or "", re.I):
+        issues.append("script element in page HTML")
+    if re.search(r"\son[a-z]+\s*=", h or "", re.I):
+        issues.append("inline event handler attribute")
+    if re.search(r"(href|src)\s*=\s*[\"']\s*javascript:", h or "", re.I):
+        issues.append("javascript: link")
     return issues
 
 

@@ -127,7 +127,7 @@ if ($SourceCourseId) {
     # step 2: multipart upload via curl.exe (PS 5.1-safe)
     $curlArgs = @('-s','-o','NUL','-w','%{http_code}','-X','POST',$pre.upload_url)
     foreach ($k in $pre.upload_params.PSObject.Properties.Name) {
-        $curlArgs += @('-F', ('{0}={1}' -f $k, $pre.upload_params.$k))
+        $curlArgs += @('--form-string', ('{0}={1}' -f $k, $pre.upload_params.$k))
     }
     $curlArgs += @('-F', ('file=@{0}' -f $file.FullName))
     $code = & curl.exe @curlArgs

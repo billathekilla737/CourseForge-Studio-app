@@ -8,36 +8,40 @@
   reason this script exists instead of a one-liner.
 
   Usage:
-    .\Trim-CanvasNav.ps1 -BaseUrl https://school.instructure.com -CourseIds 12345,67890
-    .\Trim-CanvasNav.ps1 ... -WhatIf        # show changes without applying
+    .\Trim-CanvasNav.ps1                         # DRY RUN on the connected course
+    .\Trim-CanvasNav.ps1 -Apply                  # trim the connected course's navigation
+    .\Trim-CanvasNav.ps1 -CourseIds 12345,67890 -Apply   # other courses on the SAME Canvas site
 
   The default -Keep is one school's layout. Override it with your own ordered
   map of tab-id -> position. Find tab ids with:
     GET /api/v1/courses/:id/tabs   (LTI tools look like context_external_tool_NNN)
 #>
 param(
-  [Parameter(Mandatory)] [string]$BaseUrl,
-  [Parameter(Mandatory)] [int[]]$CourseIds,
-  [string]$TokenPath = '',   # default: canvas.token next to the resolved config (CanvasContext.ps1)
+  [string]$BaseUrl = '',       # optional; must be the connected course's own Canvas site
+  [int[]]$CourseIds = @(),     # default: the connected course only
+  [string]$ConfigPath = '',    # resolved by CanvasContext.ps1 when omitted
+  [string]$TokenPath = '',
   [System.Collections.IDictionary]$Keep = ([ordered]@{
     'home'=1; 'announcements'=2; 'syllabus'=3; 'modules'=4;
     'context_external_tool_382357'=5;  'discussions'=6; 'grades'=7; 'people'=8; 'files'=9;
     'context_external_tool_221916'=10; 'context_external_tool_342011'=11
   }),
-  [switch]$WhatIf
+  [switch]$WhatIf,
+  [switch]$Apply               # without it this is a dry run: nothing is changed
 )
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$base = $BaseUrl.TrimEnd('/')
-if (-not $TokenPath) {
-    . "$PSScriptRoot\CanvasContext.ps1"
-    $ctx = Resolve-CanvasContext
-    $TokenPath = $ctx.TokenPath
-    $token = $ctx.Token
-} else {
-    . "$PSScriptRoot\CanvasToken.ps1"
-    $token = (Get-CanvasToken -TokenPath $TokenPath).Token
+. "$PSScriptRoot\CanvasContext.ps1"
+$ctx   = Resolve-CanvasContext -ConfigPath $ConfigPath -TokenPath $TokenPath
+$token = $ctx.Token
+# The token is only ever sent to the site it was saved for. A -BaseUrl that
+# names any other host is refused rather than honoured.
+$base  = $ctx.Config.base_url.TrimEnd('/')
+if ($BaseUrl -and ($BaseUrl.TrimEnd('/').ToLower() -ne $base.ToLower())) {
+    throw ("-BaseUrl {0} is not the connected course's Canvas site ({1})." -f $BaseUrl, $base)
 }
+if (-not $CourseIds -or $CourseIds.Count -eq 0) { $CourseIds = @([int]$ctx.Config.course_id) }
+if (-not $Apply) { $WhatIf = $true; Write-Host "[WhatIf] DRY RUN - nothing is changed (pass -Apply to trim the navigation)" }
 $headers = @{ Authorization = "Bearer $token" }
 
 function Set-Tab($cid, $tid, $obj) {

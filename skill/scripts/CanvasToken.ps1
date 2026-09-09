@@ -79,6 +79,10 @@ function Get-CanvasToken {
                 throw ("Could not decrypt {0}. An encrypted token only opens for the Windows account and machine that created it. Re-run Setup-Canvas.ps1 to store a fresh one." -f $TokenPath)
             }
         }
+        # A plaintext token file is only honoured when CI says so explicitly.
+        if ($env:COURSEFORGE_ALLOW_PLAINTEXT_TOKEN -ne '1') {
+            throw ("{0} is a plaintext token file. Encrypt it first (Setup-Canvas.ps1, or Save-CanvasToken); plaintext token files are only accepted with COURSEFORGE_ALLOW_PLAINTEXT_TOKEN=1." -f $TokenPath)
+        }
         return @{ Token = $raw; Path = $TokenPath; Encrypted = $false }
     }
 
@@ -106,8 +110,7 @@ function Get-CanvasToken {
             Write-Host ("  CanvasToken: encrypted the plaintext canvas.token for this Windows account -> {0} (plaintext deleted)" -f (Split-Path -Leaf $encPath))
             return @{ Token = $raw; Path = $encPath; Encrypted = $true }
         } catch {
-            Write-Warning ("Could not encrypt the token ({0}); continuing with the plaintext file." -f $_.Exception.Message)
-            return @{ Token = $raw; Path = $plain; Encrypted = $false }
+            throw ("Could not encrypt the plaintext token in {0} ({1}). Nothing runs with a plaintext token; fix the DPAPI error (is this a real Windows user profile?) and try again." -f $Dir, $_.Exception.Message)
         }
     }
 

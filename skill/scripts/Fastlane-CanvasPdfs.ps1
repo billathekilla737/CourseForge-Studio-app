@@ -225,7 +225,7 @@ if ($Action -eq 'Push') {
                        parent_folder_id = $meta.folder_id; on_duplicate = 'overwrite' }
         $slot = Invoke-RestMethod -Method Post -Uri "$base/api/v1/courses/$cid/files" -Headers $hdr -Body $slotBody
         $curlArgs = @('-sS','-o','NUL','-w','%{http_code}','-X','POST',$slot.upload_url)
-        foreach ($k in $slot.upload_params.PSObject.Properties.Name) { $curlArgs += @('-F', ('{0}={1}' -f $k, $slot.upload_params.$k)) }
+        foreach ($k in $slot.upload_params.PSObject.Properties.Name) { $curlArgs += @('--form-string', ('{0}={1}' -f $k, $slot.upload_params.$k)) }
         $curlArgs += @('-F', ('file=@{0}' -f $fixed))
         $pending += ,@{ name = $meta.display_name; args = $curlArgs; orig = (Join-Path $d.FullName 'original.pdf') }
     }

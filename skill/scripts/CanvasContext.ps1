@@ -119,11 +119,36 @@ function Get-CanvasPaged {
         $Url = $null
         if ($resp.Headers.Link) {
             foreach ($part in ($resp.Headers.Link -split ',')) {
-                if ($part -match '<([^>]+)>;\s*rel="next"') { $Url = $Matches[1] }
+                if ($part -match '<([^>]+)>;\s*rel="next"') {
+                    $next = $Matches[1]
+                    # a next link is server text; never follow it off the Canvas host with the token
+                    if (([uri]$next).Scheme -ne 'https' -or ([uri]$next).Host -ne ([uri]$Url).Host) { throw ("pagination link points off the Canvas host: {0}" -f $next) }
+                    $Url = $next
+                }
             }
         }
     }
     return @($out)
+}
+
+function Assert-CanvasBaseUrl {
+    <#
+      The token is only ever sent to a Canvas site: https, and a host on the
+      allow-list (default *.instructure.com; override with a ;-separated list of
+      wildcard patterns in COURSEFORGE_CANVAS_HOSTS for a self-hosted Canvas).
+      A canvas.config.*.json is a plain text file in a working folder; without
+      this check, editing its base_url would route the decrypted token anywhere.
+    #>
+    param([Parameter(Mandatory)][string]$Url)
+    $u = $null
+    try { $u = [uri]$Url } catch {}
+    if (-not $u -or $u.Scheme -ne 'https' -or -not $u.Host) {
+        throw ("Canvas base_url must be an https:// address, got '{0}'." -f $Url)
+    }
+    $allowed = @('*.instructure.com')
+    if ($env:COURSEFORGE_CANVAS_HOSTS) { $allowed = @($env:COURSEFORGE_CANVAS_HOSTS -split '[;,]' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+    foreach ($pat in $allowed) { if ($u.Host.ToLower() -like $pat.ToLower()) { return $u } }
+    throw ("Canvas base_url host '{0}' is not an allowed Canvas site ({1}). Set COURSEFORGE_CANVAS_HOSTS if this is your institution's own Canvas host." -f $u.Host, ($allowed -join ', '))
 }
 
 function Resolve-CanvasContext {
@@ -179,6 +204,7 @@ function Resolve-CanvasContext {
     # keeps the on-disk form encrypted and swappable in one place.
     $tok = Get-CanvasToken -TokenPath $TokenPath -Dir (Split-Path -Parent $ConfigPath)
     $cfg = Get-Content -Raw -Encoding UTF8 $ConfigPath | ConvertFrom-Json
+    Assert-CanvasBaseUrl -Url ([string]$cfg.base_url) | Out-Null
     return @{ ConfigPath = $ConfigPath
               TokenPath  = $tok.Path
               Token      = $tok.Token

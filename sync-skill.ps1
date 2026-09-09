@@ -25,10 +25,12 @@ $ErrorActionPreference = 'Stop'
 
 if ($ToRepo -and $ToLive) { throw "Pick one direction: -ToRepo or -ToLive." }
 
-$EXCLUDE_DIRS  = @('__pycache__', '.git', '.pytest_cache', '.ruff_cache')
+$EXCLUDE_DIRS  = @('__pycache__', '.git', '.pytest_cache', '.ruff_cache', 'grading', 'private', 'assistant')
 $EXCLUDE_FILES = @('*.pyc', '*.pyo', 'canvas.token', 'canvas.token.enc',
                    '*.token', '*.token.enc', 'canvas.config.*.json',
-                   'activity-log.jsonl')
+                   'canvas.state*.json', 'canvas.project*.json',
+                   '*.rtf', 'map.json', 'proposed-grades*.json',
+                   'activity-log.jsonl', '.installed-by-courseforge-assistant.json')
 
 function Get-SkillFiles([string]$root) {
     if (-not (Test-Path $root)) { return @{} }

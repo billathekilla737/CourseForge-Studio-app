@@ -520,7 +520,7 @@ def verify_hook_gate():
     except ValueError:
         return "the hook command could not be parsed: %s" % cmd
     req = {"tool_name": "Bash", "hook_event_name": "PreToolUse",
-           "tool_input": {"command": "powershell -File Push-CanvasPages.ps1 -ManifestPath m.json"},
+           "tool_input": {"command": "powershell -File Push-CanvasPages.ps1 -ManifestPath m.json -Apply"},
            "cwd": os.getcwd(), "session_id": "canary", "tool_use_id": "canary"}
     env = _child_env()
     env.pop("CF_ASSISTANT_PORT", None)

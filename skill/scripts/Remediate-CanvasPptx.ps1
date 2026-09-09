@@ -110,7 +110,7 @@ if ($Action -eq 'Fetch') {
         $orig = Join-Path $d 'original.pptx'
         Invoke-WebRequest -Uri $f.url -OutFile $orig -UseBasicParsing
         @{ id = $f.id; display_name = $f.display_name; folder_id = $f.folder_id } |
-            ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $d 'file.json') -Encoding ASCII
+            ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $d 'file.json') -Encoding UTF8
         Write-Output ("fetched {0} -> {1}" -f $f.display_name, $orig)
         & python $py scan $orig --workdir (Join-Path $d 'work')
     }
@@ -141,7 +141,7 @@ if ($Action -eq 'Push') {
         $slot = Invoke-RestMethod -Method Post -Uri "$base/api/v1/courses/$cid/files" -Headers $hdr -Body $slotBody
         # multipart via curl.exe (works on PS 5.1; Invoke-WebRequest -Form needs PS 6+)
         $curlArgs = @('-s','-o','NUL','-w','%{http_code}','-X','POST',$slot.upload_url)
-        foreach ($k in $slot.upload_params.PSObject.Properties.Name) { $curlArgs += @('-F', ('{0}={1}' -f $k, $slot.upload_params.$k)) }
+        foreach ($k in $slot.upload_params.PSObject.Properties.Name) { $curlArgs += @('--form-string', ('{0}={1}' -f $k, $slot.upload_params.$k)) }
         $curlArgs += @('-F', ('file=@{0}' -f $fixed))
         $code = & curl.exe @curlArgs
         if ("$code" -notmatch '^(200|201|3..)$') { throw "upload failed ($code) for $($meta.display_name)" }

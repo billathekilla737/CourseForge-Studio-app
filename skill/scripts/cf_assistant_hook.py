@@ -67,7 +67,9 @@ ASK_TIMEOUT = float(os.environ.get("CF_ASSISTANT_ASK_TIMEOUT") or 1200)
 # --------------------------------------------------------- the toolkit's names
 
 # Skill scripts that write to Canvas the moment they run (no -Apply switch).
-CANVAS_WRITE_ALWAYS = ("Push-CanvasPages", "Push-CanvasProject", "Trim-CanvasNav")
+# Empty since the 2026-09 pass made every writer dry-run by default; kept so
+# an older toolkit copy can be listed here again if it ever has to be.
+CANVAS_WRITE_ALWAYS = ()
 
 # Skill scripts that are a dry run WITHOUT -Apply and a Canvas write WITH it.
 CANVAS_WRITE_WITH_APPLY = (
@@ -76,6 +78,7 @@ CANVAS_WRITE_WITH_APPLY = (
     "Remove-BorderedBoxes", "Batch-Remediate", "Remediate-CanvasPptx",
     "Remediate-CanvasDocx", "Remediate-CanvasPdfText", "Remediate-OfficeText",
     "Fastlane-CanvasPdfs", "Check-SLOAlignment", "Backup-CanvasQuiz",
+    "Push-CanvasPages", "Push-CanvasProject", "Trim-CanvasNav",
 )
 
 # Skill scripts that only read Canvas or work on local files.
@@ -570,10 +573,18 @@ def _segment_problem(seg, cwd):
         u = _urls_problem(s)
         if u:
             return (u, "egress")
-        for tok in _path_like(args):
-            prob = _local_path_problem(tok, cwd)
-            if prob:
-                return ("%s saving to %s" % (head, prob), "local-change")
+        # only what the request SAVES is a path; -Uri values are addresses
+        for i, a in enumerate(args):
+            if a.lower() in ("-o", "--output", "-outfile", "-outfile:") and i + 1 < len(args):
+                prob = _local_path_problem(args[i + 1], cwd)
+                if prob:
+                    return ("%s saving to %s" % (head, prob), "local-change")
+            elif a.lower().startswith("-outfile:"):
+                prob = _local_path_problem(a.split(":", 1)[1], cwd)
+                if prob:
+                    return ("%s saving to %s" % (head, prob), "local-change")
+            elif a in ("-O", "--remote-name", "-J"):
+                return ("%s saving under a name the server chooses" % head, "local-change")
         return None
 
     # -- local file operations inside the course folder

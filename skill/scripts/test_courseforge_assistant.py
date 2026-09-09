@@ -44,7 +44,10 @@ class ClassifierTests(unittest.TestCase):
             'python restyle_html.py verify .\\work',
             'powershell -File Push-CanvasRemediation.ps1 -WorkDir .\\work',      # dry run
             'powershell -File Push-CanvasPages.ps1 -ManifestPath m.json -WhatIf',
+            'powershell -File Push-CanvasPages.ps1 -ManifestPath m.json',        # dry run since 2026-09
+            'powershell -File Push-CanvasProject.ps1 -Root .',                   # dry run since 2026-09
             'powershell -File Trim-CanvasNav.ps1 -WhatIf',
+            'powershell -File Trim-CanvasNav.ps1',                               # dry run since 2026-09
             'powershell -File Export-CanvasCourse.ps1 -OutDir .\\backup',
             'Get-ChildItem .\\work | Select-Object Name',
             'curl -s -H "Authorization: Bearer x" https://a/api/v1/courses/1/pages',
@@ -60,9 +63,9 @@ class ClassifierTests(unittest.TestCase):
             'powershell -File Push-CanvasRemediation.ps1 -WorkDir .\\work -Apply',
             'powershell -File Push-CanvasRemediation.ps1 -Apply:$true -WorkDir w',
             'powershell -File Set-DueDates.ps1 -Plan p.json -Apply',
-            'powershell -File Push-CanvasPages.ps1 -ManifestPath m.json',
-            'powershell -File Push-CanvasProject.ps1 -Root .',
-            'powershell -File Trim-CanvasNav.ps1',
+            'powershell -File Push-CanvasPages.ps1 -ManifestPath m.json -Apply',
+            'powershell -File Push-CanvasProject.ps1 -Root . -Apply',
+            'powershell -File Trim-CanvasNav.ps1 -Apply',
             'python remediate_pptx.py deck.pptx --apply',
             'Invoke-RestMethod -Uri https://a/api/v1/courses/1/pages/x -Method Put -Headers $h -Body $b',
             'Invoke-WebRequest -Method DELETE -Uri https://a/api/v1/x',
@@ -265,8 +268,9 @@ class ClassifierTests(unittest.TestCase):
             self.assertEqual(v["decision"], "ask", cmd + " -> " + v["why"])
 
     def test_what_is_never_the_models_description(self):
-        v = bash('powershell -File Push-CanvasPages.ps1 -ManifestPath m.json',
+        v = bash('powershell -File Push-CanvasPages.ps1 -ManifestPath m.json -Apply',
                  description="Reading the syllabus")
+        self.assertEqual(v["decision"], "ask")
         self.assertEqual(v["summary"], "Reading the syllabus")          # the pane label
         self.assertTrue(v["what"].startswith("Run: powershell -File Push-CanvasPages.ps1"))
         w = gate.classify("Write", {"file_path": "go.ps1", "content": "x"}, CWD)
@@ -350,7 +354,7 @@ class HookProcessTests(unittest.TestCase):
         self.assertEqual(out["permissionDecision"], "allow")
 
     def test_write_without_app_is_denied(self):
-        out = self.run_hook("Bash", {"command": "Push-CanvasPages.ps1"}, {})
+        out = self.run_hook("Bash", {"command": "Push-CanvasPages.ps1 -Apply"}, {})
         self.assertEqual(out["permissionDecision"], "deny")
         self.assertIn("not running", out["permissionDecisionReason"])
 
@@ -378,7 +382,7 @@ class HookProcessTests(unittest.TestCase):
         self.assertEqual(got["tool_name"], "Bash")
 
     def test_app_denies_with_reason(self):
-        out, _ = self._with_server("deny", gate.DENY_TEXT, {"command": "Trim-CanvasNav.ps1"})
+        out, _ = self._with_server("deny", gate.DENY_TEXT, {"command": "Trim-CanvasNav.ps1 -Apply"})
         self.assertEqual(out["permissionDecision"], "deny")
         self.assertIn("clicked Deny", out["permissionDecisionReason"])
 
@@ -386,7 +390,7 @@ class HookProcessTests(unittest.TestCase):
         srv = A.PermissionServer(lambda req, answer: answer("allow", ""))
         srv.start()
         try:
-            out = self.run_hook("Bash", {"command": "Trim-CanvasNav.ps1"},
+            out = self.run_hook("Bash", {"command": "Trim-CanvasNav.ps1 -Apply"},
                                 {"CF_ASSISTANT_PORT": str(srv.port),
                                  "CF_ASSISTANT_SECRET": "wrong"})
         finally:
@@ -401,7 +405,7 @@ class HookProcessTests(unittest.TestCase):
             self.assertEqual(out["permissionDecision"], "deny", repr(tool_input))
         env = dict(os.environ)
         env.pop("CF_ASSISTANT_PORT", None)
-        for raw in (b"", b"[]", b"garbage", b'{"tool_name": 5, "tool_input": {"command": "Trim-CanvasNav.ps1"}}'):
+        for raw in (b"", b"[]", b"garbage", b'{"tool_name": 5, "tool_input": {"command": "Trim-CanvasNav.ps1 -Apply"}}'):
             cp = subprocess.run([sys.executable, self.HOOK], input=raw, capture_output=True,
                                 timeout=60, env=env)
             self.assertEqual(cp.returncode, 0, raw)
@@ -414,7 +418,7 @@ class HookProcessTests(unittest.TestCase):
         srv = A.PermissionServer(lambda req, answer: None)        # never answers
         srv.start()
         try:
-            out = self.run_hook("Bash", {"command": "Trim-CanvasNav.ps1"},
+            out = self.run_hook("Bash", {"command": "Trim-CanvasNav.ps1 -Apply"},
                                 {"CF_ASSISTANT_PORT": str(srv.port),
                                  "CF_ASSISTANT_SECRET": srv.secret,
                                  "CF_ASSISTANT_ASK_TIMEOUT": "2"})
@@ -425,9 +429,9 @@ class HookProcessTests(unittest.TestCase):
 
     def test_payload_carries_the_gates_headline(self):
         out, got = self._with_server("deny", gate.DENY_TEXT,
-                                     {"command": "Trim-CanvasNav.ps1", "description": "Reading things"})
+                                     {"command": "Trim-CanvasNav.ps1 -Apply", "description": "Reading things"})
         self.assertEqual(out["permissionDecision"], "deny")
-        self.assertTrue(got["what"].startswith("Run: Trim-CanvasNav.ps1"))
+        self.assertTrue(got["what"].startswith("Run: Trim-CanvasNav.ps1 -Apply"))
         self.assertEqual(got["summary"], "Reading things")
         self.assertGreater(got["timeout_s"], 0)
 

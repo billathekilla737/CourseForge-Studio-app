@@ -14,21 +14,21 @@
      - drops a .gitignore so the token can never be pushed to GitHub by accident,
      - and immediately TESTS the token against Canvas, printing the course name.
 
-  Forgiving by design: if the instructor already dropped the token into a file
-  (canvas.token.txt, "Canvas Token.txt", a pasted .rtf, any *.token), the script
-  finds it, fixes it, and reuses it instead of asking again.
+  If a canvas.token or canvas.token.txt is already in the folder (a plaintext
+  copy from an older setup), the script offers to encrypt and reuse it.
 
   Normal use (interactive - this is what an instructor runs):
      .\Setup-Canvas.ps1
+     .\Setup-Canvas.ps1 -CourseUrl https://school.instructure.com/courses/12345
 
-  Automation / testing (no prompts):
-     .\Setup-Canvas.ps1 -CourseUrl https://school.instructure.com/courses/12345 -Token 1234~abcd...
+  There is deliberately NO -Token parameter: a token on a command line lands in
+  shell history, process listings and chat transcripts. It is always typed at
+  the hidden prompt.
 #>
 [CmdletBinding()]
 param(
     [string]$WorkingDir,            # where to save things; default = current folder
     [string]$CourseUrl,             # if omitted, the script asks
-    [string]$Token,                 # if omitted, the script asks (hidden) or reuses a stray file
     [string]$CourseLabel,           # optional friendly name; default = the real Canvas course name
     [switch]$ShowToken              # type the token visibly instead of hidden (not recommended)
 )
@@ -75,16 +75,14 @@ $courseId = $parsed.CourseId
 Write-Good ("School: {0}" -f $baseUrl)
 Write-Good ("Course id: {0}" -f $courseId)
 
-# --- 2. Token: reuse a stray file, use -Token, or ask (hidden) --------------------
+# --- 2. Token: offer to encrypt a plaintext canvas.token left here, else ask (hidden)
 Write-Step 2 "Your Canvas access token"
 
 function Read-StrayToken([string]$dir) {
     # Look for a token the instructor may have already saved, in likely forms.
     $candidates = @()
     $candidates += Get-ChildItem -Path $dir -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '(?i)^canvas\.token(\.txt)?$' -or
-                       $_.Name -match '(?i)token' -and $_.Extension -in '.txt','.rtf','.token' -or
-                       $_.Extension -eq '.token' }
+        Where-Object { $_.Name -match '(?i)^canvas\.token(\.txt)?$' }
     foreach ($f in $candidates) {
         $raw = Get-Content -Raw -Path $f.FullName -ErrorAction SilentlyContinue
         if (-not $raw) { continue }
@@ -108,18 +106,15 @@ function Read-StrayToken([string]$dir) {
 $tokenValue  = $null
 $tokenSource = $null
 
-if ($Token) {
-    if ($Token.Trim() -match $TokenShape) { $tokenValue = $Token.Trim(); $tokenSource = '(provided)' }
-    else { Write-Bad "The -Token value is not shaped like a Canvas token (NN~xxxx...)."; exit 1 }
-}
-
 if (-not $tokenValue) {
     $stray = Read-StrayToken $WorkingDir
     if ($stray) {
         $tokenValue  = $stray.Token
         $tokenSource = $stray.Source
-        Write-Good ("Found a token you already saved here - reusing it:")
+        Write-Good ("Found a plaintext token file you saved here:")
         Write-Host  ("        {0}" -f $stray.Source) -ForegroundColor Gray
+        $useIt = Read-Host "    Encrypt and use it? [Y/n]"
+        if ($useIt -and $useIt.Trim().ToLower().StartsWith('n')) { $tokenValue = $null; $tokenSource = $null }
     }
 }
 

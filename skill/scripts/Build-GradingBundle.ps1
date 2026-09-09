@@ -234,17 +234,20 @@ foreach ($s in $subs) {
     $extracts = @()
     if ($s.attachments) {
         foreach ($a in $s.attachments) {
-            $files += $a.display_name
-            if (-not ($IncludeAttachmentText -and $pythonOk)) { continue }
+            # students name files after themselves (SmithJane_Essay.docx): the
+            # bundle and the local copies carry a pseudonymous name instead
             $ext = [IO.Path]::GetExtension($a.display_name).ToLower()
+            $safeName = ('{0}_file{1}{2}' -f $pseud, ($files.Count + 1), $ext)
+            $files += $safeName
+            if (-not ($IncludeAttachmentText -and $pythonOk)) { continue }
             if ($attachExt -notcontains $ext) { continue }
             $dlDir = Join-Path $OutDir ("attachments\{0}" -f $pseud)
             New-Item -ItemType Directory -Force $dlDir | Out-Null
-            $local = Join-Path $dlDir $a.display_name
+            $local = Join-Path $dlDir $safeName
             try {
                 Invoke-WebRequest -Uri $a.url -OutFile $local -UseBasicParsing -ErrorAction Stop
             } catch {
-                $extracts += [ordered]@{ file = $a.display_name; note = 'download failed'; text = '' }
+                $extracts += [ordered]@{ file = $safeName; note = 'download failed'; text = '' }
                 continue
             }
             $raw = & python $extractPy $local 2>&1
@@ -252,11 +255,11 @@ foreach ($s in $subs) {
             if ($LASTEXITCODE -eq 0 -and $txt.Trim()) {
                 # same order as the body: structured PII first, then names
                 $clean = Remove-Names (Remove-PiiLocal $txt) $rosterForms $ownForms
-                $extracts += [ordered]@{ file = $a.display_name; note = 'text extracted + scrubbed'; text = $clean }
+                $extracts += [ordered]@{ file = $safeName; note = 'text extracted + scrubbed'; text = $clean }
             } elseif ($LASTEXITCODE -eq 2) {
-                $extracts += [ordered]@{ file = $a.display_name; note = 'no extractable text (scanned/empty) - review locally'; text = '' }
+                $extracts += [ordered]@{ file = $safeName; note = 'no extractable text (scanned/empty) - review locally'; text = '' }
             } else {
-                $extracts += [ordered]@{ file = $a.display_name; note = 'unsupported type - review locally'; text = '' }
+                $extracts += [ordered]@{ file = $safeName; note = 'unsupported type - review locally'; text = '' }
             }
         }
     }
@@ -288,7 +291,7 @@ if (Test-Path $guardPatterns) {
 }
 $digitRx = if ($KeepLongNumbers) { '\b\d{9}\b' } else { '\b\d{8,10}\b' }
 # exclude the pseudonyms' own digits (S-001) and json numerics like scores: check text fields only
-$textBlob = (@($bundle) | ForEach-Object { @($_.text) + @(($_.attachments_text | ForEach-Object { $_.text })) }) -join ' '
+$textBlob = (@($bundle) | ForEach-Object { @($_.text) + @($_.files) + @(($_.attachments_text | ForEach-Object { $_.text })) }) -join ' '
 $digitHits = [regex]::Matches($textBlob, $digitRx).Count
 if ($digitHits -gt 0) { [void]$problems.Add(("{0} bare digit run(s) matching {1} survived scrubbing" -f $digitHits, $digitRx)) }
 

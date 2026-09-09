@@ -8,8 +8,8 @@
 # offers to remove the RTF - which is itself an unencrypted copy of the token.
 
 param(
-    [string]$RtfPath   = (Join-Path $PSScriptRoot '..\Canvas Token.rtf'),
-    [string]$OutDir    = (Join-Path $PSScriptRoot '..'),
+    [string]$RtfPath   = (Join-Path (Get-Location).Path 'Canvas Token.rtf'),   # the working folder, never the skill
+    [string]$OutDir    = (Get-Location).Path,
     [switch]$KeepRtf           # keep the source RTF (it holds the raw token)
 )
 

@@ -225,8 +225,14 @@ def main():
         if not a.out:
             ap.error("--out required for apply")
         return apply_fixes(a.doc, a.workdir or a.doc + ".work", a.out)
+    import shutil
     import tempfile
-    return scan(a.doc, a.workdir or tempfile.mkdtemp(prefix="docx_verify_"))
+    tmp = None if a.workdir else tempfile.mkdtemp(prefix="docx_verify_")
+    try:
+        return scan(a.doc, a.workdir or tmp)
+    finally:
+        if tmp:      # every image of the document was extracted here
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

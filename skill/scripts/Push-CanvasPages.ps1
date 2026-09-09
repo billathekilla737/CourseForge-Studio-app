@@ -8,8 +8,8 @@
   of creating duplicates.
 
   Usage:
-    .\Push-CanvasPages.ps1                 # push everything in the manifest
-    .\Push-CanvasPages.ps1 -WhatIf         # show what would happen, no writes
+    .\Push-CanvasPages.ps1                 # DRY RUN: show what would happen, nothing written
+    .\Push-CanvasPages.ps1 -Apply          # push everything in the manifest
 #>
 param(
     [string]$Root        = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
@@ -17,9 +17,10 @@ param(
     [string]$ManifestPath= (Join-Path $PSScriptRoot '..\canvas-export\manifest.json'),
     [string]$TokenPath   = '',   # default: canvas.token next to the resolved config
     [string]$CourseId    = '',   # disambiguates when several canvas.config.*.json coexist
-    [string]$StatePath   = (Join-Path $PSScriptRoot '..\canvas.state.json'),
+    [string]$StatePath   = '',   # default: canvas.state.<course_id>.json beside the config
     [ValidateSet('published','unpublished')] [string]$PublishState = 'unpublished',
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    [switch]$Apply             # without it this is a dry run: nothing is written
 )
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -33,6 +34,8 @@ $manifest = Get-Content -Raw -Encoding UTF8 $ManifestPath | ConvertFrom-Json
 $token    = $ctx.Token
 $base     = $cfg.base_url.TrimEnd('/')
 $courseId = $cfg.course_id
+if (-not $Apply) { $WhatIf = $true; Write-Host "[WhatIf] DRY RUN - nothing is written (pass -Apply to push)" }
+if (-not $StatePath) { $StatePath = Join-Path (Split-Path -Parent $ConfigPath) ("canvas.state.{0}.json" -f $courseId) }
 $api      = "$base/api/v1/courses/$courseId"
 $headers  = @{ Authorization = "Bearer $token" }
 
@@ -42,9 +45,12 @@ $headers  = @{ Authorization = "Bearer $token" }
 $pub = if ($PublishState -eq 'published') { 'true' } else { 'false' }
 
 # --- state (idempotency) ---------------------------------------------------
-function New-State { [pscustomobject]@{ pages=@{}; modules=@{}; items=@{} } }
+function New-State { [pscustomobject]@{ course_id="$courseId"; pages=@{}; modules=@{}; items=@{} } }
 if (Test-Path $StatePath) {
     $raw = Get-Content -Raw $StatePath | ConvertFrom-Json
+    if ($raw.course_id -and ("$($raw.course_id)" -ne "$courseId")) {
+        throw ("State file {0} belongs to course {1}, not {2}. Pass -StatePath for this course." -f $StatePath, $raw.course_id, $courseId)
+    }
     # rehydrate as hashtables we can write to
     $state = New-State
     foreach ($p in $raw.pages.PSObject.Properties)   { $state.pages[$p.Name]   = $p.Value }

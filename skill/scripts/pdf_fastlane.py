@@ -3870,6 +3870,14 @@ def run_validate(workdir, profile=None, flavour="ua1"):
     if not targets:
         print("no fixed.pdf files under %s" % workdir)
         return 1
+    # verapdf.bat runs under cmd.exe, which interprets & | < > ^ % ! and quotes
+    # inside arguments even when Python passes them as a list. Paths come from
+    # the workdir (Canvas ids, a Documents folder); refuse anything odd.
+    odd = [t for t in targets + [vp] if re.search(r'[&|<>^%!"\r\n]', t)]
+    if odd:
+        print("refusing to validate: %d path(s) contain characters cmd.exe would interpret, e.g. %s"
+              % (len(odd), odd[0]))
+        return 2
     args = [vp, "--format", "json"]
     if profile:
         args += ["--profile", profile]

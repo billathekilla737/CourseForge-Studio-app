@@ -204,7 +204,7 @@ $hookReq = '{"tool_name":"Bash","tool_input":{"command":"Get-ChildItem"},"cwd":"
 $hookOut = $hookReq | & $bundledPy $hookPy
 if ($hookOut -notmatch '"permissionDecision":\s*"allow"') { Die ("hook under bundled python did not answer allow for a read: {0}" -f $hookOut) }
 # ...and a Canvas write must NOT: with no Assistant window to ask, the answer is deny
-$hookReq = '{"tool_name":"Bash","tool_input":{"command":"powershell -File Push-CanvasPages.ps1"},"cwd":"C:\\x","session_id":"s","tool_use_id":"t"}'
+$hookReq = '{"tool_name":"Bash","tool_input":{"command":"powershell -File Push-CanvasPages.ps1 -Apply"},"cwd":"C:\\x","session_id":"s","tool_use_id":"t"}'
 $hookOut = $hookReq | & $bundledPy $hookPy
 if ($hookOut -notmatch '"permissionDecision":\s*"deny"') { Die ("hook did not fail closed on a Canvas write: {0}" -f $hookOut) }
 Ok "hook runs under the bundled python and fails closed"

@@ -336,8 +336,14 @@ def main():
             ap.error("--out required for apply")
         return apply_fixes(a.deck, a.workdir or a.deck + ".work", a.out)
     if a.cmd == "verify":
+        import shutil
         import tempfile
-        return scan(a.deck, a.workdir or tempfile.mkdtemp(prefix="pptx_verify_"))
+        tmp = None if a.workdir else tempfile.mkdtemp(prefix="pptx_verify_")
+        try:
+            return scan(a.deck, a.workdir or tmp)
+        finally:
+            if tmp:      # every image of the deck was extracted here
+                shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -23,7 +23,8 @@ param(
     [Parameter(Mandatory)] [int]$AssignmentId,
     [string]$TokenPath,
     [string]$OutDir,
-    [switch]$Apply
+    [switch]$Apply,
+    [switch]$Cleanup     # after a clean -Apply: delete attachments\ and map.json (student data)
 )
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -115,6 +116,11 @@ Write-Host ""
 if ($apply) {
     Audit ("action=post-grades course=$courseId('$($course.name)') assignment=$AssignmentId posted=$ok failed=$fail live=$live")
     Write-Host "Done. posted=$ok failed=$fail"
+    if ($Cleanup -and $fail -eq 0) {
+        foreach ($p in @((Join-Path $OutDir 'attachments'), $mapPath)) {
+            if (Test-Path $p) { Remove-Item -Recurse -Force $p; Write-Host ("  removed {0} (student data, no longer needed locally)" -f $p) }
+        }
+    } elseif ($Cleanup) { Write-Host "  -Cleanup skipped: some posts failed; map.json is still needed to retry." }
     Write-Host "Audit: $auditPath"
 } else {
     Write-Host "Dry-run complete. Re-run with -Apply to post."

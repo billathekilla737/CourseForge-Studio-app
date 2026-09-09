@@ -55,7 +55,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\CanvasContext.ps1"
 $ctx    = Resolve-CanvasContext -ConfigPath $ConfigPath -TokenPath $TokenPath -CourseId $CourseId
 $cfg    = $ctx.Config
-$hdr    = @{ Authorization = ("Bearer " + (Get-Content -Raw $ctx.TokenPath).Trim()) }
+$hdr    = @{ Authorization = ("Bearer " + $ctx.Token) }   # decrypted in memory; the file is a DPAPI blob
 $base   = $cfg.base_url.TrimEnd('/') + '/api/v1'
 $course = [string]$cfg.course_id
 

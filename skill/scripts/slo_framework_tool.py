@@ -176,7 +176,13 @@ def cmd_fetch(a):
     for href, text in re.findall(r'<a[^>]+href="([^"]+\.pdf)"[^>]*>(.*?)</a>', page, re.S | re.I):
         label = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", text)).strip()
         if "framework" in label.lower():          # excludes unrelated site PDFs
-            links.append({"label": label, "url": _abs(html.unescape(href))})
+            u = _abs(html.unescape(href))
+            # only download from the MCCB site itself, never a third-party host
+            # linked from the page
+            if urllib.parse.urlparse(u).netloc.lower() != urllib.parse.urlparse(BASE).netloc.lower():
+                print("  skipping off-site link %s" % u)
+                continue
+            links.append({"label": label, "url": u})
     if not links:
         print("REFUSING: no framework PDF link found on %s" % _abs(a.slug))
         return 2

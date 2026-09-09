@@ -109,14 +109,12 @@ address and your access token there (the token stays hidden). It will print your
 name when it connects."* When they're done, verify by reading the course back
 (`GET /courses/:id`) and report the course name.
 
-**Fallback — simplest, but the token appears in the chat transcript.** If the user
-can't use the window (or prefers), ask for the course URL and token in chat, then run
-non-interactively:
-```powershell
-scripts\Setup-Canvas.ps1 -CourseUrl <url> -Token <token>
-```
+**There is no chat fallback.** A token pasted into the chat lands in the transcript,
+shell history and process listings, so `Setup-Canvas.ps1` has no `-Token` parameter.
+If the setup window cannot be used, the person opens PowerShell themselves and runs
+`Setup-Canvas.ps1` there; the token is typed at its hidden prompt.
 
-Either path writes `canvas.token`, `canvas.config.<id>.json`, and a protective
+Setup writes `canvas.token.enc` (DPAPI-encrypted), `canvas.config.<id>.json`, and a protective
 `.gitignore`, and tests the connection. **Never echo the token back.** Once connected,
 continue with the user's original request (e.g. listing their courses).
 

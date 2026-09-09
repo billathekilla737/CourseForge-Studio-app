@@ -24,7 +24,8 @@
     .\Push-CanvasProject.ps1 -ConfigPath .\canvas.config.12345.json `
         -ManifestPath .\canvas-export\project.12345.json `
         -StatePath .\canvas.project.12345.json
-    .\Push-CanvasProject.ps1 ... -WhatIf        # plan only, no writes
+    .\Push-CanvasProject.ps1 ...                # DRY RUN: plan only, nothing written
+    .\Push-CanvasProject.ps1 ... -Apply         # build/update the live course
     .\Push-CanvasProject.ps1 ... -SkipModules   # content pass only
 #>
 param(
@@ -32,11 +33,12 @@ param(
     [Parameter(Mandatory)] [string]$ConfigPath,
     [Parameter(Mandatory)] [string]$ManifestPath,
     [string]$TokenPath    = '',   # default: canvas.token next to the config (CanvasContext.ps1)
-    [string]$StatePath    = (Join-Path $PSScriptRoot '..\canvas.project.state.json'),
+    [string]$StatePath    = '',   # default: canvas.project.<course_id>.json beside the config
     [ValidateSet('published','unpublished')] [string]$PublishState = 'unpublished',
     [switch]$SkipModules,
     [switch]$RebuildModules,   # required to wipe modules on a course this script did not build
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    [switch]$Apply             # without it this is a dry run: nothing is written
 )
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -50,6 +52,11 @@ $manifest = Get-Content -Raw -Encoding UTF8 $ManifestPath | ConvertFrom-Json
 $token    = $ctx.Token
 $base     = $cfg.base_url.TrimEnd('/')
 $courseId = $cfg.course_id
+if (-not $Apply) { $WhatIf = $true }
+# One state file PER COURSE, next to that course's config. A single shared
+# state file used to prove "this script built this course" for EVERY course,
+# which is exactly the check that guards the module wipe below.
+if (-not $StatePath) { $StatePath = Join-Path (Split-Path -Parent $ConfigPath) ("canvas.project.{0}.json" -f $courseId) }
 $api      = "$base/api/v1/courses/$courseId"
 $headers  = @{ Authorization = "Bearer $token" }
 
@@ -129,7 +136,13 @@ if (-not $WhatIf -and -not $SkipModules) {
     # PS 5.1 and report Count=1 (gate still fires, but the message would lie)
     $existingMods = Invoke-Canvas GET "/modules?per_page=100"
     $existingMods = @($existingMods)
-    $ownCourse    = Test-Path $StatePath
+    # the state file must name THIS course: existing is not owning
+    $ownCourse = $false
+    if (Test-Path $StatePath) {
+        $prior = $null
+        try { $prior = Get-Content -Raw -Encoding UTF8 $StatePath | ConvertFrom-Json } catch {}
+        $ownCourse = [bool]($prior -and ("$($prior.course_id)" -eq "$courseId"))
+    }
     if ($existingMods.Count -gt 0 -and -not $ownCourse -and -not $RebuildModules) {
         Write-Host ""
         Write-Host "REFUSING: course $courseId already has $($existingMods.Count) module(s) and no prior state file"
@@ -143,7 +156,7 @@ if (-not $WhatIf -and -not $SkipModules) {
 
 Write-Host "Target: $($manifest.course_label)  ($api)"
 Write-Host "Publish state: $PublishState"
-if ($WhatIf) { Write-Host "[WhatIf] planning only, no writes`n" } else { Write-Host "" }
+if ($WhatIf) { Write-Host "[WhatIf] DRY RUN - planning only, nothing written (pass -Apply to build)`n" } else { Write-Host "" }
 
 # --- 1) Pages (PUT by slug = upsert) --------------------------------------
 foreach ($pg in $manifest.pages) {
@@ -268,6 +281,8 @@ else {
 }
 
 if (-not $WhatIf) {
+    if ($state -is [hashtable]) { $state['course_id'] = "$courseId" }
+    else { $state | Add-Member -NotePropertyName course_id -NotePropertyValue "$courseId" -Force }
     $state | ConvertTo-Json -Depth 6 | Set-Content -Path $StatePath -Encoding utf8
     Write-Host "`nDone. State -> $StatePath"
     Write-Host ("Review: {0}/courses/{1}" -f $base, $courseId)

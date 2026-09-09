@@ -1,7 +1,7 @@
 # CourseForge Assistant — install & first use
 
 *For the person setting up the PCs, and for the instructors and designers using it.*
-*Current version: 0.1.0*
+*Current version: 0.2.0*
 
 CourseForge Assistant is the second CourseForge desktop app. Where the PDF
 Fixer has six buttons for one job, the Assistant has one box you type into:
@@ -11,7 +11,7 @@ to Canvas in a dialog.
 
 ## Installing (per PC, ~3 minutes)
 
-1. Copy `CourseForge-Assistant-Setup-0.1.0.exe` to the PC (USB stick or a
+1. Copy `CourseForge-Assistant-Setup-0.2.0.exe` to the PC (USB stick or a
    shared drive is fine).
 2. Double-click it and click Next, Next, Finish. **No admin password is
    needed** — it installs into the user's own profile, with a Start Menu entry
@@ -54,16 +54,15 @@ box to type in at the bottom.
    freely; it will ask you a question when it needs a decision (for example,
    published or unpublished) and wait for your answer in the same box.
 4. **The Allow / Deny dialog.** Before anything changes in Canvas, a dialog
-   opens naming the course, what is about to happen, and the exact command.
-   **Allow** lets that one step run. **Deny** stops it; Claude will explain
-   what it was about to do and ask what you want instead. Closing the dialog
-   counts as Deny.
-5. **Stop** (red) halts Claude mid-job. Nothing already written to Canvas is
-   undone by Stop; the conversation is kept, so you can just send your next
-   message.
-6. **New conversation** starts fresh for the selected course. Otherwise the
-   Assistant continues where you left off, even after closing and reopening
-   the app.
+   opens naming the course, what is about to happen (as the app itself reads
+   the command, with Claude's own description shown separately), and the exact
+   command. **Allow** lets that one step run. **Deny** stops it; Claude will
+   explain what it was about to do and ask what you want instead. Closing the
+   dialog counts as Deny, and so does leaving it unanswered for twenty minutes.
+   The app also asks before Claude runs a script that is not part of the
+   CourseForge toolkit, writes a script or settings file, contacts a website
+   other than your Canvas site, or changes something on the PC. Reads, dumps,
+   dry runs and the toolkit's own scripts run without asking.
 
 `Open course folder` at the bottom opens the folder holding this course's
 working files, reports and a plain-text copy of the conversation.
@@ -102,8 +101,10 @@ the change does not happen.
   the same layout the CourseForge scripts expect (`canvas.config.<id>.json`
   plus an encrypted `canvas.token.enc`), so a designer can also drive that
   folder from PowerShell or Claude Code directly. The `assistant\` subfolder
-  holds the conversation log, the session id, and `claude-events.jsonl` (the
-  raw event stream, useful when something goes wrong).
+  holds the conversation log and the session id. A trace of which tools ran
+  (names, commands and paths only - never tool output or student data) is
+  kept under `%LOCALAPPDATA%\CourseForge-Assistant\logs\<course id>\`,
+  useful when something goes wrong.
 - **Tokens** are stored twice, both DPAPI-encrypted for that Windows account on
   that machine: a per-site copy in `%LOCALAPPDATA%\CourseForge-Assistant\`
   (so the person is asked once per PC; the PDF Fixer's copy is honoured too)
@@ -121,8 +122,9 @@ the change does not happen.
 - **Console mode.** `courseforge-assistant.exe ask <course_id> "<request>"`
   runs the same session in a console with y/n permission prompts — handy for
   scripted jobs and for diagnosing a PC over a remote session.
-  `courseforge-assistant.exe connect <course url> [token]` connects a course
-  without the window.
+  `courseforge-assistant.exe connect <course url>` connects a course without
+  the window; it asks for the token at a hidden prompt and refuses one on the
+  command line (that would land in shell history).
 - **Logs.** `Documents\CourseForge-Assistant\activity-log.jsonl` records
   connects, session starts, turns, permission decisions and errors — never
   tokens, prompts or student data. A startup failure also writes

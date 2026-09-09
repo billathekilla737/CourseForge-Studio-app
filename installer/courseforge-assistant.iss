@@ -8,7 +8,7 @@
 ; skill\ (the courseforge skill) and hooks\ before this is compiled.
 
 #define AppName "CourseForge Assistant"
-#define AppVersion "0.1.0"
+#define AppVersion "0.2.0"
 #define AppExe "courseforge-assistant.exe"
 
 [Setup]

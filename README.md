@@ -6,7 +6,7 @@ designers at Mississippi Gulf Coast Community College.
 | | What it is | Who runs it | State |
 |---|---|---|---|
 | **CourseForge PDF Fixer** | A Windows desktop app that backs up, repairs and re-uploads a course's PDFs, and proves the result against PDF/UA-1 | An instructor, on their own PC, with no Python and no PowerShell | **v1.1.8 — deployable** |
-| **CourseForge Assistant** | A Windows desktop app: one prompt box over the whole toolkit, with Claude Code working behind the window and an Allow / Deny dialog for every change to Canvas | An instructor or instructional designer, on their own PC, with Claude Code signed in | **v0.1.0 — first build** |
+| **CourseForge Assistant** | A Windows desktop app: one prompt box over the whole toolkit, with Claude Code working behind the window and an Allow / Deny dialog for every change to Canvas | An instructor or instructional designer, on their own PC, with Claude Code signed in | **v0.2.0 — hardened gate** |
 | **CourseForge** | A Canvas remediation and course-building toolkit (PowerShell + Python) driven by the `courseforge` Claude Code skill | An instructional designer, with Claude Code — or anyone, through the Assistant | **Working toolkit** |
 
 The two apps share one window shell (`cf_theme.py`), the PDF Fixer and the

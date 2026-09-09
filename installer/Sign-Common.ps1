@@ -87,7 +87,10 @@ function Write-Sha256File {
     param([Parameter(Mandatory)][string]$File)
     $h = (Get-FileHash -Algorithm SHA256 $File).Hash.ToLower()
     $out = "$File.sha256"
-    Set-Content -Path $out -Value ("{0} *{1}" -f $h, (Split-Path -Leaf $File)) -Encoding ASCII
+    # sha256sum -c format: "<hash> *<name>\n" with an LF, not CRLF (Set-Content
+    # would write CRLF and sha256sum then looks for a file named "...exe\r")
+    [IO.File]::WriteAllText($out, ("{0} *{1}`n" -f $h, (Split-Path -Leaf $File)),
+                            (New-Object System.Text.ASCIIEncoding))
     return $h
 }
 

@@ -61,8 +61,21 @@
 .a11yCourseHead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 8px}
 .a11yCourseHead h3{margin:0}
 .a11yCourseHead .spacer{flex:1}
-.a11yCourseList{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 14px}
-.a11yCourse{display:flex;gap:8px;align-items:center;font-size:13.5px;padding:4px 0}
+.a11yCourseList{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+/* Same card and the same selected colour as the look selector, so picking a
+   course and picking a look feel like one control. The tick box stays, because
+   this one takes several answers and a bare card would not say so. */
+.a11yCourse{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;
+  background:var(--panel);border:1px solid var(--line,#d7dce3);border-radius:8px;
+  padding:10px 12px;cursor:pointer}
+.a11yCourse:hover{border-color:var(--muted)}
+.a11yCourse.on,.a11yCourse:has(.a11yPick:checked){
+  border-color:var(--zone,#0f766e);box-shadow:inset 0 0 0 1px var(--zone,#0f766e)}
+.a11yCourse:focus-within{outline:2px solid var(--zone,#0f766e);outline-offset:2px}
+.a11yPick{margin:2px 0 0;flex:0 0 auto}
+.a11yCourseBody{display:flex;flex-direction:column;gap:2px;min-width:0}
+.a11yCourseBody b{font-weight:600;overflow-wrap:anywhere}
+.a11yCourseBody .hint{font-size:12px;color:var(--muted,#4b5563)}
 /* The way back to every term, under the list it filters. */
 .a11yCourseFoot{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 

@@ -176,6 +176,23 @@
       + '</div>';
   }
 
+  /* A course reads like a look: a card you click, wearing the same selected
+     colour. The tick box stays visible and real, because unlike the looks this
+     is a multiple choice and a card that hides its checkbox does not say so. */
+  function courseCard(c, on, showTerm) {
+    const id = esc(String(c.id));
+    const title = esc(c.title || c.name || c.id);
+    const bits = [];
+    if (c.code) bits.push(esc(c.code));
+    if (showTerm && c.term_label) bits.push(esc(c.term_label));
+    if (c.students != null) bits.push(c.students + (c.students === 1 ? ' student' : ' students'));
+    return '<label class="a11yCourse' + (on ? ' on' : '') + '" data-course="' + id + '">'
+      + '<input type="checkbox" class="a11yPick" value="' + id + '"' + (on ? ' checked' : '') + '>'
+      + '<span class="a11yCourseBody"><b>' + title + '</b>'
+      + (bits.length ? '<span class="hint">' + bits.join(' &middot; ') + '</span>' : '')
+      + '</span></label>';
+  }
+
   /* The three renders come from the server once and are kept for the session:
      they are the restyler's own output on a sample page, so they are the same
      for every course and there is nothing to refresh. */
@@ -406,6 +423,10 @@
   /* --------------------------------------------------------------- batch */
   async function openBatch() {
     showView('area');
+    // This screen is the accessibility area working across courses rather than
+    // inside one, so it wears that zone. showView reads the zone off the route,
+    // and #/batch names no course or area for it to read.
+    document.body.dataset.area = 'a11y';
     crumbs([{ label: 'Courses', href: '#/' }, { label: 'Batch accessibility' }]);
     $('#headerActions').innerHTML = '';
     areaHead('Batch accessibility', 'Fetch, restyle, verify and push several courses in one run. Dry run first; nothing is pushed until you confirm.');
@@ -459,9 +480,7 @@
       + '</div>'
       + '<div class="a11yCourseList" role="group" aria-labelledby="batchCoursesH">'
       + (shown.length
-        ? shown.map(c => '<label class="a11yCourse"><input type="checkbox" class="a11yPick" value="' + esc(String(c.id)) + '"'
-          + (picked.has(String(c.id)) ? ' checked' : '') + '> ' + esc(c.name || c.id)
-          + (term === '__all' && c.term_label ? ' <span class="pill">' + esc(c.term_label) + '</span>' : '') + '</label>').join('')
+        ? shown.map(c => courseCard(c, picked.has(String(c.id)), term === '__all')).join('')
         : '<div class="a11yNone">No courses in ' + esc(term) + '.</div>')
       + '</div>'
       + (hidden.length
@@ -494,6 +513,10 @@
       S.a11y.batchPicked = pickedIds();
       const n = $('#batchPicked');
       if (n) n.textContent = String(S.a11y.batchPicked.length);
+      body.querySelectorAll('.a11yCourse').forEach(lb => {
+        const box = lb.querySelector('.a11yPick');
+        lb.classList.toggle('on', !!(box && box.checked));
+      });
     };
     body.querySelectorAll('.a11yPick').forEach(el => { el.onchange = remember; });
     $('#batchTerm').onchange = ev => { S.a11y.batchTerm = ev.target.value; openBatch(); };

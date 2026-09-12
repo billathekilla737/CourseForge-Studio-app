@@ -335,6 +335,10 @@ class App:
             term = terms.term_of(c)
             courses.append({
                 "id": c["id"], "name": c.get("name", ""), "code": c.get("course_code", ""),
+                # What a person calls it, with the registrar's prefix and the
+                # delivery mode off. One parser, on the server, so every screen
+                # shortens a name the same way.
+                "title": schedule.course_title(c),
                 "term": (c.get("term") or {}).get("name", ""),
                 "term_code": term["code"], "term_label": term["label"],
                 "term_sort": term["sort"],

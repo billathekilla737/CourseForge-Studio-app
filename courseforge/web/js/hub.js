@@ -207,6 +207,12 @@
           : `<button class="card acrossCard off" type="button" disabled title="Not installed in this build">
                <div class="t">Batch accessibility</div>
                <div class="m">Not installed in this build.</div></button>`}
+        ${batchOn
+          ? `<a class="card acrossCard" href="#/files"><div class="t">ADA file compliance</div>
+               <div class="m">The PDFs, slide decks and Word documents across several courses. Survey first; nothing is uploaded until you say so.</div></a>`
+          : `<button class="card acrossCard off" type="button" disabled title="Not installed in this build">
+               <div class="t">ADA file compliance</div>
+               <div class="m">Not installed in this build.</div></button>`}
       </div></section>`;
     const roster = host.querySelector('#acrossRoster');
     if (roster) roster.onclick = () => {

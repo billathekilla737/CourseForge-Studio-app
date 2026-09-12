@@ -22,6 +22,8 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
+import types
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -672,3 +674,72 @@ class ReaderTextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BatchFilesTests(unittest.TestCase):
+    """ADA file compliance across courses.
+
+    The runner owns no repair logic of its own -- it drives the per-course
+    pipelines -- so what is worth testing is the part it does decide: that one
+    broken course does not cost you the rest, that the sentence shown before an
+    upload counts the right things, and that nothing writes without `apply`.
+    """
+
+    def setUp(self):
+        from courseforge.a11y import batch_files
+        self.bf = batch_files
+
+    def test_sentence_counts_courses_files_and_what_is_held_back(self):
+        s = self.bf.push_sentence({"ready": 41, "unverified": 3,
+                                   "course_ids": ["1", "2", "3"], "kinds": ["pdf", "pptx"]})
+        self.assertIn("41 fixed files over their originals", s)
+        self.assertIn("across 3 courses", s)
+        self.assertIn("PDFs, PowerPoint", s)
+        self.assertIn("3 files that did not pass verification are not included", s)
+        self.assertIn("originals are kept on this computer", s)
+
+    def test_sentence_is_not_written_in_the_plural_for_one_file(self):
+        s = self.bf.push_sentence({"ready": 1, "unverified": 0,
+                                   "course_ids": ["1"], "kinds": ["pdf"]})
+        self.assertIn("1 fixed file over its original", s)
+        self.assertIn("across 1 course ", s)
+        self.assertNotIn("did not pass", s)
+
+    def test_empty_selections_are_refused_before_anything_runs(self):
+        with self.assertRaises(ValueError):
+            self.bf._clean_courses([])
+        with self.assertRaises(ValueError):
+            self.bf._clean_kinds(["mp3"])
+        self.assertEqual(self.bf._clean_kinds(None), list(self.bf.KINDS))
+        self.assertEqual(self.bf._clean_courses([" 7 ", 8]), ["7", "8"])
+
+    def test_one_broken_course_does_not_stop_the_others(self):
+        seen = []
+
+        class Boom(Exception):
+            pass
+
+        def fake_list(ctx, cid):
+            seen.append(cid)
+            if cid == "bad":
+                raise Boom("Canvas said no")
+            return {}
+
+        ctx = types.SimpleNamespace(cfg=types.SimpleNamespace(data_dir="."),
+                                    store=types.SimpleNamespace(root=Path(".")))
+        with mock.patch.object(self.bf.course_pdfs, "list_files", fake_list), \
+             mock.patch.object(self.bf.course_pdfs, "state", lambda c, i: {"files": [], "queue": []}), \
+             mock.patch.object(self.bf, "course_label", lambda c, i: "Course " + str(i)):
+            out = self.bf.survey(ctx, ["good", "bad", "also-good"], ["pdf"])
+        self.assertEqual(seen, ["good", "bad", "also-good"], "it stopped at the broken one")
+        errs = [r["error"] for r in out["rows"]]
+        self.assertEqual([bool(e) for e in errs], [False, True, False])
+        self.assertIn("Canvas said no", errs[1])
+
+    def test_totals_add_up_across_courses(self):
+        rows = [{"kinds": {"pdf": {"files": 3, "needs_person": 1}}},
+                {"kinds": {"pdf": {"files": 4, "needs_person": 2}}},
+                {"kinds": {}}]
+        t = self.bf.totals(rows, ["pdf"])
+        self.assertEqual(t["pdf"]["files"], 7)
+        self.assertEqual(t["pdf"]["needs_person"], 3)

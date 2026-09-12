@@ -44,7 +44,10 @@ Three rules hold everywhere:
 - **Python 3.10+** (3.12 recommended)
 - **Claude Code CLI**, installed and signed in: <https://claude.com/claude-code>
 - A **Canvas API token** for your own account (the setup screen walks you through it)
-- Optional, for the PDF fixer's OCR and compliance proof: **Tesseract**, **veraPDF** and a **Java** runtime. The app tells you what is missing and how to install it; everything else works without them.
+- Optional, for the PDF fixer's OCR and compliance proof: **Tesseract**, **veraPDF** and a **Java** runtime.
+  Run `python -m courseforge tools` to see what is missing and how to get it, or
+  `python -m courseforge tools --install --yes` to install the ones winget carries.
+  Everything else works without them.
 
 ## Setup
 

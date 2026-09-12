@@ -1239,6 +1239,10 @@ header{border-top:3px solid var(--gold)}
 .zoneNote.bad{color:var(--danger)}
 .hubSection{margin-top:26px}
 .across{margin-top:26px}
+/* A card is a surface, not a sentence. An anchor styled as one would otherwise
+   take the link colour and sit next to an identical card built from a button,
+   one blue and one not, for no reason a reader could work out. */
+a.card,a.card:visited,a.acrossCard,a.acrossCard:visited{color:var(--ink);text-decoration:none}
 .acrossCard{cursor:pointer}
 .acrossCard.off{cursor:not-allowed}
 

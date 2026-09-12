@@ -123,3 +123,90 @@ def wire_env(cfg=None) -> None:
         os.environ["VERAPDF_BAT"] = info["verapdf"]["path"]
     if info["java"]["ok"] and not os.environ.get("JAVACMD"):
         os.environ["JAVACMD"] = info["java"]["path"]
+
+
+# ---------------------------------------------------------------- installing
+# What each missing tool needs, and whether a package manager can fetch it.
+# winget is on every Windows 11 and checks the publisher's signature, so it is
+# a better answer than this tool downloading executables on its own. veraPDF
+# publishes no winget package, so that one stays a guided manual step.
+WINGET = {
+    "tesseract": ("UB-Mannheim.TesseractOCR", "Tesseract OCR"),
+    "java": ("EclipseAdoptium.Temurin.21.JRE", "Eclipse Temurin JRE 21"),
+}
+VERAPDF_STEPS = (
+    "veraPDF has no winget package, so it is two steps by hand:\n"
+    "  1. Download the greenfield installer from https://verapdf.org/software/\n"
+    "  2. Run it and accept the default location, or unpack it to\n"
+    "     %USERPROFILE%\\verapdf\n"
+    "It needs Java, so install that first. Set VERAPDF_BAT, or verapdf_path in\n"
+    "config.json, if you put it anywhere else."
+)
+
+
+def install_plan(cfg=None) -> dict:
+    """What is missing, and how each piece can be got. Nothing is run."""
+    found = detect(cfg)
+    winget_ok = bool(shutil.which("winget"))
+    rows = []
+    for name, (pkg, label) in WINGET.items():
+        if not found.get(name, {}).get("ok"):
+            rows.append({"tool": name, "label": label, "how": "winget",
+                         "package": pkg, "command": f"winget install --id {pkg} --exact"})
+    if not found.get("verapdf", {}).get("ok"):
+        rows.append({"tool": "verapdf", "label": "veraPDF", "how": "manual",
+                     "package": "", "command": "", "steps": VERAPDF_STEPS})
+    missing_py = [k for k in ("pymupdf", "pikepdf", "fonttools", "python_pptx", "python_docx")
+                  if not found.get(k, {}).get("ok")]
+    if missing_py:
+        names = {"python_pptx": "python-pptx", "python_docx": "python-docx"}
+        pkgs = " ".join(names.get(k, k) for k in missing_py)
+        rows.append({"tool": "python", "label": "Python libraries", "how": "pip",
+                     "package": pkgs, "command": f"{sys.executable} -m pip install {pkgs}"})
+    return {"winget": winget_ok, "rows": rows, "found": found}
+
+
+def install(cfg=None, yes: bool = False, say=print) -> int:
+    """Install what a package manager can, and print the rest.
+
+    Only ever runs a package manager the machine already trusts. This never
+    downloads an executable itself: a tool that fetches and runs binaries is a
+    worse thing to have on a machine than the inconvenience it saves.
+    """
+    plan = install_plan(cfg)
+    if not plan["rows"]:
+        say("Every optional tool is already here. Nothing to install.")
+        return 0
+    done = failed = 0
+    for row in plan["rows"]:
+        say("")
+        say(f"{row['label']}: {plan['found'].get(row['tool'], {}).get('enables', '')}")
+        if row["how"] == "manual":
+            say(row["steps"])
+            continue
+        if row["how"] == "winget" and not plan["winget"]:
+            say("  winget is not on this machine. Install it from the Microsoft Store "
+                "(App Installer), or fetch the tool by hand.")
+            failed += 1
+            continue
+        say(f"  {row['command']}")
+        if not yes:
+            say("  (run the line above, or re-run this with --yes to do it now)")
+            continue
+        cmd = ([shutil.which("winget"), "install", "--id", row["package"], "--exact",
+                "--accept-package-agreements", "--accept-source-agreements",
+                "--disable-interactivity"] if row["how"] == "winget"
+               else [sys.executable, "-m", "pip", "install"] + row["package"].split())
+        say("  installing...")
+        result = subprocess.run(cmd, creationflags=NO_WINDOW)
+        if result.returncode == 0:
+            done += 1
+            say("  done")
+        else:
+            failed += 1
+            say(f"  that did not work (exit {result.returncode}). Run the line above by hand.")
+    if done:
+        say("")
+        say("Installed something. Open a new terminal so it is on your PATH, "
+            "then run: python -m courseforge doctor")
+    return 1 if failed else 0

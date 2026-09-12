@@ -122,6 +122,32 @@ def cmd_courses(cfg: Config) -> int:
     return 0
 
 
+def cmd_tools(cfg: Config, install: bool = False, yes: bool = False) -> int:
+    from . import tools as _tools
+    if install:
+        return _tools.install(cfg, yes=yes)
+    found = _tools.detect(cfg)
+    plan = _tools.install_plan(cfg)
+    print("CourseForge Studio tools\n")
+    for name, info in found.items():
+        mark = "OK " if info.get("ok") else "-- "
+        extra = info.get("version") or info.get("path") or ""
+        print(f"{mark}{name:14s} {extra[:48]}")
+        if not info.get("ok"):
+            print(f"   {info.get('enables', '')}")
+    if plan["rows"]:
+        print("\nMissing. To get them:\n")
+        for row in plan["rows"]:
+            print(f"  {row['label']}")
+            steps = row.get("command") or row.get("steps", "")
+            print("   " + steps.replace("\n", "\n   "))
+        print("\nOr let this do the ones a package manager knows about:")
+        print("  python -m courseforge tools --install --yes")
+    else:
+        print("\nEverything optional is here.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from . import cli as area_cli
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -138,6 +164,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("gui", help="the tkinter status window that owns the server")
     sub.add_parser("doctor", help="check the Canvas token, Claude login and tools")
     sub.add_parser("courses", help="list your courses")
+    p_tools = sub.add_parser("tools", help="the optional tools, and how to get the missing ones")
+    p_tools.add_argument("--install", action="store_true",
+                         help="install what a package manager can fetch")
+    p_tools.add_argument("--yes", action="store_true",
+                         help="with --install, run the installers rather than printing them")
     area_cli.register_all(sub)
     args = parser.parse_args(argv)
 
@@ -150,6 +181,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_doctor(cfg)
     if args.command == "courses":
         return cmd_courses(cfg)
+    if args.command == "tools":
+        return cmd_tools(cfg, install=args.install, yes=args.yes)
     if args.command == "gui":
         from .launcher import main as gui_main
         return gui_main()

@@ -20,7 +20,8 @@ from datetime import datetime, timezone
 
 from .. import htmlclean, ledger
 from ..routing import HTTPError, route
-from . import batch, bold_structure, bordered_boxes, dump, preview, push, restyle
+from . import (batch, batch_files, bold_structure, bordered_boxes, dump, preview,
+               push, restyle)
 from .workdir import (LOOKS, course_label, load_fixes, load_listing,
                       load_manifest, load_push_result, load_report, read_text,
                       save_fixes, workdir)
@@ -537,6 +538,59 @@ def batch_run(req):
         return batch.run(app, course_ids, look=look, apply=apply, log=log,
                          gate=gate if apply else None)
     return req.job("a11y.batch", job)
+
+
+# ------------------------------------------------- ADA file compliance
+
+@route("GET", "/api/batch/files", AREA)
+def batch_files_last(req):
+    last = batch_files.last_summary(req.app)
+    return last or {"rows": [], "course_ids": [], "kinds": list(batch_files.KINDS)}
+
+
+def _file_args(req):
+    body = req.body or {}
+    course_ids = [str(c).strip() for c in (body.get("course_ids") or []) if str(c).strip()]
+    if not course_ids:
+        raise HTTPError(400, "Pick at least one course.")
+    kinds = [k for k in (body.get("kinds") or list(batch_files.KINDS))
+             if k in batch_files.KINDS]
+    if not kinds:
+        raise HTTPError(400, "Pick at least one kind of file: PDFs, PowerPoint or Word.")
+    return course_ids, kinds
+
+
+@route("POST", "/api/batch/files/survey", AREA)
+def batch_files_survey(req):
+    course_ids, kinds = _file_args(req)
+
+    def job(log):
+        return batch_files.survey(req.app, course_ids, kinds, log=log)
+    return req.job("a11y.files.survey", job)
+
+
+@route("POST", "/api/batch/files/scan", AREA)
+def batch_files_scan(req):
+    course_ids, kinds = _file_args(req)
+
+    def job(log):
+        return batch_files.scan(req.app, course_ids, kinds, log=log)
+    return req.job("a11y.files.scan", job)
+
+
+@route("POST", "/api/batch/files/push", AREA)
+def batch_files_push(req):
+    course_ids, kinds = _file_args(req)
+    apply = bool((req.body or {}).get("apply"))
+
+    def gate(payload, sentence, detail):
+        req.app._gate("a11y.files.batch", payload, sentence, req.confirm,
+                      detail=detail, what="uploading fixed files")
+
+    def job(log):
+        return batch_files.push(req.app, course_ids, kinds, apply=apply,
+                                gate=gate if apply else None, log=log)
+    return req.job("a11y.files.push", job)
 
 
 # --------------------------------------------------------------- hub card

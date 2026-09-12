@@ -571,6 +571,8 @@
   /* ------------------------------------------------------------ register */
   window.openBatch = openBatch;
   window.openA11y = openA11y;
+  // The picker shares this card with the ADA file compliance screen.
+  Object.assign(window.Studio || (window.Studio = {}), { courseCard, openBatch });
   if (has('registerArea')) {
     registerArea({
       id: 'a11y', label: 'Accessibility', zone: 'a11y', open: openA11y,

@@ -294,6 +294,9 @@ function route() {
   if (parts[0] === 'schedule') opened = openSchedule();
   else if (parts[0] === 'batch') {
     opened = typeof openBatch === 'function' ? openBatch() : missingOpener('Batch accessibility');
+  } else if (parts[0] === 'files') {
+    opened = typeof openFileCompliance === 'function'
+      ? openFileCompliance() : missingOpener('ADA file compliance');
   } else if (parts[0] === 'c' && parts[2] === 'a' && parts[3]) {
     rememberAssignment(parts[1], parts[3]);
     opened = openAssignment(parts[1], parts[3], { arriving: true });

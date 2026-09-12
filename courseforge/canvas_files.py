@@ -158,24 +158,45 @@ class FilesOps:
         raise RuntimeError(f"could not download {dest.name} ({'; '.join(errors)})")
 
     # -------------------------------------------------------------- upload
-    def upload_course_file(self, course_id, name: str, path: Path,
-                           folder_id: int | str | None = None,
-                           content_type: str = "application/octet-stream",
-                           on_duplicate: str = "overwrite") -> dict:
-        """Canvas's three-step upload into a course folder, streamed from disk.
-
-        1. POST /courses/:id/files for a slot  (token, form)
-        2. POST the multipart to the pre-signed URL (NO token)
-        3. follow the Location Canvas answers with (token) to confirm
-        """
-        path = Path(path)
-        size = path.stat().st_size
+    # Canvas takes three steps, and they want different treatment when you are
+    # uploading a whole course's worth of files:
+    #
+    #   1. POST /courses/:id/files asks for a slot        (token, form)
+    #   2. POST the multipart to the pre-signed URL       (NO token)
+    #   3. follow the Location Canvas answers with        (token) to confirm
+    #
+    # Step 1 is small, rate-limited, and hands back a single-use slot, so it is
+    # asked for one file at a time. Step 2 is the whole file on the wire, so on
+    # a slow link it is worth running several at once. `upload_course_file` does
+    # all three for one file; a caller pushing hundreds of them calls
+    # `request_upload_slot` in sequence and `send_upload_body` in parallel.
+    def request_upload_slot(self, course_id, name: str, size: int,
+                            folder_id: int | str | None = None,
+                            content_type: str = "application/octet-stream",
+                            on_duplicate: str = "overwrite") -> dict:
+        """Step 1 on its own. The slot it returns is single-use: a failed body
+        send needs a fresh one, so never retry step 2 against the same offer."""
         fields = [("name", name), ("size", str(size)), ("content_type", content_type),
                   ("on_duplicate", on_duplicate)]
         if folder_id is not None:
             fields.append(("parent_folder_id", str(folder_id)))
-        offer = self._post_form("POST", f"/courses/{course_id}/files", fields)
-        return self._finish_upload(offer, name, path, content_type)
+        return self._post_form("POST", f"/courses/{course_id}/files", fields)
+
+    def send_upload_body(self, offer: dict, name: str, path: Path,
+                         content_type: str = "application/octet-stream") -> dict:
+        """Steps 2 and 3 for a slot from `request_upload_slot`, streamed from
+        disk. Safe to run several of these at once."""
+        return self._finish_upload(offer, name, Path(path), content_type)
+
+    def upload_course_file(self, course_id, name: str, path: Path,
+                           folder_id: int | str | None = None,
+                           content_type: str = "application/octet-stream",
+                           on_duplicate: str = "overwrite") -> dict:
+        """All three steps for one file."""
+        path = Path(path)
+        offer = self.request_upload_slot(course_id, name, path.stat().st_size,
+                                         folder_id, content_type, on_duplicate)
+        return self.send_upload_body(offer, name, path, content_type)
 
     def _finish_upload(self, offer: dict, name: str, path: Path, content_type: str) -> dict:
         url = (offer or {}).get("upload_url")

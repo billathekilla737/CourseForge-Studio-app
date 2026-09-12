@@ -51,6 +51,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 # In a WINDOWED (no-console) exe sys.stdout is None on double-click -
@@ -3475,6 +3476,9 @@ def process_one(path, out_path, title=None):
         t = time.perf_counter()
         info = classify(path)
         res["class_before"] = info.get("cls")
+        # carried through so a reader of result.json can say how long the file
+        # is without opening it again (the Studio's file table shows pages)
+        res["pages"] = info.get("pages")
         clock("classify", t)
 
         if info.get("cls") == "encrypted":
@@ -3685,6 +3689,38 @@ def _queue_entry(r, sub):
                      "`selftest` before re-batching")}
 
 
+# --------------------------------------------------------------- cancelling
+# The Studio server runs run_batch on a worker thread and a person may stop
+# the job. Killing a batch used to orphan its pool children (28 seen after a
+# few kills), which keep handles and CPU. So the live executor is tracked: a
+# cancel stops submitting new files and shuts the pool down with
+# cancel_futures=True, which is the only way to leave nothing behind.
+_CANCEL = threading.Event()
+_POOL_LOCK = threading.Lock()
+_POOL = None
+
+
+def cancel_batch():
+    """Ask a running run_batch to stop. Safe to call from another thread."""
+    _CANCEL.set()
+    with _POOL_LOCK:
+        pool = _POOL
+    if pool is not None:
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+
+
+def clear_cancel():
+    """Arm a fresh batch. Call before run_batch, not after."""
+    _CANCEL.clear()
+
+
+def batch_cancelled():
+    return _CANCEL.is_set()
+
+
 def _run_tasks(tasks, jobs):
     """process_one over tasks. A worker that dies HARD (mupdf/pikepdf can
     segfault on malformed input, and process_one's except clauses cannot catch
@@ -3692,18 +3728,34 @@ def _run_tasks(tasks, jobs):
     ProcessPoolExecutor.map - 200 fixed files and not one result.json. Submit
     per task instead, and on a broken pool fall back to in-process so the run
     still finishes and the bad file is named."""
-    from concurrent.futures import ProcessPoolExecutor, BrokenExecutor
+    global _POOL
+    from concurrent.futures import (BrokenExecutor, CancelledError,
+                                    ProcessPoolExecutor)
     if jobs == 1:
-        return [_batch_worker(t) for t in tasks]
+        out = []
+        for t in tasks:
+            if _CANCEL.is_set():
+                break
+            out.append(_batch_worker(t))
+        return out
     results = [None] * len(tasks)
     try:
         with ProcessPoolExecutor(max_workers=jobs) as ex:
-            futs = {ex.submit(_batch_worker, t): i
-                    for i, t in enumerate(tasks)}
+            with _POOL_LOCK:
+                _POOL = ex
+            futs = {}
+            for i, t in enumerate(tasks):
+                if _CANCEL.is_set():
+                    break
+                futs[ex.submit(_batch_worker, t)] = i
             for fut, i in futs.items():
                 try:
                     results[i] = fut.result()
+                except CancelledError:
+                    continue
                 except BrokenExecutor:
+                    if _CANCEL.is_set():
+                        break
                     raise
                 except Exception as e:
                     results[i] = {
@@ -3714,6 +3766,8 @@ def _run_tasks(tasks, jobs):
                         "reason": "worker crashed on this file (%s: %s)"
                                   % (type(e).__name__, e)}
     except BrokenExecutor as e:
+        if _CANCEL.is_set():
+            return [r for r in results if r is not None]
         print("  worker pool died (%s) - finishing the remaining files "
               "in-process, one at a time" % e)
         for i, t in enumerate(tasks):
@@ -3727,6 +3781,9 @@ def _run_tasks(tasks, jobs):
                         "notes": [], "timings": {}, "confidence": 0.0,
                         "reason": "crashed even single-threaded (%s: %s)"
                                   % (type(ex2).__name__, ex2)}
+    finally:
+        with _POOL_LOCK:
+            _POOL = None
     return [r for r in results if r is not None]
 
 
@@ -3802,7 +3859,9 @@ def run_batch(workdir, jobs):
                "cached": len(cached), "wall_seconds": round(wall, 2),
                "per_file_avg_seconds": round(wall / max(1, n_done), 3),
                "jobs": jobs, "status_counts": counts,
-               "queued": len(queue)}
+               "queued": len(queue),
+               "cancelled": bool(_CANCEL.is_set()),
+               "not_started": max(0, len(tasks) - n_done)}
     with open(os.path.join(workdir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=1)
     with open(os.path.join(workdir, "queue.json"), "w", encoding="utf-8") as f:
@@ -4247,6 +4306,7 @@ def selftest():
             make(os.path.join(td, name))
         expect_class = {"text.pdf": "text-untagged", "scan.pdf": "scanned-image",
                         "mixed.pdf": "text-untagged", "layers.pdf": "text-untagged"}
+        have_tess = bool(find_tesseract())
         for name in cases:
             src = os.path.join(td, name)
             info = classify(src)
@@ -4254,6 +4314,14 @@ def selftest():
                 print("FAIL %s: classified %s, expected %s"
                       % (name, info["cls"], expect_class[name]))
                 ok = False
+                continue
+            # OCR is an optional tool, not a defect. On a machine without
+            # tesseract the scanned-image lane cannot run, and reporting that
+            # as a regression hides every real failure underneath it. The
+            # classification above is still checked; the fix is skipped.
+            if name == "scan.pdf" and not have_tess:
+                print("  SKIP scan.pdf   class=%s, needs tesseract for the OCR "
+                      "lane (not installed here)" % info["cls"])
                 continue
             out = os.path.join(td, "fixed_" + name)
             r = process_one(src, out)

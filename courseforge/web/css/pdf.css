@@ -1,0 +1,73 @@
+/* pdf.css: styles only the PDF fixer uses. The zone colour appears in the tab
+   underline, the area head rule and the one primary button, all painted by the
+   shared shell; nothing here adds a fourth place. Tokens fall back to plain
+   values so the pane renders even before the shell defines them. */
+
+.pdfVerbs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.pdfSummary{margin:0 0 4px;font-size:12.5px;color:var(--muted,#4b5563)}
+.pdfLoading{padding:14px}
+
+/* The three panes. Real links, so a middle click opens one in a new tab. */
+.pdfSub{display:flex;gap:4px;flex-wrap:wrap;margin:16px 0 14px;
+  border-bottom:1px solid var(--line,#d7dce3)}
+.pdfSub .subTab{text-decoration:none}
+.pdfSub .subTab[aria-current="page"]{color:var(--ink,#111827);font-weight:650;
+  border-bottom-color:var(--zone,#0f766e)}
+.pdfSub .subTab:focus-visible{outline:2px solid var(--zone,#0f766e);outline-offset:2px}
+
+.pdfChips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+
+/* ------------------------------------------------------------ the table */
+.pdfTableWrap{overflow-x:auto;margin:0 0 18px}
+.pdfTable{width:100%;border-collapse:collapse;font-size:13px}
+.pdfTable caption{text-align:left;font-size:12px;color:var(--muted,#4b5563);padding:0 0 8px}
+.pdfTable th,.pdfTable td{text-align:left;vertical-align:top;padding:7px 9px;
+  border-bottom:1px solid var(--line,#d7dce3)}
+.pdfTable thead th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted,#4b5563);font-weight:650;white-space:nowrap}
+.pdfTable th[scope="row"]{font-weight:600;min-width:220px}
+.pdfTable td.num{font-family:var(--mono,ui-monospace,Consolas,monospace);text-align:right;
+  width:4em}
+.pdfTable .pill{margin:0 3px 3px 0}
+.pdfName{display:block}
+.pdfFolder,.pdfWhy{display:block;font-size:11.5px;font-weight:400;line-height:1.45;
+  margin-top:2px}
+.pdfWhy{max-width:46ch}
+
+/* ------------------------------------------------------- the queue panel */
+.pdfQueue{margin:18px 0 0}
+.pdfQueue h3{margin:0 0 4px;font-size:15px}
+.pdfQueue>p{margin:0 0 12px;font-size:12.5px}
+.pdfQGroup{border:1px solid var(--line,#d7dce3);border-radius:9px;
+  background:var(--panel,#fff);padding:10px 12px;margin:0 0 10px}
+.pdfQHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
+.pdfQHead b{font-weight:650}
+.pdfQHead .muted{margin-left:auto;font-size:12px}
+.pdfQHint{margin:6px 0 0;font-size:11.5px;line-height:1.5}
+.pdfQGroup .applyList{margin:8px 0 0}
+.pdfQGroup .applyList li{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:12.5px}
+
+/* ---------------------------------------------------------- the alt grid */
+.pdfAltBar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.pdfAltBar .hint{font-size:12.5px;color:var(--muted,#4b5563);max-width:70ch}
+/* The "Left alone" cards are read from the engine's summary, which names the
+   figure but cannot hand back a picture of it. Drop the empty frame rather
+   than show a broken-image box; the caption already says which figure it is. */
+#pdfAltGrid .altCard.alone .altPic{display:none}
+
+/* ------------------------------------------------------------ the census */
+.pdfProveLine{margin:0 0 12px;font-size:14px}
+.pdfHonest{margin:0 0 14px}
+.pdfCensus th[scope="row"]{font-family:var(--mono,ui-monospace,Consolas,monospace);
+  font-size:12px;min-width:280px}
+.pdfCensus td .muted{font-size:11.5px}
+
+@media (max-width:900px){
+  .pdfTable th[scope="row"]{min-width:0}
+  .pdfWhy{max-width:none}
+  .pdfQHead .muted{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .pdfSub .subTab{transition:none}
+}

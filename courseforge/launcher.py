@@ -58,7 +58,10 @@ class Launcher:
         self.f_btn = tkfont.Font(family="Segoe UI", size=10, weight="bold")
 
         self._build()
-        self.root.after(80, self._start_server)
+        # The first-run offer comes before the server, so the answer is already
+        # in when the areas first report what they can do. It is an offer, not a
+        # gate: whatever the person says, the app starts.
+        self.root.after(40, self._first_run)
         self.root.after(120, self._drain)
 
     # ------------------------------------------------------------------ ui
@@ -124,6 +127,25 @@ class Launcher:
     def _set_state(self, colour: str, text: str) -> None:
         self.dot.itemconfig(self.dot_id, fill=colour)
         self.status.config(text=text, fg=INK if colour == OK else MUTED)
+
+    # ----------------------------------------------------------- first run
+    def _first_run(self) -> None:
+        """Offer the optional tools once, then start the server either way."""
+        try:
+            from . import setup_window
+            self._set_state(WARN, "Checking what this machine has…")
+            self.root.update_idletasks()
+            answer = setup_window.offer(self.cfg, self.root)
+            if answer == "installed":
+                # winget puts a new tool on the PATH of programs started after
+                # it, so this process still cannot see it. Say so rather than
+                # reporting it missing and letting them think it failed.
+                self.canvas_lbl.config(
+                    text="A tool was just installed. Restart this window for it "
+                         "to be found.", fg=WARN)
+        except Exception:  # noqa: BLE001
+            pass          # never let the offer stop the app starting
+        self._start_server()
 
     # -------------------------------------------------------------- server
     def _start_server(self) -> None:

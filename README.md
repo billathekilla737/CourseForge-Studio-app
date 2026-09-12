@@ -45,9 +45,11 @@ Three rules hold everywhere:
 - **Claude Code CLI**, installed and signed in: <https://claude.com/claude-code>
 - A **Canvas API token** for your own account (the setup screen walks you through it)
 - Optional, for the PDF fixer's OCR and compliance proof: **Tesseract**, **veraPDF** and a **Java** runtime.
-  Run `python -m courseforge tools` to see what is missing and how to get it, or
-  `python -m courseforge tools --install --yes` to install the ones winget carries.
-  Everything else works without them.
+  The first launch offers to install the two that have official packages, and
+  tells you the two steps for veraPDF. You can decline: everything else works
+  without them, and the accessibility area says what is missing where it matters.
+  Later, `python -m courseforge tools` reports the same thing and
+  `python -m courseforge tools --install --yes` does the install.
 
 ## Setup
 

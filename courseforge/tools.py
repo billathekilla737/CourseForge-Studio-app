@@ -6,10 +6,12 @@ the verbs that need it, rather than failing halfway through a job.
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
@@ -210,3 +212,98 @@ def install(cfg=None, yes: bool = False, say=print) -> int:
         say("Installed something. Open a new terminal so it is on your PATH, "
             "then run: python -m courseforge doctor")
     return 1 if failed else 0
+
+
+# --------------------------------------------------------------- first run
+# Asked once, on the first launch, and remembered. The answer lives beside the
+# token rather than in the app folder, so re-downloading the app does not ask
+# again and a second copy on the same machine inherits the decision.
+SETUP_FILE = "tools-setup.json"
+
+
+def _setup_path() -> Path:
+    from .config import user_dir
+    return user_dir() / SETUP_FILE
+
+
+def setup_state() -> dict:
+    try:
+        return json.loads(_setup_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def remember_setup(**changes) -> dict:
+    state = setup_state()
+    state.update(changes)
+    state["at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    path = _setup_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return state
+
+
+def should_offer_setup(cfg=None) -> dict | None:
+    """The first-run offer, or None when there is nothing to say.
+
+    Nothing to say means: already asked, or every optional tool is present.
+    A missing tool is never a reason to stop someone using the app, so this is
+    an offer and the caller must let them past it either way.
+    """
+    state = setup_state()
+    if state.get("asked") or state.get("never"):
+        return None
+    plan = install_plan(cfg)
+    if not plan["rows"]:
+        remember_setup(asked=True, installed=[], note="nothing was missing")
+        return None
+    return plan
+
+
+def install_stream(cfg=None, on_line=None, only=None) -> dict:
+    """install(), but reporting line by line so a window can show progress.
+
+    `only` limits it to named tools. Returns what happened per tool; a failure
+    is reported, never raised, because the app runs without any of this.
+    """
+    say = on_line or (lambda _t: None)
+    plan = install_plan(cfg)
+    rows = [r for r in plan["rows"] if not only or r["tool"] in only]
+    done, failed, manual = [], [], []
+    for row in rows:
+        if row["how"] == "manual":
+            manual.append(row["tool"])
+            say(f"{row['label']}: has to be done by hand, see the notes afterwards.")
+            continue
+        if row["how"] == "winget" and not plan["winget"]:
+            failed.append(row["tool"])
+            say(f"{row['label']}: winget is not on this machine.")
+            continue
+        say(f"Installing {row['label']}...")
+        cmd = ([shutil.which("winget"), "install", "--id", row["package"], "--exact",
+                "--accept-package-agreements", "--accept-source-agreements",
+                "--disable-interactivity"] if row["how"] == "winget"
+               else [sys.executable, "-m", "pip", "install"] + row["package"].split())
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, encoding="utf-8", errors="replace",
+                                    creationflags=NO_WINDOW)
+            for line in proc.stdout or ():
+                line = line.rstrip()
+                if line:
+                    say("   " + line[:120])
+            code = proc.wait()
+        except Exception as exc:  # noqa: BLE001
+            code, _ = 1, say(f"   {type(exc).__name__}: {exc}")
+        if code == 0:
+            done.append(row["tool"])
+            say(f"{row['label']}: installed.")
+        else:
+            failed.append(row["tool"])
+            say(f"{row['label']}: did not install (exit {code}). "
+                "You can do it later from a terminal.")
+    return {"installed": done, "failed": failed, "manual": manual,
+            "steps": VERAPDF_STEPS if manual else ""}

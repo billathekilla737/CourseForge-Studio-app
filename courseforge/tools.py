@@ -27,6 +27,39 @@ def _version(cmd: list[str], take: int = 1) -> str:
         return ""
 
 
+def java_dirs() -> list[tuple[Path, str]]:
+    """Where a Java that is not on PATH actually lives, as (root, glob) pairs.
+
+    Worth looking, because installed-but-not-on-PATH is the normal case rather
+    than the odd one: the Temurin installer offers "add to PATH" as a choice, a
+    managed install often declines it, and a PATH change never reaches a program
+    that is already running. Miss this and the first-run window comes back on a
+    machine that already has Java, which is the one thing it must not do.
+    """
+    return [
+        (Path.home() / "tools", "jdk-*/bin/java.exe"),
+        (Path(r"C:\Program Files\Eclipse Adoptium"), "*/bin/java.exe"),
+        (Path(r"C:\Program Files\Java"), "*/bin/java.exe"),
+        (Path(r"C:\Program Files (x86)\Eclipse Adoptium"), "*/bin/java.exe"),
+        (Path("/usr/lib/jvm"), "*/bin/java"),
+        (Path("/Library/Java/JavaVirtualMachines"), "*/Contents/Home/bin/java"),
+    ]
+
+
+def _first_match(pairs: list[tuple[Path, str]]) -> str:
+    """The newest-looking hit across those folders, or an empty string."""
+    for root, pattern in pairs:
+        try:
+            if not root.is_dir():
+                continue
+            hits = sorted(root.glob(pattern), reverse=True)
+        except OSError:
+            continue
+        if hits:
+            return str(hits[0])
+    return ""
+
+
 def _module(name: str, pip: str, enables: str) -> dict:
     try:
         mod = importlib.import_module(name)
@@ -76,11 +109,8 @@ def detect(cfg=None) -> dict:
                    "and install to C:\\Program Files\\veraPDF (needs Java).",
     }
 
-    java = getattr(cfg, "java_path", "") or os.environ.get("JAVACMD") or shutil.which("java")
-    if not java:
-        for cand in sorted((Path.home() / "tools").glob("jdk-*/bin/java.exe"), reverse=True):
-            java = str(cand)
-            break
+    java = (getattr(cfg, "java_path", "") or os.environ.get("JAVACMD")
+            or shutil.which("java") or _first_match(java_dirs()))
     out["java"] = {
         "ok": bool(java and Path(java).exists()), "path": java or "",
         "version": _version([java, "-version"]) if java else "",

@@ -3,6 +3,7 @@
 No installer is ever started here, and the real per-user folder is never
 touched: the marker path is redirected at a temporary directory.
 """
+import os
 import shutil
 import tempfile
 import unittest
@@ -144,6 +145,48 @@ class SetupWindowLayout(unittest.TestCase):
                      if isinstance(w, self.tk.Label)]
             win.root.destroy()
             self.assertIn(expected, texts)
+
+class AlreadyInstalled(unittest.TestCase):
+    """The window must not appear on a machine that already has the tools.
+
+    This is a live check of what is on disk, not a remembered flag, so it also
+    has to survive the ordinary case of a tool being installed but not on PATH.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.cfg = Config.load(REPO / "config.example.json")
+        self.patch = mock.patch.object(tools, "_setup_path",
+                                       lambda: self.tmp / "tools-setup.json")
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+
+    def test_nothing_is_offered_when_everything_is_present(self):
+        present = {k: dict(v, ok=True) for k, v in tools.detect(self.cfg).items()}
+        with mock.patch.object(tools, "detect", lambda c=None: present):
+            self.assertEqual(tools.install_plan(self.cfg)["rows"], [])
+            self.assertIsNone(tools.should_offer_setup(self.cfg),
+                              "it offered to install tools that are already here")
+
+    def test_a_tool_off_the_path_still_counts_as_installed(self):
+        # Temurin's installer makes "add to PATH" a choice, and a managed
+        # install often declines it. The tool is there; do not ask for it again.
+        root = self.tmp / "Eclipse Adoptium"
+        exe = root / "jre-21.0.12.7-hotspot" / "bin" / "java.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_text("")
+        env = {k: v for k, v in os.environ.items() if k != "JAVACMD"}
+        with mock.patch.object(tools.shutil, "which", lambda n: None),              mock.patch.dict(os.environ, env, clear=True),              mock.patch.object(tools, "java_dirs", lambda: [(root, "*/bin/java.exe")]):
+            self.assertTrue(tools.detect(self.cfg)["java"]["ok"], "an installed Java was missed")
+            offered = [r["tool"] for r in tools.install_plan(self.cfg)["rows"]]
+        self.assertNotIn("java", offered, "it offered a Java that is already installed")
+
+    def test_a_missing_tool_is_still_reported_missing(self):
+        env = {k: v for k, v in os.environ.items() if k != "JAVACMD"}
+        with mock.patch.object(tools.shutil, "which", lambda n: None),              mock.patch.dict(os.environ, env, clear=True),              mock.patch.object(tools, "java_dirs", lambda: [(self.tmp / "empty", "*/java.exe")]):
+            self.assertFalse(tools.detect(self.cfg)["java"]["ok"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

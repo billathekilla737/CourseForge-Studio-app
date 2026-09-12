@@ -42,23 +42,54 @@ class SetupWindow:
         self.root = tk.Toplevel(parent) if parent else tk.Tk()
         self.root.title("CourseForge Studio setup")
         self.root.configure(bg=BG)
-        self.root.resizable(False, False)
+        # Resizable, and never fixed to a guessed height. A hardcoded size is a
+        # bet that three tool names, a font and a screen's scaling all render
+        # the way they did on the machine that wrote it, and when that bet is
+        # wrong the buttons are the part that falls off the bottom.
+        self.root.resizable(True, True)
         self.root.protocol("WM_DELETE_WINDOW", self._skip)
-        w, h = 520, 460
-        x = (self.root.winfo_screenwidth() - w) // 2
-        y = (self.root.winfo_screenheight() - h) // 3
-        self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.f_title = tkfont.Font(family="Segoe UI", size=14, weight="bold")
         self.f_body = tkfont.Font(family="Segoe UI", size=9)
         self.f_mono = tkfont.Font(family="Consolas", size=8)
         self.f_btn = tkfont.Font(family="Segoe UI", size=10, weight="bold")
         self._build()
+        self._size_to_fit()
         self.root.after(120, self._drain)
+
+    def _size_to_fit(self) -> None:
+        """Take the height the content actually asked for, then place it.
+
+        Capped at most of the screen so a long list cannot run off a laptop,
+        and floored so the window never opens as a sliver.
+        """
+        self.root.update_idletasks()
+        w = max(520, self.root.winfo_reqwidth())
+        want = self.root.winfo_reqheight()
+        h = max(360, min(want, int(self.root.winfo_screenheight() * 0.85)))
+        self.root.minsize(480, min(h, 420))
+        x = max(0, (self.root.winfo_screenwidth() - w) // 2)
+        y = max(0, (self.root.winfo_screenheight() - h) // 3)
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
 
     # ------------------------------------------------------------------ ui
     def _build(self) -> None:
         pad = {"padx": 22}
+
+        # Pack order is priority when there is not enough room, so the way out
+        # is claimed first and everything else divides what is left. Built the
+        # other way round -- heading, then list, then buttons -- a longer list
+        # of tools pushes the buttons off the bottom and the window has no
+        # answer left in it.
+        row = tk.Frame(self.root, bg=BG)
+        row.pack(side="bottom", fill="x", pady=(12, 16), **pad)
+
+        # Starts short; it only earns height once there is something to read.
+        self.log = tk.Text(self.root, height=4, bg="#14171b", fg=MUTED, font=self.f_mono,
+                           relief="flat", wrap="word", state="disabled",
+                           highlightthickness=0, padx=10, pady=8)
+        self.log.pack(side="bottom", fill="both", expand=True, pady=(12, 0), **pad)
+
         n = len(self.plan["rows"])
         heading = ("One optional tool is missing" if n == 1
                    else f"{n} optional tools are missing")
@@ -72,24 +103,17 @@ class SetupWindow:
 
         card = tk.Frame(self.root, bg=CARD)
         card.pack(fill="x", pady=(14, 0), **pad)
-        for row in self.plan["rows"]:
-            how = ("installs itself" if row["how"] == "winget"
-                   else "by hand" if row["how"] == "manual" else "pip")
-            tk.Label(card, text=f"{row['label']}  ({how})", font=self.f_body,
+        found = tools.detect(self.cfg)
+        for row_ in self.plan["rows"]:
+            how = ("installs itself" if row_["how"] == "winget"
+                   else "by hand" if row_["how"] == "manual" else "pip")
+            tk.Label(card, text=f"{row_['label']}  ({how})", font=self.f_body,
                      bg=CARD, fg=INK, anchor="w").pack(anchor="w", padx=12, pady=(8, 0))
-            note = tools.detect(self.cfg).get(row["tool"], {}).get("enables", "")
+            note = found.get(row_["tool"], {}).get("enables", "")
             if note:
                 tk.Label(card, text=note, font=self.f_body, bg=CARD, fg=MUTED,
                          anchor="w", wraplength=440, justify="left").pack(anchor="w", padx=12)
         tk.Label(card, text="", bg=CARD).pack(pady=(0, 6))
-
-        self.log = tk.Text(self.root, height=8, bg="#14171b", fg=MUTED, font=self.f_mono,
-                           relief="flat", wrap="word", state="disabled",
-                           highlightthickness=0, padx=10, pady=8)
-        self.log.pack(fill="both", expand=True, pady=(12, 0), **pad)
-
-        row = tk.Frame(self.root, bg=BG)
-        row.pack(fill="x", pady=(12, 16), **pad)
         self.skip_btn = tk.Button(row, text="Not now", font=self.f_btn, command=self._skip,
                                   bg=CARD, fg=INK, activebackground="#2c323a",
                                   activeforeground=INK, relief="flat", cursor="hand2",

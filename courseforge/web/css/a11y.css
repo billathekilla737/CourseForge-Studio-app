@@ -49,8 +49,13 @@
 .pill.label,.pill.sentence,.pill.code,.pill.unclassified{font-family:ui-monospace,Consolas,monospace}
 
 .a11yBatch{display:grid;gap:18px}
+.a11yCourseHead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 8px}
+.a11yCourseHead h3{margin:0}
+.a11yCourseHead .spacer{flex:1}
 .a11yCourseList{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 14px}
 .a11yCourse{display:flex;gap:8px;align-items:center;font-size:13.5px;padding:4px 0}
+/* The way back to every term, under the list it filters. */
+.a11yCourseFoot{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 
 @media (max-width:900px){
   .a11yReview,.a11yPanes{grid-template-columns:1fr}

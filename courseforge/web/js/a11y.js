@@ -372,13 +372,58 @@
       return;
     }
     const last = await api('/batch/a11y').catch(() => null);
+    if (!S.termInfo) S.termInfo = await api('/terms').catch(() => ({ terms: [] }));
     const look = S.a11y.batchLook || 'clean';
     const picked = new Set(S.a11y.batchPicked || []);
+    const live = courses.filter(c => !c.excluded);
+
+    // A term, because a batch run is normally "the courses I am teaching now",
+    // and nobody wants to hunt for five of those among four years of shells.
+    // Default to the term the picker defaults to, so the two screens agree.
+    if (S.a11y.batchTerm == null) S.a11y.batchTerm = (S.termInfo && S.termInfo.default) || '__all';
+    const term = S.a11y.batchTerm;
+    const shown = term === '__all' ? live : live.filter(c => (c.term_label || '') === term);
+
+    // Picks survive a change of term, so a run can span terms on purpose. That
+    // also means a picked course can be out of sight, and a batch that quietly
+    // includes courses you cannot see is exactly the kind of surprise this tool
+    // is built to avoid -- so say so, and offer a way out.
+    const shownIds = new Set(shown.map(c => String(c.id)));
+    const hidden = live.filter(c => picked.has(String(c.id)) && !shownIds.has(String(c.id)));
+
+    const termOpts = ((S.termInfo && S.termInfo.terms) || []).map(t =>
+      '<option value="' + esc(t.label) + '"' + (t.label === term ? ' selected' : '') + '>'
+      + esc(t.label) + ' (' + t.count + ')</option>').join('');
+
     body.innerHTML = ''
       + '<div class="a11yBatch">'
-      + '<section><h3>Courses</h3><div class="a11yCourseList">'
-      + courses.filter(c => !c.excluded).map(c => '<label class="a11yCourse"><input type="checkbox" class="a11yPick" value="' + esc(String(c.id)) + '"'
-        + (picked.has(String(c.id)) ? ' checked' : '') + '> ' + esc(c.name || c.id) + (c.term_label ? ' <span class="pill">' + esc(c.term_label) + '</span>' : '') + '</label>').join('')
+      + '<section><div class="a11yCourseHead"><h3 id="batchCoursesH">Courses</h3>'
+      + '<label class="srOnly" for="batchTerm">Term</label>'
+      + '<select class="termSel" id="batchTerm">' + termOpts
+      + '<option value="__all"' + (term === '__all' ? ' selected' : '') + '>All terms (' + live.length + ')</option>'
+      + '</select>'
+      + '<span class="hint" id="batchCount">' + shown.length + ' course' + (shown.length === 1 ? '' : 's')
+      + ' &middot; <span id="batchPicked">' + picked.size + '</span> picked</span>'
+      + '<span class="spacer"></span>'
+      + '<button class="btn sm" id="batchAll" type="button">Select all shown</button>'
+      + '<button class="btn sm" id="batchNone" type="button">Clear</button>'
+      + '</div>'
+      + '<div class="a11yCourseList" role="group" aria-labelledby="batchCoursesH">'
+      + (shown.length
+        ? shown.map(c => '<label class="a11yCourse"><input type="checkbox" class="a11yPick" value="' + esc(String(c.id)) + '"'
+          + (picked.has(String(c.id)) ? ' checked' : '') + '> ' + esc(c.name || c.id)
+          + (term === '__all' && c.term_label ? ' <span class="pill">' + esc(c.term_label) + '</span>' : '') + '</label>').join('')
+        : '<div class="a11yNone">No courses in ' + esc(term) + '.</div>')
+      + '</div>'
+      + (hidden.length
+        ? '<div class="callout a11yWarn" id="batchHidden">' + hidden.length + ' picked course'
+          + (hidden.length === 1 ? ' is' : 's are') + ' in another term and not listed here. '
+          + 'They are still part of the run. <button class="btn sm" id="batchDropHidden" type="button">Drop them</button></div>'
+        : '')
+      + '<div class="a11yCourseFoot">'
+      + (term === '__all'
+        ? '<span class="hint">Showing every term.</span>'
+        : '<button class="btn" id="batchShowAll" type="button">Show all terms (' + live.length + ' courses)</button>')
       + '</div></section>'
       + '<section><h3>Look</h3><div class="a11yLooks" role="radiogroup" aria-label="Look">' + LOOKS.map(l => lookCard(l, look)).join('') + '</div>'
       + (look !== 'clean' ? '<div class="callout a11yWarn">The ' + esc(look) + ' look adds advisory colour flags in Ally on every filled element.</div>' : '')
@@ -389,8 +434,37 @@
       + '<section id="batchResult"></section>'
       + '</div>';
     body.querySelectorAll('.a11yLook').forEach(el => { el.onclick = () => { S.a11y.batchLook = el.dataset.look; openBatch(); }; });
-    const pickedIds = () => Array.from(body.querySelectorAll('.a11yPick:checked')).map(el => el.value);
-    body.querySelectorAll('.a11yPick').forEach(el => { el.onchange = () => { S.a11y.batchPicked = pickedIds(); }; });
+
+    // The run is what is picked, not what is on screen: a course hidden by the
+    // term filter still counts, and the banner above says so.
+    const pickedIds = () => Array.from(new Set(
+      Array.from(body.querySelectorAll('.a11yPick:checked')).map(el => el.value)
+        .concat(hidden.map(c => String(c.id)))));
+    const remember = () => {
+      S.a11y.batchPicked = pickedIds();
+      const n = $('#batchPicked');
+      if (n) n.textContent = String(S.a11y.batchPicked.length);
+    };
+    body.querySelectorAll('.a11yPick').forEach(el => { el.onchange = remember; });
+    $('#batchTerm').onchange = ev => { S.a11y.batchTerm = ev.target.value; openBatch(); };
+    const showAll = $('#batchShowAll');
+    if (showAll) showAll.onclick = () => { S.a11y.batchTerm = '__all'; openBatch(); };
+    const dropHidden = $('#batchDropHidden');
+    if (dropHidden) dropHidden.onclick = () => {
+      const drop = new Set(hidden.map(c => String(c.id)));
+      S.a11y.batchPicked = (S.a11y.batchPicked || []).filter(id => !drop.has(String(id)));
+      openBatch();
+    };
+    $('#batchAll').onclick = () => {
+      body.querySelectorAll('.a11yPick').forEach(el => { el.checked = true; });
+      remember();
+    };
+    $('#batchNone').onclick = () => {
+      body.querySelectorAll('.a11yPick').forEach(el => { el.checked = false; });
+      S.a11y.batchPicked = hidden.map(c => String(c.id));
+      const n = $('#batchPicked');
+      if (n) n.textContent = String(S.a11y.batchPicked.length);
+    };
     const result = $('#batchResult');
     if (last && last.rows && last.rows.length) renderBatchSummary(result, last, true);
     $('#batchDry').onclick = () => {

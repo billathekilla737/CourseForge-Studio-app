@@ -1,0 +1,1077 @@
+:root{
+  --bg:#f6f7f9; --panel:#fff; --ink:#16191d; --muted:#5b6472; --line:#dfe3e9;
+  --accent:#2f6f4f; --accent-soft:#e8f2ec; --warn:#8a5a00; --warn-soft:#fdf3e0;
+  --danger:#a3342b; --danger-soft:#fbeceb; --edit:#1f5c8b; --edit-soft:#e7f0f8;
+  --ai:#6b4c9a; --ai-soft:#f0eaf8; --gold:#E9A821; --navy:#061E3F; --paper:#fbfaf7; --radius:9px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --serif:Georgia,"Iowan Old Style",Cambria,"Times New Roman",serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#14171b; --panel:#1c2026; --ink:#e7eaee; --muted:#98a2b1; --line:#2c323a;
+    --accent:#6fbf95; --accent-soft:#1e2f27; --warn:#d9a441; --warn-soft:#2e2718;
+    --danger:#e08078; --danger-soft:#31201e; --edit:#78b4e6; --edit-soft:#1a2632;
+    --ai:#b79ae0; --ai-soft:#241d31; --gold:#E9A821; --navy:#061E3F; --paper:#191d22;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);
+  display:flex;flex-direction:column;overflow:hidden}
+header,#banners,.teachBar{flex:0 0 auto}
+button,input,textarea,select{font:inherit;color:inherit}
+a{color:var(--edit)}
+h1,h2,h3,h4{letter-spacing:-.01em}
+.hidden{display:none!important}
+.spacer{flex:1}
+
+/* ---------------- chrome ---------------- */
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 18px;
+  background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40}
+header .brand{font-size:14.5px;font-weight:650}
+header .brand small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+.crumbs{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+.crumbs b{color:var(--ink);font-weight:600}
+.crumbs .sep{opacity:.5}
+
+.btn{padding:7px 13px;border:1px solid var(--line);background:var(--panel);
+  border-radius:var(--radius);cursor:pointer;font-size:12.5px;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.ai{background:var(--ai);border-color:var(--ai);color:#fff;font-weight:600}
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.btn.on{background:var(--edit-soft);border-color:var(--edit);color:var(--edit);font-weight:600}
+.btn.sm{padding:4px 10px;font-size:11.5px}
+
+.modelSel{padding:6px 9px;border:1px solid var(--ai);background:var(--ai-soft);color:var(--ai);
+  border-radius:var(--radius);font-size:12.5px;font-weight:600;cursor:pointer}
+.modelSel:focus{outline:2px solid var(--ai);outline-offset:1px}
+
+.status{font-size:12px;color:var(--muted);min-width:120px;text-align:right}
+.status.ok{color:var(--accent)} .status.err{color:var(--danger)}
+
+/* ---------------- banners ---------------- */
+.banner{padding:11px 18px;font-size:12.5px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.banner.warn{background:var(--warn-soft);color:var(--warn);border-bottom:1px solid var(--warn)}
+.banner.err{background:var(--danger-soft);color:var(--danger);border-bottom:1px solid var(--danger)}
+.banner code{font:11.5px var(--mono);background:rgba(0,0,0,.08);padding:1px 5px;border-radius:4px}
+
+/* ---------------- picker ---------------- */
+.wrap{max-width:1100px;margin:0 auto;padding:26px 22px 70px}
+#viewPicker,#viewSchedule{flex:1 1 auto;min-height:0;overflow-y:auto}
+.sectionHead{display:flex;align-items:baseline;gap:12px;margin:0 0 14px}
+.sectionHead h2{margin:0;font-size:18px}
+.sectionHead .hint{font-size:12.5px;color:var(--muted)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.card{text-align:left;padding:14px 16px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius);cursor:pointer;display:block;width:100%}
+.card:hover{border-color:var(--accent)}
+.card .t{font-size:14px;font-weight:600;margin-bottom:3px}
+.card .m{font-size:11.5px;color:var(--muted)}
+.card.off{opacity:.5}
+.card.off:hover{border-color:var(--line);cursor:not-allowed}
+
+table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line)}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--bg)}
+td.num{font:600 12.5px var(--mono);text-align:right}
+.pill{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:99px;
+  border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.good{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.pill.ai{background:var(--ai-soft);border-color:var(--ai);color:var(--ai)}
+.pill.warn{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+
+/* ---------------- workspace ---------------- */
+main.work{display:grid;grid-template-columns:minmax(250px,300px) minmax(340px,1fr);
+  flex:1 1 auto;min-height:0}
+body.showWork main.work{grid-template-columns:minmax(220px,270px) minmax(320px,1fr) minmax(360px,1.1fr)}
+@media (max-width:1150px){
+  body.showWork main.work{grid-template-columns:minmax(220px,270px) 1fr}
+  body.showWork .workPane{position:fixed;top:56px;right:0;bottom:0;width:min(560px,92vw);
+    z-index:30;box-shadow:-14px 0 40px rgba(0,0,0,.24)}
+}
+body:not(.showWork) .workPane{display:none}
+
+aside{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.rosterTools{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.rosterTools input[type=search]{width:100%;padding:7px 10px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--bg)}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{padding:4px 9px;font-size:11.5px;border:1px solid var(--line);border-radius:99px;
+  background:transparent;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);
+  color:var(--accent);font-weight:600}
+.roster{overflow-y:auto;flex:1;min-height:0}
+.rrow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;width:100%;
+  text-align:left;padding:9px 12px;background:transparent;border:0;
+  border-bottom:1px solid var(--line);cursor:pointer}
+.rrow:hover{background:var(--bg)}
+.rrow[aria-current="true"]{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.rrow .nm{font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
+.rrow .sub{font-size:11px;color:var(--muted);margin-top:1px}
+.rrow .sc{font:600 14px var(--mono);text-align:right;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%;flex:none}
+.dot.human{background:var(--edit)} .dot.flag{background:var(--warn)} .dot.none{background:var(--danger)}
+
+.detail{overflow-y:auto;padding:20px 24px 70px;min-height:0}
+.who{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.who h2{margin:0;font-size:20px}
+.who .id{font:11.5px var(--mono);color:var(--muted)}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px}
+.tag{font-size:11px;padding:3px 9px;border-radius:99px;background:var(--bg);
+  border:1px solid var(--line);color:var(--muted)}
+.tag.warn{background:var(--warn-soft);border-color:var(--warn);color:var(--warn);font-weight:600}
+.tag.danger{background:var(--danger-soft);border-color:var(--danger);color:var(--danger);font-weight:600}
+.tag.ai{background:var(--ai-soft);border-color:var(--ai);color:var(--ai);font-weight:600}
+.tag.edit{background:var(--edit-soft);border-color:var(--edit);color:var(--edit);font-weight:600}
+.actionRow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+
+.totalCard{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:13px 17px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:18px}
+.bigScore{font:700 32px/1 var(--mono)}
+.bigScore .of{font-size:14px;font-weight:400;color:var(--muted)}
+.pct{font:600 14px var(--mono);color:var(--muted)}
+.origNote{font-size:12px;color:var(--muted)}
+.origNote b{color:var(--edit)}
+
+.crit{padding:14px 0;border-top:1px solid var(--line)}
+.critHead{display:flex;justify-content:space-between;align-items:baseline;gap:14px;margin-bottom:8px}
+.critHead .lbl{font-size:13.5px;font-weight:600;flex:1}
+.critHead .val{font:600 15px var(--mono);white-space:nowrap}
+.critHead .tier{font-size:11px;color:var(--muted);font-weight:500;margin-left:7px}
+input[type=range]{width:100%;accent-color:var(--accent);height:22px;cursor:pointer}
+.ticks{display:flex;justify-content:space-between;font:10.5px var(--mono);color:var(--muted);margin-top:-2px}
+.why{margin-top:8px;font-size:12.5px;line-height:1.6;color:var(--muted);padding:9px 12px;
+  background:var(--ai-soft);border-radius:7px;border-left:2px solid var(--ai)}
+.why b{color:var(--ai);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.05em}
+
+label.fieldLabel{display:block;font-size:12px;font-weight:600;margin:18px 0 6px}
+label.fieldLabel .hint{font-weight:400;color:var(--muted)}
+textarea{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--panel);font-size:13px;line-height:1.6;resize:vertical}
+textarea.comment{min-height:130px}
+textarea.instructions{min-height:150px;font-family:var(--mono);font-size:12.5px}
+
+/* ---------------- work pane ---------------- */
+.workPane{background:var(--paper);border-left:1px solid var(--line);overflow-y:auto;min-height:0}
+.workHead{position:sticky;top:0;background:var(--paper);border-bottom:1px solid var(--line);
+  padding:11px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;z-index:5}
+.workHead h3{margin:0;font-size:12px;font-weight:650;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--muted)}
+.workHead .meta{font:11px var(--mono);color:var(--muted)}
+.workBody{padding:16px 18px 70px}
+.workSec{margin-bottom:20px}
+.workSec h4{margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:baseline}
+.workSec h4 .wc{font:400 10.5px var(--mono);letter-spacing:0;text-transform:none}
+.prose{white-space:pre-wrap;font:15px/1.7 var(--serif);background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius);padding:15px 17px;overflow-wrap:break-word}
+.prose.small{font-size:13.5px}
+.quoted{white-space:pre-wrap;font:13px/1.6 var(--serif);color:var(--muted);
+  border-left:3px solid var(--line);padding:7px 0 7px 12px;margin:0 0 10px}
+.workImg{width:100%;border:1px solid var(--line);border-radius:var(--radius);
+  margin-bottom:11px;display:block;background:#fff}
+.callout{padding:11px 14px;border-radius:var(--radius);font-size:12.5px;line-height:1.6;
+  background:var(--warn-soft);border:1px solid var(--warn);color:var(--warn);margin-bottom:14px}
+.callout.bad{background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
+.callout a{color:inherit;font-weight:600}
+
+/* ---------------- insights ---------------- */
+.insightBar{display:flex;align-items:center;gap:12px;margin:2px 0 14px;flex-wrap:wrap}
+.tick{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer}
+.tick input{accent-color:var(--accent);cursor:pointer}
+.takeaway{padding:11px 14px;border-radius:var(--radius);background:var(--warn-soft);
+  border:1px solid var(--warn);color:var(--warn);font-size:13px;line-height:1.6;margin-bottom:18px}
+.takeaway b{font-weight:700}
+.chartGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}
+figure.chart{margin:0 0 16px;padding:14px 16px 16px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius)}
+figure.chart figcaption{font-size:12px;font-weight:650;color:var(--ink);margin-bottom:10px;
+  display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+figure.chart figcaption span{font-weight:400;font-size:11px;color:var(--muted)}
+figure.chart.scrollX{overflow-x:auto}
+figure.chart.scrollX svg{min-width:520px}
+.chartNote{font-size:12.5px;color:var(--muted);margin:0}
+.summaryCard{border-left:3px solid var(--ai)}
+.summaryText{font:14.5px/1.75 var(--serif);white-space:pre-wrap;color:var(--ink)}
+.summaryMeta{font:10.5px var(--mono);color:var(--muted);margin-top:10px}
+.termSel{padding:5px 9px;border:1px solid var(--line);background:var(--panel);
+  color:var(--ink);border-radius:var(--radius);font-size:12.5px;cursor:pointer}
+.termSel:focus{outline:2px solid var(--accent);outline-offset:1px}
+.legend{margin:0 0 18px;font-size:12px;line-height:1.75}
+.legend div{padding:3px 0;border-bottom:1px solid var(--line)}
+.legend b{display:inline-block;min-width:26px;color:var(--accent);font-weight:700}
+.legend span{color:var(--muted)}
+
+/* ---------------- print / save as PDF ---------------- */
+@media print{
+  /* Force the light palette: a dark UI prints as a wall of ink. */
+  :root{
+    --bg:#fff; --panel:#fff; --paper:#fff; --ink:#111; --muted:#555; --line:#c9ced6;
+    --accent:#2f6f4f; --accent-soft:#eaf3ee; --ai:#5a3f86; --ai-soft:#f1ecf8;
+    --warn:#7a4f00; --warn-soft:#fdf5e6; --danger:#93302a; --danger-soft:#fbeeed;
+  }
+  body{display:block;overflow:visible;height:auto}
+  main.work{display:block;height:auto}
+  header, aside, .workPane, #banners, .insightBar, .modalBack,
+  .bulkBar, .teachBar{display:none!important}
+  main.work{display:block!important;height:auto!important}
+  body{background:#fff}
+  .detail{overflow:visible!important;padding:0!important}
+  figure.chart{break-inside:avoid;page-break-inside:avoid;border-color:#c9ced6}
+  figure.chart.scrollX{overflow:visible!important}
+  figure.chart.scrollX svg{min-width:0!important}
+  .chartGrid{grid-template-columns:1fr 1fr}
+  .takeaway{border-color:#c9ced6}
+  .legend div{border-color:#e3e6ea}
+  @page{margin:14mm}
+}
+
+/* ---------------- code blocks ---------------- */
+/* A highlight.js theme written against our own variables, so it tracks the
+   light/dark palette instead of shipping a fixed one. */
+:root{
+  --code-bg:#fbfaf8; --code-kw:#8250df; --code-str:#0a6b3d; --code-num:#0550ae;
+  --code-com:#6a737d; --code-fn:#8250df; --code-type:#953800; --code-attr:#0550ae;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --code-bg:#16191e; --code-kw:#c396f0; --code-str:#8fd6a8; --code-num:#8ab6f0;
+    --code-com:#7f8a99; --code-fn:#b79ae0; --code-type:#e0a878; --code-attr:#8ab6f0;
+  }
+}
+.codeBlock{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:12px}
+.codeBar{display:flex;align-items:center;gap:8px;padding:5px 11px;background:var(--bg);
+  border-bottom:1px solid var(--line);font:10.5px var(--mono);color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em}
+pre.hljs{margin:0;padding:12px 14px;background:var(--code-bg);overflow-x:auto;
+  font:12.5px/1.6 var(--mono);color:var(--ink);tab-size:4}
+pre.hljs code{font:inherit;white-space:pre}
+.hljs-keyword,.hljs-selector-tag,.hljs-literal,.hljs-doctag{color:var(--code-kw);font-weight:600}
+.hljs-string,.hljs-regexp,.hljs-addition{color:var(--code-str)}
+.hljs-number,.hljs-symbol,.hljs-bullet{color:var(--code-num)}
+.hljs-comment,.hljs-quote,.hljs-deletion{color:var(--code-com);font-style:italic}
+.hljs-title,.hljs-title.function_,.hljs-section{color:var(--code-fn);font-weight:600}
+.hljs-title.class_,.hljs-type,.hljs-built_in,.hljs-class .hljs-title{color:var(--code-type)}
+.hljs-attr,.hljs-attribute,.hljs-variable,.hljs-template-variable,.hljs-property{color:var(--code-attr)}
+.hljs-meta,.hljs-meta .hljs-keyword{color:var(--code-com)}
+.hljs-emphasis{font-style:italic} .hljs-strong{font-weight:700}
+
+/* ---------------- blend card + 3D viewer ---------------- */
+.blendCard{border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;background:var(--panel)}
+.blendChips{margin:2px 0 12px}
+.statChip{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 9px;
+  border-radius:99px;border:1px solid var(--line);background:var(--bg);color:var(--muted)}
+.statChip b{font:600 12px var(--mono);color:var(--ink)}
+.statChip.ok{border-color:var(--accent);background:var(--accent-soft)}
+.statChip.ok b{color:var(--accent)}
+.statChip.bad{border-color:var(--warn);background:var(--warn-soft)}
+.statChip.bad b{color:var(--warn)}
+.viewerWrap{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:12px}
+.viewerBar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;
+  background:var(--bg);border-bottom:1px solid var(--line)}
+.viewerTools{display:flex;gap:6px;flex-wrap:wrap}
+.viewerInfo{font:11px var(--mono);color:var(--muted)}
+.viewerHost{min-height:0;background:#1c2026;display:block;line-height:0}
+.viewerHost canvas{display:block;width:100%!important;height:auto!important}
+.viewerBusy{padding:26px 14px;text-align:center;font-size:12.5px;color:var(--muted);line-height:1.6}
+.viewerBusy.bad{color:var(--danger)}
+.sheetNote{font-size:11px;color:var(--muted);line-height:1.5;margin:-4px 0 12px}
+
+/* video: the player is the whole card, so it gets the width and the bar under
+   it stays out of the way */
+.videoWrap{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  margin-bottom:12px;background:#14171b}
+.workVideo{display:block;width:100%;max-height:62vh;background:#000}
+.videoBar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;
+  background:var(--bg);border-top:1px solid var(--line)}
+.videoSpeed{display:flex;gap:4px}
+.videoNote{font-size:11px;color:var(--muted)}
+.videoCard h4 .wc{font:11px var(--mono)}
+.blendReport{margin-top:8px}
+.blendReport summary{font-size:12px;color:var(--muted);cursor:pointer;padding:4px 0}
+.blendReport summary:hover{color:var(--ink)}
+.blendReport .prose{margin-top:6px;max-height:340px;overflow-y:auto}
+
+/* ---------------- modal ---------------- */
+.modalBack{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;
+  display:flex;align-items:center;justify-content:center;padding:24px}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  width:min(720px,100%);max-height:86vh;overflow-y:auto;padding:22px 24px}
+.modal h3{margin:0 0 4px;font-size:17px}
+.modal .sub{font-size:12.5px;color:var(--muted);margin-bottom:16px}
+.modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+.log{font:11.5px/1.6 var(--mono);background:var(--bg);border:1px solid var(--line);
+  border-radius:7px;padding:11px 13px;max-height:230px;overflow-y:auto;white-space:pre-wrap}
+.modal.wide{width:min(820px,100%)}
+
+/* progress bar */
+.progWrap{display:none;margin:0 0 14px}
+.progWrap.show{display:block}
+.progTrack{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.progFill{height:100%;border-radius:99px;background:var(--ai);
+  transition:width .3s ease;position:relative}
+.progFill.indeterminate{background:linear-gradient(90deg,
+  var(--line) 0%,var(--ai) 50%,var(--line) 100%);
+  background-size:200% 100%;animation:slide 1.2s linear infinite}
+@keyframes slide{from{background-position:200% 0}to{background-position:-200% 0}}
+.progMeta{display:flex;justify-content:space-between;font:11px var(--mono);
+  color:var(--muted);margin-top:6px}
+.progTrack{position:relative}
+/* the app is working: a system-level signal that survives an empty dialog */
+html.busy, html.busy *{cursor:progress}
+html.busy .btn, html.busy button{cursor:progress}
+/* a spinner for the dialog heading, for jobs that report nothing per-item */
+.spin{display:inline-block;width:11px;height:11px;margin-right:8px;
+  vertical-align:baseline;border:2px solid var(--line);
+  border-top-color:var(--ai);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* work in flight: real, but not finished, so it gets a ghost not a fill */
+.progGhost{position:absolute;top:0;height:100%;background:var(--ai);opacity:.28;
+  border-radius:99px;transition:left .3s ease,width .3s ease;pointer-events:none}
+/* the fill itself breathes while a turn is running, so a long single-student
+   batch never looks frozen at 0% */
+.progFill.working::after{content:'';position:absolute;inset:0;border-radius:99px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
+  background-size:60% 100%;animation:sheen 1.4s linear infinite}
+@keyframes sheen{from{background-position:-60% 0}to{background-position:160% 0}}
+
+/* the footer hint that says Close is not Cancel */
+.jobHint{font-size:11.5px;color:var(--muted);align-self:center;
+  margin-right:8px;flex:1 1 auto;text-align:left}
+
+/* ---------------- the job dock ---------------- */
+/* A closed job's dialog condensed to one chip in the header: name, a hairline
+   bar, and where it has got to. Clicking it opens the dialog again. */
+.jobDock{display:none;align-items:center;gap:6px;flex-wrap:wrap}
+.jobDock.show{display:flex}
+.jobChip{display:flex;align-items:center;gap:7px;max-width:290px;cursor:pointer;
+  padding:5px 9px;border:1px solid var(--ai);background:var(--ai-soft);
+  border-radius:99px;font-size:11.5px;color:var(--ink);text-align:left}
+.jobChip:hover{filter:brightness(1.04);border-color:var(--ink)}
+.jobChip .spin{width:9px;height:9px;margin:0;border-width:2px}
+.jcName{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:0 1 auto}
+.jcBar{flex:0 0 46px;height:4px;border-radius:99px;background:var(--line);
+  overflow:hidden}
+.jcBar i{display:block;height:100%;background:var(--ai);border-radius:99px;
+  transition:width .3s ease}
+.jcBar i.indeterminate{background:linear-gradient(90deg,
+  var(--line) 0%,var(--ai) 50%,var(--line) 100%);
+  background-size:200% 100%;animation:slide 1.2s linear infinite}
+.jcRight{font:11px var(--mono);color:var(--muted);flex:0 0 auto;
+  font-variant-numeric:tabular-nums}
+.jobChip.done{border-color:var(--accent);background:var(--accent-soft)}
+.jobChip.done .jcBar i{background:var(--accent)}
+.jobChip.bad{border-color:var(--danger);background:var(--danger-soft)}
+.jobChip.bad .jcBar i{background:var(--danger)}
+.jobChip.ask{border-color:var(--warn);background:var(--warn-soft)}
+.jobChip.ask .jcBar i{background:var(--warn)}
+
+/* live rows: what each unit of work is doing right now */
+.jobItems{display:none;margin:0 0 12px;border:1px solid var(--line);
+  border-radius:var(--radius);overflow:hidden}
+.jobItems.show{display:block}
+.jobItem{display:flex;align-items:center;gap:8px;padding:6px 10px;
+  font:11.5px var(--mono);border-top:1px solid var(--line)}
+.jobItem:first-child{border-top:0}
+.jiDot{width:6px;height:6px;border-radius:50%;background:var(--ai);flex:0 0 auto;
+  animation:blink 1.1s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.jiKey{font-weight:600;flex:0 0 auto}
+.jiState{color:var(--text);flex:0 0 auto}
+.jiDetail{color:var(--muted);flex:1 1 auto;overflow:hidden;white-space:nowrap;
+  text-overflow:ellipsis}
+.jiTime{color:var(--muted);flex:0 0 auto;font-variant-numeric:tabular-nums}
+/* nothing heard for a while: say so rather than spinning a lie */
+.jobItem.stalled .jiDot{background:var(--warn);animation:none}
+.jobItem.stalled .jiState{color:var(--warn)}
+
+/* multi-select and group actions */
+/* The tint alone is too quiet on a white panel, and a range selection has to be
+   unmistakable before someone hits Push on it. */
+.rrow.picked{background:var(--ai-soft);box-shadow:inset 3px 0 0 var(--ai)}
+.rrow .okTick{color:var(--accent);font-weight:700;font-size:11px}
+.bulkBar{border-top:1px solid var(--line);padding:8px 12px;background:var(--panel);
+  flex:0 0 auto}
+.bulkHint{font-size:11px;color:var(--muted)}
+.bulkBar.show{background:var(--ai-soft);border-top-color:var(--ai)}
+.bulkHead{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:7px;
+  flex-wrap:wrap}
+.bulkNote{color:var(--warn);font-size:11px}
+.bulkHead .spacer{flex:1}
+.bulkActs{display:flex;gap:5px;flex-wrap:wrap}
+.scopeBar{display:flex;align-items:center;gap:10px;font-size:12.5px;
+  background:var(--ai-soft);border:1px solid var(--ai);border-radius:var(--radius);
+  padding:7px 11px;margin:0 0 14px}
+.tag.ok{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+/* grade posting and two-machine sync */
+/* The push dialog asks who sees these grades, at the moment they are written.
+   There is no standing automatic-vs-manual setting in the UI any more: the
+   server forces manual posting before every push, so the answer here is the
+   whole answer. */
+.dot.canvas{background:var(--accent)}
+.rrow .clashMark{color:var(--danger);font:800 10px var(--sans);border:1px solid var(--danger);
+  border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;
+  justify-content:center;flex:none}
+.rrow .postMark{font-size:9px;margin-right:4px;vertical-align:middle}
+.rrow .postMark.hidden{color:var(--muted)} .rrow .postMark.live{color:var(--accent)}
+.polChoice{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.polChoice .tick{align-items:flex-start;line-height:1.5}
+.polChoice input{margin-top:3px}
+.conflictBox .actionRow{margin-bottom:0}
+
+/* ---------------- teaching zone ----------------
+   Deliberately a different colour and a different edge from the header. The top
+   of the window acts on grades; the bottom reads them back. Making them look
+   alike would invite someone to hunt for Push down here. */
+.teachBar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+  padding:8px 16px;background:var(--ai-soft);border-top:2px solid var(--ai);
+  min-height:44px}
+.teachLabel{font:700 10px var(--sans);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ai);padding-right:4px;border-right:1px solid var(--line);
+  margin-right:4px;align-self:stretch;display:flex;align-items:center}
+.teachIdle{font-size:11.5px;color:var(--muted)}
+.teachMeta{font:11px var(--mono);color:var(--muted)}
+.teachChips{display:flex;gap:6px;flex-wrap:wrap}
+.teachChip{font-size:11.5px;padding:4px 10px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--ai);background:transparent;color:var(--ink);
+  font-weight:500;text-align:left}
+.teachChip:hover{background:var(--panel)}
+.teachChip.warn{border-color:var(--warn);color:var(--warn)}
+.teachChip.voice{border-color:var(--accent);color:var(--accent)}
+.teachChip.good{border-color:var(--line);color:var(--muted)}
+
+.teachModal .teachTabs{display:flex;gap:5px;margin:14px 0 4px}
+.teachNote{font-size:12.5px;line-height:1.6;color:var(--muted);margin:10px 0 14px;
+  max-width:82ch}
+.teachH{margin:20px 0 9px;font-size:11px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.teachHeadline{font-size:14.5px;line-height:1.55;font-weight:600;margin:14px 0 4px;
+  border-left:3px solid var(--ai);padding-left:12px}
+
+.teachTable{width:100%;border-collapse:collapse;font-size:12px}
+.teachTable th{text-align:left;font-size:10px;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--muted);font-weight:700;padding:0 8px 6px;
+  border-bottom:1px solid var(--line)}
+.teachTable td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.teachTable tr.flagged td{background:var(--warn-soft)}
+.teachTable .mono{font:12px var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+.teachFinding{font-size:11.5px;line-height:1.5;color:var(--muted);margin-top:5px;
+  max-width:60ch}
+.teachFinding .tag{margin-right:5px}
+
+.voiceBands{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.voiceList{display:flex;flex-direction:column;gap:11px}
+.voicePerson{border:1px solid var(--line);border-radius:var(--radius);padding:9px 12px;
+  background:var(--bg)}
+.voiceWho{font-size:12.5px;font-weight:650;margin-bottom:5px}
+.voiceQuote{font-size:12.5px;line-height:1.55;border-left:3px solid var(--accent);
+  padding:3px 0 3px 10px;margin-bottom:5px}
+.voiceCat{display:block;font:10px var(--mono);color:var(--muted);
+  text-transform:uppercase;letter-spacing:.04em}
+
+.patList{display:flex;flex-direction:column;gap:11px}
+.patItem{border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;
+  background:var(--bg)}
+.patHead{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;font-size:13px}
+.patItem ul{margin:7px 0 0;padding-left:18px;font-size:12px;color:var(--muted)}
+.patItem li{margin-bottom:2px}
+
+.reteachList{display:flex;flex-direction:column;gap:11px}
+.reteachItem{border:1px solid var(--line);border-left:3px solid var(--ai);
+  border-radius:0 var(--radius) var(--radius) 0;padding:10px 13px;background:var(--bg)}
+.reteachTop{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13.5px}
+.reteachNum{font:700 11px var(--mono);background:var(--ai);color:#fff;
+  border-radius:50%;width:18px;height:18px;display:inline-flex;
+  align-items:center;justify-content:center;flex:0 0 auto}
+.reteachWhy,.reteachDo{font-size:12.5px;line-height:1.55;margin:7px 0 0}
+.reteachWhy{color:var(--muted)}
+.fixList{display:flex;flex-direction:column;gap:7px}
+.fixItem{font-size:12.5px;line-height:1.55;background:var(--warn-soft);
+  border:1px solid var(--warn);border-radius:var(--radius);padding:8px 11px}
+.fixItem .muted{display:block;margin-top:3px}
+
+/* letter grades and curves */
+.letterLegend{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.rrow .curveMark{color:var(--ai);font-weight:700;margin-right:3px}
+.rrow .vidMark{color:var(--ai);font-size:9px;margin-left:4px;vertical-align:1px}
+.totalCard .ltr{color:var(--ink);font-size:15px;margin-left:5px}
+.curveNote{font-size:12px;line-height:1.55;color:var(--muted);background:var(--ai-soft);
+  border-left:3px solid var(--ai);padding:8px 12px;border-radius:0 var(--radius) var(--radius) 0;
+  margin:-4px 0 16px}
+
+.curveForm{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:11px;margin:14px 0 6px}
+.curveForm label{display:flex;flex-direction:column;gap:4px;font-size:11.5px;
+  font-weight:600;color:var(--muted)}
+.curveForm select,.curveForm input{padding:7px 9px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--bg);color:var(--ink);font-size:13px}
+.cvVal{display:flex;align-items:center;gap:7px}
+.cvVal input{width:100%}
+.cvVal span{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.cvHint{font-size:12px;line-height:1.55;color:var(--muted);margin:2px 0 14px;max-width:78ch}
+.cvPreview{border-top:1px solid var(--line);padding-top:14px}
+.cvStats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;
+  margin-bottom:14px}
+.cvStats > div{background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);
+  padding:9px 12px;display:flex;flex-direction:column;gap:2px}
+.cvBig{font:700 16px var(--mono)}
+.cvStats span:last-child{font-size:11px;color:var(--muted);line-height:1.4}
+.cvSplit{display:grid;grid-template-columns:minmax(240px,1fr) minmax(280px,1.3fr);gap:18px}
+@media (max-width:820px){.cvSplit{grid-template-columns:1fr}}
+.cvSplit h4{margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--muted)}
+.cvBands,.cvRows{width:100%;border-collapse:collapse;font-size:12px}
+.cvBands th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);font-weight:700;padding:0 6px 5px}
+.cvBands td,.cvRows td{padding:4px 6px;border-top:1px solid var(--line)}
+.cvBands .ltrCell{font:700 13px var(--mono);width:1.6em}
+.cvBands .arrowCell{color:var(--muted);width:1.2em;text-align:center}
+.cvRows .mono,.cvBands td{font-variant-numeric:tabular-nums}
+.cvRows .mono{font:12px var(--mono)}
+.up{color:var(--accent);font-weight:600}
+.down{color:var(--danger);font-weight:600}
+.muted{color:var(--muted)}
+.ltrMove{font:700 11.5px var(--mono);background:var(--accent-soft);color:var(--accent);
+  padding:1px 6px;border-radius:99px}
+.cvFoot{font-size:11px;color:var(--muted);margin:14px 0 0}
+
+/* a multi-line error keeps its shape: the token message names a path per line */
+.banner{align-items:flex-start}
+.bannerDetail{display:block;white-space:pre-line;margin-top:5px;font:12px/1.6 var(--mono)}
+.bannerHint{display:block;margin-top:6px}
+
+/* ---------------------------------------------- the second click, every time */
+.modal.narrow{width:min(520px,100%)}
+.cfModal h3{margin-bottom:10px}
+.cfSummary{font-size:14px;line-height:1.55;font-weight:600;padding:12px 14px;
+  border:1px solid var(--line);border-left:3px solid var(--danger);
+  border-radius:0 var(--radius) var(--radius) 0;background:var(--bg)}
+.cfList{list-style:none;padding:0;margin:12px 0 0;display:flex;
+  flex-direction:column;gap:5px;font-size:12.5px}
+.cfList li{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  padding:5px 10px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--bg)}
+.cfList b{min-width:9em}
+.cfFrom{color:var(--muted);text-decoration:line-through}
+.cfArrow{color:var(--muted)}
+.cfTo{font-weight:600;color:var(--edit)}
+.cfDetail{margin-top:10px;font:12px var(--mono);color:var(--muted)}
+.cfNote{margin-top:12px;font-size:12px;color:var(--muted);line-height:1.6}
+
+/* ------------------------------------------------- the test editor, drilled */
+.taModal .taHead{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}
+.taBack{width:30px;height:30px;flex:0 0 auto;border:1px solid var(--line);
+  background:var(--panel);color:var(--ink);border-radius:var(--radius);
+  cursor:pointer;font-size:19px;line-height:1;padding:0}
+.taBack:hover{background:var(--bg)}
+.taTitles{min-width:0}
+.taTitles h3{margin:0}
+.taTitles .sub{margin:2px 0 0}
+.taBody{min-height:120px;max-height:min(62vh,620px);overflow-y:auto;
+  padding-right:4px}
+
+/* the menu: one row per concern, with what it currently holds */
+.taRow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:12px 14px;margin-bottom:8px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel);color:var(--ink);
+  cursor:pointer;font:inherit}
+.taRow:hover{background:var(--bg);border-color:var(--edit)}
+.taIcon{font-size:19px;flex:0 0 auto;width:24px;text-align:center}
+.taRowText{display:flex;flex-direction:column;gap:2px;flex:1 1 auto;min-width:0}
+.taRowText b{font-size:13.5px}
+.taRowText span{font-size:12px;color:var(--muted);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.taChev{color:var(--muted);font-size:20px;flex:0 0 auto}
+
+/* one concern's fields, and nothing else */
+.taForm{display:flex;flex-direction:column;gap:14px;padding:2px 0}
+.taRowF{display:flex;flex-direction:column;gap:5px}
+.taLbl{font-size:12.5px;font-weight:600;display:flex;flex-direction:column;gap:2px}
+.taHelp{font-weight:400;font-size:11.5px;color:var(--muted)}
+.taInline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.taUnit{font-size:11.5px;color:var(--muted)}
+.taForm input[type=text],.taForm input[type=number],
+.taForm input[type=datetime-local],.taForm select{padding:7px 10px;
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);
+  color:var(--ink);font:13px var(--sans)}
+.taForm input[type=number]{width:8.5em}
+.taForm input[type=text]{flex:1 1 14em;min-width:0}
+.taForm input:focus,.taForm select:focus{outline:2px solid var(--edit);
+  outline-offset:-1px}
+.taSwitch{display:flex;align-items:flex-start;gap:10px;cursor:pointer}
+.taSwitch input{margin-top:2px;flex:0 0 auto}
+.taMini{padding:3px 9px;border:1px solid var(--line);background:var(--panel);
+  color:var(--muted);border-radius:999px;cursor:pointer;font-size:11px}
+.taMini:hover{border-color:var(--danger);color:var(--danger)}
+.taMini.on{border-color:var(--danger);color:var(--danger);font-weight:600}
+
+/* --------------------------------------------------------- accommodations */
+.acTable{width:100%;border-collapse:collapse;font-size:12.5px;margin:2px 0 14px}
+.acTable th{text-align:left;font-size:11px;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--muted);font-weight:600;
+  border-bottom:1px solid var(--line);padding:0 8px 6px}
+.acTable td{padding:7px 8px;border-bottom:1px solid var(--line);
+  vertical-align:middle}
+.acTable tr.off td{background:var(--warn-soft)}
+.acWhat{color:var(--muted)}
+.acMin{font:12px var(--mono);font-weight:600}
+.acName{font-weight:500;display:flex;flex-direction:column;gap:1px}
+.acName .muted{font:11px var(--mono)}
+.acUnlisted{margin:0 0 14px;font-size:12.5px}
+.acUnlisted summary{cursor:pointer;color:var(--warn)}
+.acUnlisted ul{margin:8px 0 0;padding-left:20px;line-height:1.7}
+
+.acScopes{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.acScope{display:flex;flex-direction:column;gap:2px;text-align:left;width:100%;
+  padding:11px 14px;border:1px solid var(--line);border-left:3px solid var(--edit);
+  border-radius:0 var(--radius) var(--radius) 0;background:var(--panel);
+  color:var(--ink);cursor:pointer;font:inherit}
+.acScope:hover:not(:disabled){background:var(--edit-soft)}
+.acScope:disabled{opacity:.5;cursor:not-allowed;border-left-color:var(--line)}
+.acScope b{font-size:13px}
+.acScope span{font-size:11.5px;color:var(--muted)}
+
+.acPeople{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.acChip{display:inline-flex;align-items:baseline;gap:6px;padding:3px 10px;
+  border:1px solid var(--line);border-radius:999px;background:var(--bg);
+  font-size:12px}
+.acChip b{font-size:11px;color:var(--edit)}
+
+/* the plan, grouped by the quiz it will be written to */
+.apList{display:flex;flex-direction:column;gap:10px;margin:0 0 14px;
+  max-height:min(46vh,460px);overflow-y:auto;padding-right:4px}
+.apQuiz{border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--bg);padding:9px 12px}
+.apQHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-bottom:6px;font-size:12.5px}
+.apQuiz ul{list-style:none;margin:0;padding:0;display:flex;
+  flex-direction:column;gap:3px;font-size:12.5px}
+.apQuiz li{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+.apArrow{color:var(--muted)}
+.apExtra{font-size:11px;color:var(--ai)}
+.apWas{font-size:11px;color:var(--muted);text-decoration:line-through}
+.apSkipped{font-size:12px;margin-bottom:10px}
+.apSkipped summary{cursor:pointer;color:var(--muted)}
+.apSkipped ul{margin:7px 0 0;padding-left:20px;line-height:1.7;
+  max-height:180px;overflow-y:auto}
+
+/* ------------------------------------------------------- the roster editor */
+.rosterModal .acTable td{padding:5px 6px}
+.rosterTable input[type=text],.rosterTable input[type=number],
+.rosterTable select{padding:5px 7px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel);color:var(--ink);
+  font:12px var(--sans);max-width:100%}
+.rosterTable input[type=number]{width:5.5em}
+.rosterTable input[type=text]{width:100%;min-width:6em}
+.rosterTable .acAmt{white-space:nowrap}
+.acTick{text-align:center}
+.rosterAdd{margin:0 0 6px;font-size:12.5px}
+.rosterAdd summary{cursor:pointer;font-weight:600}
+.rosterAdd input[type=search]{width:100%;margin:10px 0 8px;padding:7px 10px;
+  border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--panel);color:var(--ink);font:13px var(--sans)}
+.roPool{display:flex;flex-direction:column;gap:4px;max-height:230px;
+  overflow-y:auto;padding-right:4px}
+.roPick{display:flex;flex-direction:column;gap:1px;text-align:left;width:100%;
+  padding:6px 10px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--panel);color:var(--ink);cursor:pointer;font:inherit}
+.roPick:hover{background:var(--edit-soft);border-color:var(--edit)}
+.roPick b{font-size:12.5px}
+.roPick span{font-size:11px;color:var(--muted);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
+/* the row-level edit button, beside "announce" */
+.rowEdit{margin-left:5px;padding:1px 8px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--line);background:transparent;color:var(--muted);
+  font:600 10.5px var(--sans);vertical-align:middle}
+.rowEdit:hover{border-color:var(--edit);color:var(--edit);
+  background:var(--edit-soft)}
+
+/* the week-level reminder button, in the week header */
+.weekRemind{margin-left:9px;padding:2px 10px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--ai);background:transparent;color:var(--ai);
+  font:600 11px var(--sans)}
+.weekRemind:hover{background:var(--ai-soft)}
+.week.now .weekRemind{border-color:var(--warn);color:var(--warn)}
+.week.now .weekRemind:hover{background:var(--warn-soft)}
+
+.weekList{list-style:none;padding:0;margin:14px 0;display:flex;
+  flex-direction:column;gap:6px}
+.weekList li{display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+  font-size:12.5px;padding:6px 10px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--bg)}
+.weekName{font-weight:500;flex:1 1 auto;min-width:0}
+.weekWhen{font:11px var(--mono);color:var(--muted)}
+
+.bdList{display:flex;flex-direction:column;gap:12px;margin:14px 0;
+  max-height:min(52vh,520px);overflow-y:auto;padding-right:4px}
+.bdCard{border:1px solid var(--line);border-left:3px solid var(--ai);
+  border-radius:0 var(--radius) var(--radius) 0;padding:10px 12px;
+  background:var(--bg);display:flex;flex-direction:column;gap:7px}
+.bdPick{display:flex;align-items:center;gap:8px;cursor:pointer;flex-wrap:wrap}
+.bdAbout{font-size:12px;color:var(--muted);flex:1 1 auto;min-width:0}
+.bdTitle,.bdBody{width:100%;padding:7px 10px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel);color:var(--ink);
+  font:13px/1.6 var(--sans);resize:vertical}
+.bdTitle{font-weight:600}
+.bdTitle:focus,.bdBody:focus{outline:2px solid var(--ai);outline-offset:-1px}
+
+/* announce, from inside the row it belongs to. Quiet at rest so 300 rows do
+   not turn into 300 buttons, full strength on hover or keyboard focus. */
+.rowAnnounce{margin-left:7px;padding:1px 7px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--line);background:transparent;color:var(--muted);
+  font:600 10px var(--sans);text-transform:uppercase;letter-spacing:.04em;
+  opacity:.35;transition:opacity .12s}
+#schedBody tr:hover .rowAnnounce,.rowAnnounce:focus-visible{opacity:1;
+  border-color:var(--ai);color:var(--ai)}
+.rowAnnounce:hover{background:var(--ai-soft)}
+/* remind sits beside announce and behaves the same, but it writes to students
+   individually rather than posting to the whole class, so it borrows the
+   warning colour instead of the AI one. */
+#schedBody tr:hover .rowRemind,.rowRemind:focus-visible{border-color:var(--warn);color:var(--warn)}
+.rowRemind:hover{background:var(--warn-soft)}
+
+/* who is being chased, and what they will be sent */
+.rmWho{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px;
+  max-height:220px;overflow:auto;padding:10px;margin:12px 0;
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--bg)}
+.rmWho .tick{align-items:center;font-size:12.5px}
+.rmNote{color:var(--muted);font-size:11px}
+.rmField{display:flex;flex-direction:column;gap:5px;margin:12px 0;
+  font-size:11.5px;font-weight:650;color:var(--muted)}
+.rmField input,.rmField textarea{padding:8px 10px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel);color:var(--ink);
+  font:13px/1.55 var(--sans);font-weight:400;resize:vertical}
+
+.annLabel{display:flex;flex-direction:column;gap:5px;margin:14px 0;
+  font-size:11.5px;font-weight:650;color:var(--muted)}
+.annLabel span{font-weight:400}
+.annLabel input,.annLabel textarea{padding:9px 11px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--bg);color:var(--ink);
+  font:13.5px/1.6 var(--sans);resize:vertical}
+.annLabel input:focus,.annLabel textarea:focus{outline:2px solid var(--ai);
+  outline-offset:-1px}
+
+#inText{width:100%;padding:10px 12px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--bg);color:var(--ink);
+  font:14px/1.6 var(--sans);margin:14px 0 9px;resize:vertical}
+#inText:focus{outline:2px solid var(--ai);outline-offset:-1px}
+.inExamples{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.inExamples .chip{font-size:11.5px;text-align:left}
+.inNote{font-size:11.5px;line-height:1.6;color:var(--muted);margin:0 0 6px;
+  max-width:80ch}
+
+.planUnderstood{font-size:13.5px;line-height:1.55;margin:14px 0 12px;
+  border-left:3px solid var(--ai);padding-left:12px}
+.planQs{margin:6px 0 0;padding-left:20px;line-height:1.6}
+.planList{display:flex;flex-direction:column;gap:9px;margin:6px 0 14px}
+.planOp{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);
+  border-left:3px solid var(--warn);border-radius:0 var(--radius) var(--radius) 0;
+  padding:10px 12px;background:var(--bg);cursor:pointer}
+.planOp input{margin-top:2px;flex:0 0 auto}
+.planBody{display:flex;flex-direction:column;gap:4px;min-width:0}
+.planHead{font-size:13px;font-weight:600}
+.planChange{display:flex;gap:8px;align-items:baseline;font-size:12px;flex-wrap:wrap}
+.planField{font:600 10px var(--mono);text-transform:uppercase;color:var(--muted);
+  min-width:3.6em}
+.planWas{color:var(--muted);text-decoration:line-through}
+.planArrow{color:var(--muted)}
+.planWhy{font-size:11.5px;color:var(--muted);line-height:1.5}
+.planAnn{display:flex;flex-direction:column;gap:3px;margin-top:4px;
+  border-top:1px dashed var(--line);padding-top:6px;font-size:12px;line-height:1.55}
+.planRejected{margin:0 0 12px;font-size:12px;color:var(--muted)}
+.planRejected summary{cursor:pointer}
+.planRejected ul{margin:7px 0 0;padding-left:20px;line-height:1.6}
+
+.applyList{list-style:none;padding:0;margin:14px 0;display:flex;
+  flex-direction:column;gap:6px;font-size:12.5px}
+.applyList li{padding:7px 11px;border-radius:var(--radius);
+  border-left:3px solid var(--line);background:var(--bg);line-height:1.5}
+.applyList li.done{border-left-color:var(--accent)}
+.applyList li.bad{border-left-color:var(--danger)}
+.applyList li.planned{border-left-color:var(--ai)}
+
+/* the assignment reader opened from the schedule */
+.descModal .sub{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.dsDot{color:var(--muted)}
+.descBody{max-height:min(62vh,640px);overflow-y:auto;margin:14px 0 4px;
+  border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--paper);padding:16px 18px}
+.descWait{display:flex;align-items:center;gap:8px;color:var(--muted);
+  font-size:12.5px;margin:0}
+.descFetched{font-size:11px;color:var(--muted)}
+.descSubmit{font-size:11.5px;color:var(--muted);margin:14px 0 0;
+  border-top:1px solid var(--line);padding-top:10px}
+.descRubric{margin-top:16px;font-size:12.5px;border-top:1px solid var(--line);
+  padding-top:12px}
+.descRubric summary{cursor:pointer;font-weight:650;color:var(--muted)}
+.descRubricTable{width:100%;border-collapse:collapse;margin-top:8px}
+.descRubricTable td{padding:5px 7px;border-bottom:1px solid var(--line);
+  vertical-align:top;font-size:12.5px}
+.descRubricTable .pts{text-align:right;white-space:nowrap;width:56px;
+  font:12px var(--mono);color:var(--muted)}
+.descRubricTable .muted{font-size:11.5px;margin-top:2px;line-height:1.5}
+
+/* Canvas's own markup, contained: its inline styles are kept but its width,
+   colours and fonts must not fight the app around it. */
+.canvasHtml{font-size:13.5px;line-height:1.6;color:var(--ink);
+  overflow-wrap:break-word}
+.canvasHtml *{max-width:100%!important}
+.canvasHtml div[style]{margin-left:0!important;margin-right:0!important}
+.canvasHtml h1,.canvasHtml h2,.canvasHtml h3,.canvasHtml h4{
+  color:var(--ink)!important;margin:16px 0 7px;line-height:1.25}
+.canvasHtml h1{font-size:20px}.canvasHtml h2{font-size:18px}
+.canvasHtml h3{font-size:15.5px}.canvasHtml h4{font-size:14px}
+.canvasHtml p{margin:0 0 11px}
+.canvasHtml a{color:var(--ai)}
+.canvasHtml img{height:auto;border-radius:6px;margin:6px 0}
+.canvasHtml ul,.canvasHtml ol{margin:0 0 11px;padding-left:22px}
+.canvasHtml li{margin-bottom:4px}
+.canvasHtml table{border-collapse:collapse;margin:10px 0;display:block;
+  overflow-x:auto}
+.canvasHtml th,.canvasHtml td{border:1px solid var(--line);padding:6px 9px;
+  text-align:left;font-size:12.5px}
+.canvasHtml th{background:var(--bg);font-weight:650}
+.canvasHtml pre{background:var(--bg);padding:10px 12px;border-radius:6px;
+  overflow-x:auto;font:12px var(--mono)}
+.canvasHtml code{font:12px var(--mono);background:var(--bg);padding:1px 4px;
+  border-radius:3px}
+.canvasHtml blockquote{margin:10px 0;padding-left:12px;
+  border-left:3px solid var(--line);color:var(--muted)}
+/* a description written for a white page must stay readable on a dark one */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .canvasHtml [style*="background"]{
+    background-color:transparent!important}
+  :root:not([data-theme="light"]) .canvasHtml [style*="color"]{
+    color:var(--ink)!important}
+}
+:root[data-theme="dark"] .canvasHtml [style*="background"]{
+  background-color:transparent!important}
+:root[data-theme="dark"] .canvasHtml [style*="color"]{color:var(--ink)!important}
+
+/* setup: the one form a new user has to fill in */
+.setupForm{display:flex;flex-direction:column;gap:14px;margin:16px 0 6px}
+.setupForm label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;
+  font-weight:650;color:var(--muted)}
+.setupForm input{padding:9px 11px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--bg);color:var(--ink);
+  font:13px var(--mono)}
+.setupForm input:focus{outline:2px solid var(--ai);outline-offset:-1px}
+.setupToken{display:flex;gap:7px;align-items:stretch}
+.setupToken input{flex:1;min-width:0}
+.setupHint{font-size:11px;font-weight:400;line-height:1.5;color:var(--muted)}
+.setupHow{margin:6px 0 14px;font-size:12px;color:var(--muted)}
+.setupHow summary{cursor:pointer;font-weight:600}
+.setupHow ol{margin:8px 0 0;padding-left:20px;line-height:1.65}
+.setupBusy{display:flex;align-items:center;gap:8px;font-size:12.5px;
+  color:var(--muted);padding:8px 0}
+.callout.ok{background:var(--accent-soft);border-color:var(--accent)}
+.bannerWhy{margin-top:6px;font-size:11.5px}
+.bannerWhy summary{cursor:pointer;color:var(--muted)}
+
+/* ---------------- term schedule ----------------
+   The look follows the printed master schedule this replaces (navy band, gold
+   rule, week cards) but every colour comes from the app's own tokens so it
+   still works in dark mode and in print. */
+.schedHead{background:var(--navy);color:#fff;border-top:5px solid var(--gold);
+  padding:22px 0 18px;margin-bottom:18px}
+.schedHead h1{margin:0 0 3px;font:700 26px/1.2 Georgia,'Times New Roman',serif}
+.schedSub{margin:0;font-size:13px;color:#cfdcec}
+.schedStats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px;margin-top:15px}
+.schedStat{background:rgba(255,255,255,.08);border:1px solid rgba(233,168,33,.35);
+  border-radius:9px;padding:10px 12px}
+.schedStat b{display:block;font:700 23px/1.1 var(--mono);color:var(--gold)}
+.schedStat span{font-size:11px;color:#cfdcec;text-transform:uppercase;letter-spacing:.05em}
+
+.schedControls{position:sticky;top:0;z-index:12;background:var(--bg);
+  padding:12px 0 10px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.schedChips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+/* Buttons that change a live course and chips that only change what is on
+   screen are two different kinds of thing, and side by side in one run of
+   pills they read as one menu. Split them: actions left, filters right, with a
+   rule above so neither run touches the course chips either. */
+.schedChips.row2{margin-top:11px;padding-top:11px;gap:10px 22px;
+  border-top:1px solid var(--line)}
+.ctlGroup{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ctlShow{margin-left:auto}
+@media (max-width:720px){.ctlShow{margin-left:0}}
+.ctlLabel{font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);font-weight:700;margin-right:3px}
+.cchip.off{opacity:.4;text-decoration:line-through}
+.cdot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+.cnum{color:var(--muted);font-size:11px}
+
+.week{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+  margin-bottom:14px;overflow:hidden}
+.week.now{border-color:var(--gold);box-shadow:0 0 0 2px rgba(233,168,33,.22)}
+.whead{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:10px 15px;background:var(--bg);border-bottom:1px solid var(--line)}
+.week.now .whead{background:var(--warn-soft)}
+.whead h2{margin:0;font-size:14px;font-weight:700}
+.nowTag{font:600 10px var(--mono);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--warn);margin-left:6px}
+.wmeta{font-size:11.5px;color:var(--muted)}
+.load{display:inline-block;background:var(--accent-soft);border:1px solid var(--line);
+  border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;margin-left:7px}
+
+#schedBody table{width:100%;border-collapse:collapse}
+#schedBody th{text-align:left;font-size:10px;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--muted);padding:7px 15px;
+  border-bottom:1px solid var(--line);font-weight:700}
+#schedBody td{padding:8px 15px;border-bottom:1px solid var(--line);
+  vertical-align:top;font-size:13px}
+#schedBody tr:last-child td{border-bottom:none}
+#schedBody tr.past td{color:var(--muted)}
+#schedBody tr.past .name a{text-decoration:line-through}
+#schedBody tr.today{background:var(--warn-soft)}
+.daycell{white-space:nowrap;font-variant-numeric:tabular-nums;width:118px}
+.daycell b{display:block;font-size:12.5px}
+.daycell span{font-size:11px;color:var(--muted)}
+/* A course name is longer than a course code, so the badge is allowed to grow
+   to a point and then ellipsise; the full Canvas name is on the tooltip. */
+.cbadge{display:inline-block;padding:2px 8px;border-radius:5px;font:700 11px var(--sans);
+  color:#fff;white-space:nowrap;max-width:15rem;overflow:hidden;
+  text-overflow:ellipsis;vertical-align:middle}
+#schedBody td:nth-child(2){max-width:16rem}
+#schedBody .name a{color:inherit;text-decoration:none;font-weight:500}
+#schedBody .name a:hover{text-decoration:underline;color:var(--ai)}
+.extLink{margin-left:5px;font-size:11px;opacity:.65;text-decoration:none}
+.extLink:hover{opacity:1}
+#schedBody .pts{text-align:right;white-space:nowrap;width:60px;
+  font-variant-numeric:tabular-nums;color:var(--muted)}
+#schedBody .tg{width:74px;text-align:center}
+/* the same column on the assignment list for one course */
+#pickerBody .tg{width:82px;text-align:center}
+.tgBadge{display:inline-block;min-width:22px;padding:1px 7px;border-radius:999px;
+  background:var(--ai);color:#fff;font:700 11px var(--mono);text-decoration:none}
+.tgBadge:hover{filter:brightness(1.12)}
+.kind{white-space:nowrap;width:126px}
+#schedBody .k{display:inline-block;padding:1px 7px;border-radius:4px;
+  font:700 10px var(--sans);letter-spacing:.03em;border:1px solid}
+.kind-exam{background:#fbe9eb;border-color:#f3c2c8;color:#C11F31}
+.kind-test{background:#fff3e0;border-color:#ffcc80;color:#E65100}
+.kind-quiz{background:#eef4fa;border-color:#cfdcec;color:#236192}
+.kind-prac{background:#f5f5f5;border-color:#ddd;color:#6b7684}
+.kind-disc{background:#f3e5f5;border-color:#e1bee7;color:#6A1B9A}
+.kind-ung{background:#f1f3f5;border-color:#dde1e6;color:#5f6b7a}
+.kind-asn{background:#e8f5e9;border-color:#c8e6c9;color:#2E7D32}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .kind-exam{background:#3a1c20;border-color:#6d2b33;color:#ff9aa5}
+  :root:not([data-theme="light"]) .kind-test{background:#3a2a14;border-color:#6d4d1f;color:#ffc07a}
+  :root:not([data-theme="light"]) .kind-quiz{background:#16283a;border-color:#2b4a6d;color:#8fc4f5}
+  :root:not([data-theme="light"]) .kind-prac{background:#26292e;border-color:#3d4249;color:#9aa4b0}
+  :root:not([data-theme="light"]) .kind-disc{background:#2c1c3a;border-color:#4f2b6d;color:#d0a4f0}
+  :root:not([data-theme="light"]) .kind-ung{background:#25282c;border-color:#3a3f45;color:#98a2b3}
+  :root:not([data-theme="light"]) .kind-asn{background:#152a1b;border-color:#2a5233;color:#8fd8a0}
+}
+#schedBody .flag{font:700 10px var(--sans);color:var(--danger);margin-left:5px}
+.schedNote{padding:24px;text-align:center;color:var(--muted);font-size:13px}
+
+/* the sync line the schedule is judged by: small, but always the truth */
+.schedFoot{margin-top:20px;padding:12px 0 40px;border-top:2px solid var(--gold);
+  display:flex;flex-direction:column;gap:5px}
+.syncLine{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted)}
+.syncLine b{color:var(--ink);font-weight:650}
+.syncLine .spin{margin-right:2px}
+.syncErr{font-size:11.5px;color:var(--danger)}
+.footNote{font-size:11px;color:var(--muted);line-height:1.5;max-width:90ch}
+
+@media print{
+  .schedControls,.schedFoot{display:none!important}
+  .schedHead{background:#fff;color:#000;border-bottom:2px solid #000;
+    border-top:3px solid #000}
+  .schedHead h1,.schedSub,.schedStat span,.schedStat b{color:#000}
+  .schedStat{border-color:#999;background:#fff}
+  .week{break-inside:avoid;border-color:#999}
+  #schedBody tr.past{display:none}
+  #viewSchedule{overflow:visible}
+}
+
+/* non-submissions: reported, never averaged */
+.unscoredNote{margin-top:12px;border-top:1px dashed var(--line);padding-top:11px;
+  display:flex;flex-direction:column;gap:5px}
+.unscoredNote > div{font-size:12px;display:flex;gap:8px;flex-wrap:wrap;
+  align-items:baseline}
+.unscoredNote > div > span{color:var(--muted);font-size:11.5px}
+.unscoredNote p{margin:5px 0 0;font-size:11px;color:var(--muted);line-height:1.5}
+
+/* overlap report */
+.ovNote{font-size:13px;line-height:1.55;margin:0 0 14px}
+.ovPair{border:1px solid var(--line);border-radius:var(--radius);padding:11px 13px;
+  margin-bottom:11px;background:var(--bg)}
+.ovPair.hot{border-color:var(--warn);background:var(--warn-soft)}
+.ovWho{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:13.5px}
+.ovAmp{color:var(--muted);font-weight:400}
+.ovNums{margin-left:auto;font:11px var(--mono);color:var(--muted)}
+.ovTags{display:flex;gap:5px;margin:7px 0 0;flex-wrap:wrap}
+.ovSee{font-size:12.5px;line-height:1.5;margin:8px 0 0}
+.ovBenign{font-size:12.5px;line-height:1.5;margin:7px 0 0;color:var(--muted)}
+.ovPassages{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+.ovQuote{font:11.5px/1.5 var(--mono);background:var(--panel);border-left:3px solid var(--ai);
+  padding:6px 9px;border-radius:0 var(--radius) var(--radius) 0;
+  max-height:6.5em;overflow-y:auto}
+.ovLen{color:var(--muted);margin-right:8px;font-weight:600}
+.ovAside{font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.5}
+.ovRest{margin-top:12px;font-size:12px}
+.ovRest summary{cursor:pointer;color:var(--muted)}
+.ovTable{width:100%;border-collapse:collapse;margin-top:8px;font:11.5px var(--mono)}
+.ovTable td{padding:3px 6px;border-bottom:1px solid var(--line)}
+.ovTable td:nth-child(3),.ovTable td:nth-child(4){text-align:right;color:var(--muted)}
+
+/* ask dialog */
+.askThread{max-height:320px;overflow-y:auto;border:1px solid var(--line);
+  border-radius:var(--radius);padding:12px 14px;background:var(--bg);margin-bottom:12px}
+.askEmpty{font-size:12.5px;color:var(--muted)}
+.askTurn{margin-bottom:14px;font-size:13px;line-height:1.65}
+.askTurn:last-child{margin-bottom:0}
+.askTurn b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);margin-bottom:3px}
+.askTurn.user div{color:var(--ink);font-weight:500}
+.askTurn.claude div{white-space:pre-wrap}
+.askTurn.claude b{color:var(--ai)}
+.askTurn.error div{color:var(--danger)}
+.askChips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.askChips .chip{font-size:11px;text-align:left}
+.askBox{min-height:70px}
+
+
+/* Shown when the tab has been left open across an update. Deliberately loud and
+   deliberately in the way: the danger is a stale push dialog describing a write
+   that no longer matches what the server would do. */
+.staleBar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:9000;
+  display:flex;align-items:center;gap:12px;max-width:min(720px,92vw);
+  padding:11px 16px;border-radius:var(--radius);
+  border:1px solid var(--warn);background:var(--warn-soft);color:var(--ink);
+  font:12.5px/1.5 var(--sans);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+
+
+
+
+/* Canvas file room: a chip in the corner, not a panel. Quiet at rest, and it
+   brightens on hover because that is when you want to read the tooltip. */
+#storageBar:empty{display:none}
+#storageBar{position:fixed;right:14px;bottom:12px;z-index:60}
+.storeChip{display:inline-flex;flex-direction:column;align-items:flex-start;gap:4px;
+  padding:7px 13px 8px;
+  border-radius:var(--radius);border:1px solid var(--line);background:var(--panel);
+  font:12.5px var(--sans);color:var(--muted);opacity:.8;cursor:default;
+  white-space:nowrap;transition:opacity .15s}
+.storeChip:hover{opacity:1}
+/* Says what the number counts. A bare "18 / 600 MB" in a corner does not. */
+.storeCap{font:600 10px var(--sans);text-transform:uppercase;letter-spacing:.06em;
+  opacity:.85}
+.storeRow{display:flex;align-items:center;gap:9px}
+.storeTrack{display:inline-block;position:relative;width:62px;height:6px;flex:none;
+  border-radius:999px;background:var(--bg);overflow:hidden}
+.storeFill{position:absolute;inset:0 auto 0 0;background:var(--accent);min-width:2px}
+.storeChip.warm .storeFill{background:var(--warn)}
+.storeChip.full{color:var(--danger);opacity:1}
+.storeChip.full .storeFill{background:var(--danger)}

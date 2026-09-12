@@ -1,0 +1,1 @@
+"""CourseForge Studio: knowledge area."""

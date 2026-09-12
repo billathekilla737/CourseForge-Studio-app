@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "courseforge-studio"
+version = "2.0.0a1"
+description = "CourseForge Studio: one local web app for Canvas instructors. Grading, ADA remediation, content building and course tools, driven by the Claude CLI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Zachary Garris" }]
+keywords = ["canvas", "lms", "grading", "accessibility", "ada", "pdf/ua", "claude", "education"]
+classifiers = [
+  "Environment :: Web Environment",
+  "Intended Audience :: Education",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Education",
+]
+
+# The HTTP server, the Canvas client and the grading pipeline are standard
+# library only. The document tools need the libraries below; each area
+# degrades to an "install X to enable" card when its library is missing.
+dependencies = [
+  "pypdf>=4.0",          # reading PDF submissions; PDF triage; verify gate
+  "python-docx>=1.1",    # Word remediation
+  "python-pptx>=1.0",    # PowerPoint remediation
+  "lxml>=5.0",           # python-pptx XML edits
+  "pillow>=10.0",        # contact sheets, figure thumbnails
+]
+
+[project.optional-dependencies]
+# The PDF/UA engine. PyMuPDF is AGPL-3.0 or commercial -- see docs/THIRD-PARTY-NOTICES.md.
+pdf = ["pymupdf>=1.24", "pikepdf>=9.0", "fonttools>=4.50"]
+# The API-key backend used by a hosted (school) build. The local build uses the Claude CLI.
+api = ["anthropic>=1.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+courseforge = "courseforge.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/billathekilla737/CourseForge-Studio"
+Issues = "https://github.com/billathekilla737/CourseForge-Studio/issues"
+
+[tool.setuptools.packages.find]
+include = ["courseforge*"]
+
+[tool.setuptools.package-data]
+courseforge = ["web/**/*", "scripts/*.py", "knowledge/*.md", "brand.json", "pdf/assets/*.xml"]

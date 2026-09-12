@@ -1,67 +1,54 @@
 # ---------------------------------------------------------------------------
-# CourseForge .gitignore
-#
-# Two rules drive everything here:
+# CourseForge Studio .gitignore
 #   1. NEVER commit credentials or anything derived from student data.
-#   2. NEVER commit build output. GitHub hard-rejects any file over 100 MB and
-#      the installer exe is ~141 MB. Ship those as GitHub *Releases*.
+#      Everything the tool downloads or produces lives under data/ by design.
+#   2. NEVER commit build output.
 # ---------------------------------------------------------------------------
 
 # --- credentials -----------------------------------------------------------
-canvas.token
 *.token
-*.bin
-canvas.config.*.json
-canvas.state.*.json
-canvas.project.*.json
+*.token.enc
+canvas.token
+canvas.token.txt
 token-*.bin
+canvas.config.*.json
+canvas.state*.json
+canvas.project*.json
+config.json
+config.local.json
+secrets.json
 
-# --- student / course data and audit trails --------------------------------
+# --- everything downloaded or produced --------------------------------------
+data/
+work/
+runs/
+
+# --- student / course data and audit trails ---------------------------------
+*grades*.json
+*grades*.csv
+*roster*.json
+**/map.json
+**/proposed-grades*.json
+**/submissions/
+attachments/
+cache/
 canvas-admin-audit.log
 activity-log.jsonl
 canvas-export/
 grading/
 private/
-**/map.json
-**/proposed-grades*.json
-**/submissions/
-
-# Operational working directories: real course content pulled from Canvas.
-# Not source, frequently large, and not ours to publish.
 courses/
 audit/
 pdf-lab/
-pdf-text-work/
-office-lab/
-build/
+remediation-work/
+pptx-work/
+docx-work/
+office-text-work/
+pdf-triage/
+batch-remediation/
+**/*.work/
 
-# --- build output (the GitHub 100 MB blocker) ------------------------------
-installer/dist/
-installer/dist-*/
-installer/build/
-installer/Output/
-installer/Deploy-NewMachine/*.exe
-installer/dist-assistant/
-installer/dist-assistant-*/
-installer/build-assistant/
-installer/python-embed/
-installer/cache/
-*.exe
-*.msi
-
-# --- python ----------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-.pytest_cache/
-.ruff_cache/
-
-# --- pdf pipeline artefacts ------------------------------------------------
-# Anything the engine generates into a workdir. Never source.
-# NOTE: these are deliberately NOT rooted, so they also catch workdirs nested
-# under courses/ and pdf-lab/. skill/ is force-included at the bottom.
+# --- pdf pipeline artefacts (anything the engine writes into a workdir) ------
 **/pdf-fastlane/
 **/original.pdf
 **/fixed.pdf
@@ -77,53 +64,40 @@ venv/
 **/alt-todo.json
 **/alt-summary.json
 **/alt.json
-**/curl-fetch.cfg
 startup-error.txt
 
-# --- editor / OS -----------------------------------------------------------
+# --- build output ------------------------------------------------------------
+legacy/installer/dist*/
+legacy/installer/build*/
+legacy/installer/Output/
+legacy/installer/python-embed/
+legacy/installer/cache/
+legacy/installer/_tools-keep/
+*.exe
+*.msi
+build/
+dist/
+
+# --- python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- editor / OS -------------------------------------------------------------
 .vscode/
 .idea/
-Thumbs.db
-desktop.ini
 *.swp
 *~
-
-# --- encrypted token blobs and pulled course content (added 2026-09) ---------
-*.token.enc
-remediation-work/
-announcements/
-
-# --- the repo IS the source: never let the patterns above swallow it -------
-!skill/
-!skill/**
-!installer/courseforge-pdf.iss
-!installer/courseforge-pdf.spec
-!installer/INSTALL-GUIDE.md
-!installer/cf-icon.ico
-!installer/cf-icon-preview.png
-!installer/courseforge-assistant.iss
-!installer/courseforge-assistant.spec
-!installer/Build-Assistant.ps1
-!installer/INSTALL-GUIDE-ASSISTANT.md
-!installer/cf-assistant-icon.ico
-!installer/cf-assistant-icon-preview.png
-!sync-skill.ps1
-# force-include above re-admits caches; drop them again
-skill/**/__pycache__/
-
-# --- added 2026-09 security pass ---------------------------------------------
-# a token saved as a note, and the per-course state files, must never ship or commit
+.DS_Store
+Thumbs.db
+desktop.ini
 *.rtf
-canvas.state*.json
-canvas.project*.json
-# work folders the office/PDF gateways create relative to wherever they were run
-pptx-work/
-docx-work/
-office-text-work/
-pdf-triage/
-batch-remediation/
-**/*.work/
-# build-side caches (downloaded wheels for the hash-locked embed install)
-installer/cache/
-installer/_tools-keep/
-installer/Output/*.sha256

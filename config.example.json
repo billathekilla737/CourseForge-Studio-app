@@ -1,0 +1,50 @@
+{
+  "_comment": "Copy this to config.json and edit. config.json is gitignored. The Canvas API token never goes in here -- put it in canvas.token or the CANVAS_TOKEN environment variable.",
+
+  "base_url": "https://mgccc.instructure.com",
+  "token_path": "",
+  "data_dir": "",
+  "port": 8900,
+
+  "enrollment_types": ["teacher", "ta"],
+
+  "_excluded_courses": "Optional. Courses to hide in the picker, matched on course id or any substring of the name. Empty by default; the term filter is usually the better way to narrow the list.",
+  "excluded_courses": [],
+
+  "_model": "Default model for grading. Changing the dropdown in the UI rewrites this key, so your choice sticks across restarts.",
+  "model": "opus",
+
+  "_models": "Options offered in the UI dropdown. Any alias the Claude CLI accepts works; add a pinned model id here if you want one.",
+  "models": ["opus", "sonnet", "haiku"],
+
+  "_grading_concurrency": "How many students are graded at once, each one its own claude CLI call. 1-8; anything higher is clamped to 8. This changes how long a section takes, not what it costs -- the trade is against rate limits, which surface as errors on individual students in the job log.",
+  "grading_concurrency": 8,
+  "claude_timeout_s": 600,
+
+  "_pseudonymize": "Replace student names with S-001, S-002 before any text is sent to Claude. The identity map stays in data/<course>/<assignment>/map.json and never leaves this machine.",
+  "pseudonymize": true,
+
+  "_blender": "Blender for .blend submissions. blender_path empty means auto-detect (PATH, standard install dirs, Windows registry). blend_vision sends the rendered contact sheet to the model; vision_model is used for those calls since opus vision costs several times more for no better judgment of form.",
+  "blender_path": "",
+  "blend_concurrency": 2,
+  "blend_timeout_s": 180,
+  "blend_max_mb": 300,
+  "blend_vision": true,
+  "vision_model": "sonnet",
+  "max_images_per_student": 4,
+
+  "_schedule_max_age_min": "The term schedule refetches from Canvas in the background when the cached copy is older than this many minutes. The cache is shown immediately either way, with its age in the footer.",
+  "schedule_max_age_min": 30,
+
+  "_grade_scale": "Minimum percent for each letter grade; below the lowest is an F. Used by the insight charts and the curve preview. Change to match your institution.",
+  "grade_scale": { "A": 90, "B": 80, "C": 70, "D": 60 },
+
+  "_allow_canvas_writes": "A hard read-only lock. Left true, because the tool exists to change live courses -- and every single write is refused once, shown to you in full, and only sent when you confirm that exact change. Set this to false to bolt the doors shut anyway: nothing can reach Canvas, and the drafting, planning and export features all still work.",
+  "allow_canvas_writes": true,
+
+  "_pull_interval_s": "While an assignment is open, re-read its Canvas grades this often (seconds) so grades pushed from another machine show up here. Never overwrites unpushed local work; disagreements are shown as conflicts for you to settle. 0 turns the timer off (the pull when you open an assignment still runs).",
+  "pull_interval_s": 120,
+
+  "_assignment_max_age_min": "Opening an assignment syncs it from Canvas by itself. One that has never been synced always does; one synced more recently than this many minutes opens straight away. Files already downloaded are not fetched twice, so a re-sync is mostly API calls. 0 syncs on every open.",
+  "assignment_max_age_min": 15
+}

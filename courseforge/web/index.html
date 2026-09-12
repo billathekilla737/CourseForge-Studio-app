@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CourseForge Studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">CourseForge Studio <small id="hostLine">local · not connected</small></div>
+  <div class="crumbs" id="crumbs"></div>
+  <div class="spacer"></div>
+  <div id="headerActions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
+  <!-- Jobs whose dialog has been closed. Every view clears #headerActions, so
+       running work needs a home of its own that survives navigation. -->
+  <div id="jobDock" class="jobDock"></div>
+  <span class="status" id="status"></span>
+</header>
+
+<div id="banners"></div>
+
+<!-- picker -->
+<section id="viewPicker" class="wrap">
+  <div class="sectionHead">
+    <h2 id="pickerTitle">Your courses</h2>
+    <span class="hint" id="pickerHint">Loading…</span>
+    <div class="spacer"></div>
+    <button class="btn sm" id="btnRefresh">Refresh from Canvas</button>
+  </div>
+  <div id="pickerBody"></div>
+  <div id="storageBar"></div>
+</section>
+
+<!-- term schedule: every dated assignment across the term's courses -->
+<section id="viewSchedule" class="hidden">
+  <div class="schedHead">
+    <div class="wrap">
+      <h1 id="schedTitle">Master Schedule</h1>
+      <p class="schedSub" id="schedSub"></p>
+      <div class="schedStats" id="schedStats"></div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="schedControls" id="schedControls"></div>
+    <div id="schedBody"></div>
+    <footer class="schedFoot" id="schedFoot"></footer>
+  </div>
+</section>
+
+<!-- workspace -->
+<main class="work hidden" id="viewWork">
+  <aside>
+    <div class="rosterTools">
+      <input type="search" id="search" placeholder="Filter students…" autocomplete="off">
+      <div class="chips" id="filters">
+        <button class="chip" data-f="all" aria-pressed="true">All</button>
+        <button class="chip" data-f="submitted" aria-pressed="false"
+          title="Only students who actually turned something in">Turned in</button>
+        <button class="chip" data-f="review" aria-pressed="false">Needs review</button>
+        <button class="chip" data-f="human" aria-pressed="false">Edited</button>
+        <button class="chip" data-f="ungraded" aria-pressed="false">Ungraded</button>
+        <button class="chip" data-f="missing" aria-pressed="false">Missing</button>
+        <button class="chip" data-f="conflict" aria-pressed="false"
+          title="Students where Canvas holds a different score from the one here">Conflicts</button>
+      </div>
+    </div>
+    <div class="roster" id="roster"></div>
+    <div class="bulkBar" id="bulkBar"></div>
+  </aside>
+  <section class="detail" id="detail"></section>
+  <section class="workPane" id="workPane"></section>
+</main>
+
+<!-- teaching zone: everything here reads the results back as feedback on the
+     teaching, and none of it changes a grade -->
+<footer class="teachBar hidden" id="teachBar"></footer>
+
+<div id="modalHost"></div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "./vendor/three/three.module.min.js",
+    "three/addons/": "./vendor/three/addons/"
+} }
+</script>
+<script src="vendor/highlight/highlight.min.js"></script>
+<script src="app.js"></script>
+<script type="module" src="viewer.js"></script>
+</body>
+</html>

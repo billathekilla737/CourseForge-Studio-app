@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 from .. import htmlclean, ledger
 from ..routing import HTTPError, route
-from . import batch, bold_structure, bordered_boxes, dump, push, restyle
+from . import batch, bold_structure, bordered_boxes, dump, preview, push, restyle
 from .workdir import (LOOKS, course_label, load_fixes, load_listing,
                       load_manifest, load_push_result, load_report, read_text,
                       save_fixes, workdir)
@@ -495,6 +495,19 @@ def boxes(req):
         out["dry_run"] = False
         return out
     return _locked_job(req, cid, "a11y.bordered-boxes", job)
+
+
+# ------------------------------------------------------------------ looks
+
+@route("GET", "/api/a11y/looks", AREA)
+def looks_preview(req):
+    """The three looks, each with a worked example rendered by the restyler.
+
+    Course-independent, so it is asked for once and reused. The html is the
+    real transform's output on a sample page, which is the only version of a
+    preview that cannot quietly stop matching what the tool does.
+    """
+    return {"looks": preview.all_looks()}
 
 
 # ------------------------------------------------------------------- batch

@@ -160,11 +160,57 @@
       + (c.failed ? ', ' + c.failed + ' fail and will not be pushed' : '') + '.';
   }
 
+  /* The card is the radio; the Example button sits beside it, not inside it.
+     A button within a button is invalid markup and the inner one stops being
+     reachable by keyboard, which would put the preview out of reach of exactly
+     the people this area is for. */
   function lookCard(l, current) {
     const on = l.id === current;
-    return '<button type="button" class="a11yLook" role="radio" aria-checked="' + on + '" data-look="' + l.id + '">'
+    return '<div class="a11yLookWrap">'
+      + '<button type="button" class="a11yLook" role="radio" aria-checked="' + on + '" data-look="' + l.id + '">'
       + '<b>' + esc(l.label) + '</b>' + (l.id === 'clean' ? ' <span class="pill">default</span>' : '')
-      + '<div class="hint">' + esc(l.hint) + '</div></button>';
+      + '<div class="hint">' + esc(l.hint) + '</div></button>'
+      + '<button type="button" class="a11yLookEg" data-eg="' + l.id + '"'
+      + ' title="See a page in the ' + esc(l.label) + ' look"'
+      + ' aria-label="Example of the ' + esc(l.label) + ' look">Example</button>'
+      + '</div>';
+  }
+
+  /* The three renders come from the server once and are kept for the session:
+     they are the restyler's own output on a sample page, so they are the same
+     for every course and there is nothing to refresh. */
+  async function lookPreviews() {
+    if (!S.a11y.looks) S.a11y.looks = await api('/a11y/looks').then(r => r.looks || []);
+    return S.a11y.looks;
+  }
+
+  async function showLookExample(id) {
+    let looks;
+    try { looks = await lookPreviews(); }
+    catch (err) { setStatus('could not load the example: ' + firstLine(err.message), 'err'); return; }
+    const l = looks.find(x => x.id === id);
+    if (!l) { setStatus('no example for ' + id, 'err'); return; }
+    const tab = x => '<button type="button" class="chip" role="tab" aria-selected="' + (x.id === id)
+      + '" data-egtab="' + x.id + '">' + esc(x.label) + '</button>';
+    openModal('<h3 id="egTitle">' + esc(l.label) + ' look</h3>'
+      + '<p class="sub" id="egHint">' + esc(l.hint) + '</p>'
+      + '<div class="chips" role="tablist" aria-label="Look">' + looks.map(tab).join('') + '</div>'
+      + '<div class="paperFrame canvasPage"><div class="canvasHtml asIs" id="egBody">' + l.html + '</div></div>'
+      + '<p class="hint">A sample page, restyled by the same code the real run uses. '
+      + 'Your own pages keep their own words; only the styling changes.</p>'
+      + '<div class="foot"><button class="btn" id="egClose">Close</button></div>',
+      { cls: 'wide', label: 'Example of each look' });
+    const paint = x => {
+      $('#egBody').innerHTML = x.html;
+      document.querySelectorAll('[data-egtab]').forEach(b =>
+        b.setAttribute('aria-selected', String(b.dataset.egtab === x.id)));
+      const h = $('#egTitle'); if (h) h.textContent = x.label + ' look';
+      const sub = $('#egHint'); if (sub) sub.textContent = x.hint;
+    };
+    document.querySelectorAll('[data-egtab]').forEach(b => {
+      b.onclick = () => { const x = looks.find(y => y.id === b.dataset.egtab); if (x) paint(x); };
+    });
+    $('#egClose').onclick = closeModal;
   }
 
   function itemRow(it, selected) {
@@ -216,6 +262,9 @@
       + '<div class="a11yPanesWrap"><div id="a11yPanes" class="a11yPanes"><div class="a11yNone">Select an item to compare before and after.</div></div></div>'
       + '</div>';
 
+    host.querySelectorAll('.a11yLookEg').forEach(el => {
+      el.onclick = () => showLookExample(el.dataset.eg);
+    });
     host.querySelectorAll('.a11yLook').forEach(el => {
       el.onclick = () => { S.a11y.look = el.dataset.look; renderHtmlReview(host, state); };
     });
@@ -434,6 +483,7 @@
       + '<section id="batchResult"></section>'
       + '</div>';
     body.querySelectorAll('.a11yLook').forEach(el => { el.onclick = () => { S.a11y.batchLook = el.dataset.look; openBatch(); }; });
+    body.querySelectorAll('.a11yLookEg').forEach(el => { el.onclick = () => showLookExample(el.dataset.eg); });
 
     // The run is what is picked, not what is on screen: a course hidden by the
     // term filter still counts, and the banner above says so.

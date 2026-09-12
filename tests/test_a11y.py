@@ -27,7 +27,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from courseforge.a11y import (batch, bold_structure, bordered_boxes,  # noqa: E402
-                              check_style, contrast, dump, push, restyle, routes)
+                              check_style, contrast, dump, preview, push,
+                              restyle, routes)
 from courseforge.a11y.workdir import (load_manifest, load_push_result,  # noqa: E402
                                       load_report, workdir)
 
@@ -598,6 +599,47 @@ class BatchTests(A11yBase):
         self.assertGreater(len(self.client.writes), 0)
         ledger_file = self.app.course_dir(self.cid) / "ledger.jsonl"
         self.assertTrue(ledger_file.is_file())
+
+
+class LookPreviewTests(unittest.TestCase):
+    """The three worked examples behind the Example buttons.
+
+    They come from the real transform, so these tests are really asking whether
+    the looks still differ in the way the UI claims they do.
+    """
+
+    def setUp(self):
+        self.looks = {l["id"]: l for l in preview.all_looks()}
+
+    def test_each_look_renders_and_they_differ(self):
+        self.assertEqual(set(self.looks), {"clean", "hybrid", "rich"})
+        html = [l["html"] for l in self.looks.values()]
+        self.assertEqual(len(set(html)), 3, "two looks rendered the same page")
+
+    def test_fills_match_what_each_look_promises(self):
+        fills = {k: v["html"].lower().count("background:") for k, v in self.looks.items()}
+        self.assertEqual(fills["clean"], 0, "clean must leave no fill to flag")
+        self.assertEqual(fills["hybrid"], 2, "hybrid fills the hero and the footer")
+        self.assertGreater(fills["rich"], fills["hybrid"], "rich fills more than hybrid")
+
+    def test_the_words_are_the_same_in_all_three(self):
+        # The same guarantee the real run makes: a look changes styling, never text.
+        seen = {restyle.reader_text(l["html"]) for l in self.looks.values()}
+        self.assertEqual(len(seen), 1, "a look changed the words of the sample")
+
+    def test_the_sample_exercises_every_component(self):
+        # A preview that shows only a hero would not tell anyone what rich does.
+        sample = preview.sample_body()
+        found = set()
+        for _s0, _e, style in restyle.find_div_spans(sample):
+            c = restyle.classify(style, "<h2" in sample[_s0:_e].lower())
+            if c:
+                found.add(c)
+        self.assertEqual(found, {"HERO", "FOOTER", "CARD", "GOAL", "ALERT", "CALLOUT"})
+
+    def test_unknown_look_is_refused(self):
+        with self.assertRaises(ValueError):
+            preview.render("neon")
 
 
 class ReaderTextTests(unittest.TestCase):

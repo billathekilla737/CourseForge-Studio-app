@@ -844,7 +844,12 @@ html.busy .btn, html.busy button{cursor:progress}
   overflow-wrap:break-word}
 .canvasHtml *{max-width:100%!important}
 .canvasHtml div[style]{margin-left:0!important;margin-right:0!important}
-.canvasHtml h1,.canvasHtml h2,.canvasHtml h3,.canvasHtml h4{
+/* Headings in a Canvas body are forced to the app's ink so a description
+   written for a white page stays readable here. `.asIs` is exempt: a
+   restyle preview is showing what the heading colour will be, and this
+   rule would repaint every look's heading the same. */
+.canvasHtml:not(.asIs) h1,.canvasHtml:not(.asIs) h2,
+.canvasHtml:not(.asIs) h3,.canvasHtml:not(.asIs) h4{
   color:var(--ink)!important;margin:16px 0 7px;line-height:1.25}
 .canvasHtml h1{font-size:20px}.canvasHtml h2{font-size:18px}
 .canvasHtml h3{font-size:15.5px}.canvasHtml h4{font-size:14px}
@@ -864,16 +869,20 @@ html.busy .btn, html.busy button{cursor:progress}
   border-radius:3px}
 .canvasHtml blockquote{margin:10px 0;padding-left:12px;
   border-left:3px solid var(--line);color:var(--muted)}
-/* a description written for a white page must stay readable on a dark one */
+/* A description written for a white page must stay readable on a dark one, so
+   inline colours are dropped when the app is dark.
+   `.asIs` is the exemption, and it has to be honoured here rather than only on
+   the container: a restyle preview exists to show what the colours will do, and
+   neutralising them turns the before and after panes into the same picture. */
 @media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]) .canvasHtml [style*="background"]{
+  :root:not([data-theme="light"]) .canvasHtml:not(.asIs) [style*="background"]{
     background-color:transparent!important}
-  :root:not([data-theme="light"]) .canvasHtml [style*="color"]{
+  :root:not([data-theme="light"]) .canvasHtml:not(.asIs) [style*="color"]{
     color:var(--ink)!important}
 }
-:root[data-theme="dark"] .canvasHtml [style*="background"]{
+:root[data-theme="dark"] .canvasHtml:not(.asIs) [style*="background"]{
   background-color:transparent!important}
-:root[data-theme="dark"] .canvasHtml [style*="color"]{color:var(--ink)!important}
+:root[data-theme="dark"] .canvasHtml:not(.asIs) [style*="color"]{color:var(--ink)!important}
 
 /* setup: the one form a new user has to fill in */
 .setupForm{display:flex;flex-direction:column;gap:14px;margin:16px 0 6px}
@@ -1353,6 +1362,13 @@ header{border-top:3px solid var(--gold)}
   padding:16px 18px;overflow:auto}
 .canvasHtml.asIs{color:var(--ink)}
 .canvasHtml.asIs *{max-width:100%}
+/* A picture of a Canvas page, so it commits to Canvas's own surface in both
+   themes: white paper, dark text. Following the app into dark mode would show
+   navy on near-black and hide the clean look's black text entirely, which is
+   the opposite of what someone opens a preview to find out. */
+.paperFrame.canvasPage{background:#fff;color:#2c3a4d;border-color:#d7dce3;
+  color-scheme:light}
+.paperFrame.canvasPage .canvasHtml.asIs{color:#2c3a4d}
 
 /* ---------------- calm ----------------
    Nothing in the Studio moves for decoration. What is left after this is the

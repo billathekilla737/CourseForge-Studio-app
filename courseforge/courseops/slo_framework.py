@@ -43,6 +43,30 @@ def _abs(href):
     return href if href.startswith("http") else BASE + href
 
 
+# ------------------------------------------------------------------- file i/o
+# Every handle is closed on the spot. The bare `json.load(open(p))` this started
+# as leaks a handle until the collector runs, and on Windows that is long enough
+# to keep a temporary folder from being removed.
+
+def _read_json(path):
+    with open(path, encoding="utf-8-sig") as fh:
+        return json.load(fh)
+
+
+def _write_json(path, obj, indent=2):
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, indent=indent)
+
+
+def _write_text(path, text, mode="w"):
+    if "b" in mode:
+        with open(path, mode) as fh:
+            fh.write(text)
+        return
+    with open(path, mode, encoding="utf-8") as fh:
+        fh.write(text)
+
+
 def _norm_slug(s):
     """Accept every shape a slug arrives in: a full URL, '/curriculum/x', a bare 'x', or the
     MSYS-mangled 'C:/Program Files/Git/curriculum/x' that Git Bash produces from a
@@ -85,15 +109,15 @@ def parse_index(page):
 
 def cmd_index(a):
     if a.cache and os.path.exists(a.cache) and not a.refresh:
-        progs = json.load(open(a.cache, encoding="utf-8-sig"))["programs"]
+        progs = _read_json(a.cache)["programs"]
         src = "cache"
     else:
         progs = parse_index(_get(INDEX_URL))
         src = "live"
         if a.cache:
             os.makedirs(os.path.dirname(os.path.abspath(a.cache)) or ".", exist_ok=True)
-            json.dump({"index_url": INDEX_URL, "count": len(progs), "programs": progs},
-                      open(a.cache, "w", encoding="utf-8"), indent=1)
+            _write_json(a.cache, {"index_url": INDEX_URL, "count": len(progs),
+                                  "programs": progs}, indent=1)
     if not progs:
         print("REFUSING: parsed 0 programs. The index markup likely changed; "
               "re-check %s before trusting any alignment result." % INDEX_URL)
@@ -111,7 +135,7 @@ def cmd_index(a):
 
 def load_index(cache):
     if cache and os.path.exists(cache):
-        return json.load(open(cache, encoding="utf-8-sig"))["programs"]
+        return _read_json(cache)["programs"]
     return parse_index(_get(INDEX_URL))
 
 
@@ -195,14 +219,14 @@ def cmd_fetch(a):
         name = ("current" if current else "prior") + "-" + os.path.basename(
             urllib.parse.unquote(L["url"]))[:80]
         path = os.path.join(a.out, name)
-        open(path, "wb").write(_get(L["url"], binary=True))
+        _write_text(path, _get(L["url"], binary=True), "wb")
         rec = {"label": L["label"], "url": L["url"], "path": path, "current": current,
                "year": yr.group(1) if yr else None, "bytes": os.path.getsize(path)}
         got.append(rec)
         print("%-8s %-34s %7d bytes  %s" % ("CURRENT" if current else "prior", L["label"],
                                             rec["bytes"], path))
-    json.dump({"slug": a.slug, "page": _abs(a.slug), "pdfs": got},
-              open(os.path.join(a.out, "framework-sources.json"), "w", encoding="utf-8"), indent=2)
+    _write_json(os.path.join(a.out, "framework-sources.json"),
+                {"slug": a.slug, "page": _abs(a.slug), "pdfs": got})
     if not any(g["current"] for g in got):
         print("WARNING: no link was labelled as the current framework; treat year with care.")
     return 0
@@ -373,7 +397,7 @@ def cmd_slos(a):
         # Reporting "aligned" against an empty outcome list would be vacuous, so refuse.
         if picked and not result["leaves"]:
             if a.out:
-                json.dump(result, open(a.out, "w", encoding="utf-8"), indent=2)
+                _write_json(a.out, result)
             print("REFUSING: %s was found in %s but carries NO Student Learning Outcomes.\n"
                   "  It may appear only in a course-sequence table, or its outcomes may live in a\n"
                   "  different framework (a course shared across programs). Open the PDF and look\n"
@@ -385,7 +409,7 @@ def cmd_slos(a):
                   "courses_in_framework": len(courses), "courses": courses}
 
     if a.out:
-        json.dump(result, open(a.out, "w", encoding="utf-8"), indent=2)
+        _write_json(a.out, result)
         print("wrote %s" % a.out)
     if a.summary or not a.out:
         print("%s: %d pages, %d courses" % (os.path.basename(a.pdf), len(d), len(courses)))
@@ -398,13 +422,12 @@ def cmd_slos(a):
 # ------------------------------------------------------------------- validate
 
 def _load_alignment(path):
-    j = json.load(open(path, encoding="utf-8-sig"))
-    return j
+    return _read_json(path)
 
 
 def cmd_validate(a):
-    slos = json.load(open(a.slos, encoding="utf-8-sig"))
-    items = json.load(open(a.items, encoding="utf-8-sig"))
+    slos = _read_json(a.slos)
+    items = _read_json(a.items)
     al = _load_alignment(a.alignment)
 
     leaves = slos.get("leaves") or _leaves((slos.get("course") or {}).get("outcomes", []))
@@ -475,8 +498,8 @@ VERDICT_LABEL = {
 
 
 def cmd_report(a):
-    slos = json.load(open(a.slos, encoding="utf-8-sig"))
-    items = json.load(open(a.items, encoding="utf-8-sig"))
+    slos = _read_json(a.slos)
+    items = _read_json(a.items)
     al = _load_alignment(a.alignment)
     rows = al.get("alignment") or []
     by_id = {str(i["id"]): i for i in items.get("items", [])}
@@ -544,7 +567,7 @@ def cmd_report(a):
     md_text = "\n".join(md)
 
     if a.out_md:
-        open(a.out_md, "w", encoding="utf-8").write(md_text)
+        _write_text(a.out_md, md_text)
         print("wrote %s" % a.out_md)
 
     # ---------- Canvas-safe HTML (clean look: borders and navy headings, no fills)
@@ -599,7 +622,7 @@ def cmd_report(a):
                  'MCCB curriculum framework. Confirm the framework version your college is running '
                  'before using this for program review.</div></div>')
         H.append("</div>")
-        open(a.out_html, "w", encoding="utf-8").write("\n".join(H))
+        _write_text(a.out_html, "\n".join(H))
         print("wrote %s" % a.out_html)
 
     print("\ncoverage %.0f%%  (%d assessed, %d partial, %d ungraded-only, %d not assessed, of %d)"

@@ -1,0 +1,104 @@
+/* courseops.css: styles only the Course tools area uses. The zone colour
+   appears in the three places the shell already paints (the tab underline, the
+   area head rule, the one primary button); nothing here adds a fourth. Tokens
+   fall back to plain values so the area renders even before the shell has
+   defined them. */
+
+.toolsLoading,.toolsNone{padding:12px 0;font-size:13px;color:var(--muted,#5b6472)}
+.toolsSection{margin:0 0 22px}
+.toolsSection h3{margin:0 0 6px;font-size:15px}
+.toolsHint{font-size:12.5px;color:var(--muted,#5b6472)}
+.toolsSentence{margin:10px 0;padding:10px 12px;border-radius:var(--radius,8px);
+  border:1px solid var(--line,#dfe3e9);background:var(--panel,#fff);font-size:13.5px;line-height:1.55}
+.toolsNote,.toolsWarn,.toolsFerpa{margin:10px 0}
+.toolsWarn{border-color:var(--warn,#8a5a00);background:var(--warn-soft,#fdf3e0);color:var(--warn,#8a5a00)}
+.toolsFerpa{border-left:4px solid var(--warn,#8a5a00)}
+.toolsWarn ul,.callout.bad ul{margin:6px 0 0;padding-left:18px}
+
+/* --------------------------------------------------------------- verbs */
+.toolsVerbs{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.toolsInline{display:flex;gap:6px;align-items:center;font-size:13px}
+.toolsTick{display:inline-flex;gap:6px;align-items:center;font-size:13px;margin-left:4px}
+
+/* --------------------------------------------------------------- forms */
+.toolsFacts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:10px 0}
+.toolsField{display:block;margin:10px 0;max-width:520px}
+.toolsFacts .toolsField{margin:0}
+.toolsLbl{display:block;font-size:12px;font-weight:600;margin-bottom:3px}
+.toolsField input,.toolsField select,.toolsInline input,.toolsInline select{
+  width:100%;padding:7px 10px;font:inherit;color:inherit;
+  border:1px solid var(--line,#dfe3e9);border-radius:var(--radius,8px);background:var(--bg,#f6f7f9)}
+.toolsInline input,.toolsInline select{width:auto;min-width:180px}
+.toolsField .toolsHint{display:block;margin-top:4px}
+.toolsField input:focus-visible,.toolsField select:focus-visible{
+  outline:2px solid var(--zone,#4a5568);outline-offset:1px}
+/* A fact Canvas could not answer: tinted, and the hint says "Tell me:". */
+.toolsAsk input{border-color:var(--warn,#8a5a00);background:var(--warn-soft,#fdf3e0)}
+.toolsAsk .toolsLbl,.toolsAsk .toolsHint{color:var(--warn,#8a5a00)}
+
+/* --------------------------------------------------------------- modes */
+.toolsModes{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:10px 0}
+.toolsMode{display:block;text-align:left;font:inherit;color:inherit;cursor:pointer;
+  background:var(--panel,#fff);border:1px solid var(--line,#dfe3e9);
+  border-radius:var(--radius,8px);padding:11px 13px}
+.toolsMode b{display:block;font-size:13.5px;margin-bottom:3px}
+.toolsMode .toolsHint{display:block}
+.toolsMode[aria-checked="true"]{border-color:var(--zone,#4a5568);
+  box-shadow:inset 0 0 0 1px var(--zone,#4a5568);background:var(--zone-soft,#eceff3)}
+.toolsMode:focus-visible{outline:2px solid var(--zone,#4a5568);outline-offset:2px}
+
+.toolsPair{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:10px 0}
+.toolsPair>div{padding:10px 12px;border:1px solid var(--line,#dfe3e9);
+  border-radius:var(--radius,8px);background:var(--panel,#fff);font-size:13.5px}
+.toolsPair b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted,#5b6472);margin-bottom:4px}
+
+/* -------------------------------------------------------------- tables */
+.toolsTableWrap{overflow-x:auto;margin:10px 0}
+.toolsTable{width:100%;border-collapse:collapse;font-size:13px}
+.toolsTable caption{text-align:left;font-size:12px;color:var(--muted,#5b6472);padding:0 0 6px}
+.toolsTable th,.toolsTable td{text-align:left;vertical-align:top;padding:7px 9px;
+  border-bottom:1px solid var(--line,#dfe3e9)}
+.toolsTable th[scope="col"]{font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted,#5b6472);font-weight:600}
+.toolsTable th[scope="row"]{font-weight:600}
+.toolsSub{font-weight:400;font-size:12px;color:var(--muted,#5b6472);margin-top:2px}
+.toolsItem{padding:1px 0}
+.toolsNoteCell{font-size:12.5px;color:var(--muted,#5b6472);max-width:30ch}
+.toolsTable input[type="datetime-local"]{padding:5px 7px;font:inherit;color:inherit;
+  border:1px solid var(--line,#dfe3e9);border-radius:var(--radius,8px);background:var(--bg,#f6f7f9)}
+.toolsTable input[type="datetime-local"]:focus-visible{outline:2px solid var(--zone,#4a5568);outline-offset:1px}
+
+/* ------------------------------------------------------- outcome steps */
+.sloSteps{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px;padding:0}
+.sloStep{display:flex;align-items:center;gap:7px;font-size:12.5px;padding:6px 11px;
+  border:1px solid var(--line,#dfe3e9);border-radius:99px;background:var(--panel,#fff);
+  color:var(--muted,#5b6472)}
+.sloStep.now{border-color:var(--zone,#4a5568);color:inherit;font-weight:600}
+.sloStep.done{color:inherit}
+.sloStepN{display:inline-flex;width:19px;height:19px;align-items:center;justify-content:center;
+  border-radius:99px;background:var(--bg,#f6f7f9);border:1px solid var(--line,#dfe3e9);
+  font-size:11px;font-weight:600}
+.sloStep.now .sloStepN{background:var(--zone-soft,#eceff3);border-color:var(--zone,#4a5568)}
+
+.sloChoices{display:grid;gap:6px;margin:10px 0}
+.sloChoice{display:flex;gap:8px;align-items:baseline;font-size:13.5px;padding:7px 10px;
+  border:1px solid var(--line,#dfe3e9);border-radius:var(--radius,8px);background:var(--panel,#fff)}
+.sloChoice:focus-within{border-color:var(--zone,#4a5568)}
+.sloFix{margin-top:5px;font-size:12.5px}
+
+/* Verdict pills carry the word; the tint only repeats it. */
+.pill.slo-assessed{border-color:var(--accent,#2f6f4f);color:var(--accent,#2f6f4f);
+  background:var(--accent-soft,#e8f2ec)}
+.pill.slo-partially-assessed,.pill.slo-ungraded-only{border-color:var(--warn,#8a5a00);
+  color:var(--warn,#8a5a00);background:var(--warn-soft,#fdf3e0)}
+.pill.slo-not-assessed{border-color:var(--danger,#a3282f);color:var(--danger,#a3282f)}
+.pill.slo-not-applicable{color:var(--muted,#5b6472)}
+
+@media (max-width:900px){
+  .toolsFacts,.toolsModes,.toolsPair{grid-template-columns:1fr}
+  .toolsNoteCell{max-width:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .toolsMode,.sloStep{transition:none}
+}

@@ -3,6 +3,14 @@
   --accent:#2f6f4f; --accent-soft:#e8f2ec; --warn:#8a5a00; --warn-soft:#fdf3e0;
   --danger:#a3342b; --danger-soft:#fbeceb; --edit:#1f5c8b; --edit-soft:#e7f0f8;
   --ai:#6b4c9a; --ai-soft:#f0eaf8; --gold:#E9A821; --navy:#061E3F; --paper:#fbfaf7; --radius:9px;
+  /* Zone colours, one per area, so the areas read as one tool instead of five
+     themes. A zone shows in three places only: the tab underline, the rule
+     under the area head, and the single primary button. */
+  --a11y:#0f766e; --a11y-soft:#e2f3f0; --build:#8a4b2a; --build-soft:#f6ece5;
+  --tools:#4a5568; --tools-soft:#eceff3;
+  /* The neutral default, for the picker, the schedule and the hub: no area is
+     open there, so nothing should be wearing an area's colour. */
+  --zone:#4a5568; --zone-soft:#eceff3;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --serif:Georgia,"Iowan Old Style",Cambria,"Times New Roman",serif;
@@ -13,6 +21,9 @@
     --accent:#6fbf95; --accent-soft:#1e2f27; --warn:#d9a441; --warn-soft:#2e2718;
     --danger:#e08078; --danger-soft:#31201e; --edit:#78b4e6; --edit-soft:#1a2632;
     --ai:#b79ae0; --ai-soft:#241d31; --gold:#E9A821; --navy:#061E3F; --paper:#191d22;
+    --a11y:#6fd3c7; --a11y-soft:#14302c; --build:#e0a37e; --build-soft:#2f2119;
+    --tools:#a7b3c4; --tools-soft:#23282f;
+    --zone:#a7b3c4; --zone-soft:#23282f;
   }
 }
 *{box-sizing:border-box}
@@ -1075,3 +1086,266 @@ html.busy .btn, html.busy button{cursor:progress}
 .storeChip.warm .storeFill{background:var(--warn)}
 .storeChip.full{color:var(--danger);opacity:1}
 .storeChip.full .storeFill{background:var(--danger)}
+
+/* ================================================================= the Studio
+   Everything below is the shared shell the five areas hang in: the zone
+   colours, the area bar, the area head, the hub, the gateway, the alt grid,
+   the pills and the two accessibility affordances every screen needs. Area-
+   only styles live in web/css/<area>.css. */
+
+/* ---------------- zones ----------------
+   showView() writes body[data-area]; these map it to --zone. Accessibility is
+   one colour across its four kinds (a11y, docs, pdf and the batch run) because
+   it is one job. Grade keeps the accent it has always had, the Assistant keeps
+   --ai. */
+body[data-area="a11y"],
+body[data-area="docs"],
+body[data-area="pdf"]{--zone:var(--a11y);--zone-soft:var(--a11y-soft)}
+body[data-area="build"],
+body[data-area="content"]{--zone:var(--build);--zone-soft:var(--build-soft)}
+body[data-area="tools"],
+body[data-area="courseops"]{--zone:var(--tools);--zone-soft:var(--tools-soft)}
+body[data-area="ai"],
+body[data-area="assistant"]{--zone:var(--ai);--zone-soft:var(--ai-soft)}
+body[data-area="grade"]{--zone:var(--accent);--zone-soft:var(--accent-soft)}
+
+/* Gold is a rule, never a fill and never text on a light surface. */
+header{border-top:3px solid var(--gold)}
+
+/* One focus ring for the whole app, in whatever colour the current area wears.
+   Offset outwards so it is visible on a filled button as well as a link. */
+:focus-visible{outline:2px solid var(--zone,var(--edit));outline-offset:2px}
+
+/* Filled buttons keep white text on the light palette; on the dark one the
+   zone colours are light, so the text has to become the background. */
+@media (prefers-color-scheme:dark){
+  .btn.primary,.btn.ai{color:var(--bg)}
+}
+
+/* The hub and the area shell scroll on their own, like the picker does. */
+#viewHub,#viewArea{flex:1 1 auto;min-height:0;overflow-y:auto}
+
+/* ---------------- screen-reader and keyboard affordances ---------------- */
+.srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+/* The skip link is off-screen until it is focused, then it is the first thing
+   on the page. */
+.skip{position:absolute;left:-9999px;top:0;z-index:9999;padding:9px 14px;
+  border:1px solid var(--zone,var(--edit));border-radius:0 0 var(--radius) 0;
+  background:var(--panel);color:var(--ink);font:13px var(--sans);cursor:pointer}
+.skip:focus{left:0}
+
+/* ---------------- the area bar ----------------
+   The second row under the header: one tab per area, always in the same order,
+   so an area that is not installed is visibly missing rather than silently
+   absent. */
+.areaBar{flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);padding:0 18px}
+.areaBarIn{max-width:1100px;margin:0 auto;display:flex;gap:4px;flex-wrap:wrap}
+.areaTab{display:inline-flex;align-items:center;gap:7px;padding:9px 13px 7px;
+  font-size:13px;color:var(--muted);text-decoration:none;background:none;border:0;
+  border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+.areaTab:hover{color:var(--ink)}
+.areaTab[aria-current="page"]{color:var(--ink);font-weight:650;border-bottom-color:var(--zone)}
+.areaTab.off{opacity:.45;cursor:not-allowed}
+/* A count badge, never a bare dot: the number says how much is waiting. */
+.areaTab .n,.hubCard h2 .n,.subTab .n{display:inline-block;min-width:17px;padding:0 5px;
+  border-radius:99px;background:var(--zone-soft);border:1px solid var(--zone);
+  color:var(--zone);font:600 10.5px/16px var(--mono);text-align:center}
+
+/* ---------------- the navy band ----------------
+   The hub head and the term schedule head. A fixed fill: navy with white text
+   and a gold rule above it, whatever the area. */
+.bandHead{background:var(--navy);color:#fff;border-top:5px solid var(--gold);
+  padding:22px 0 18px;margin-bottom:18px}
+.bandHead h1{margin:0 0 3px;font:700 26px/1.2 var(--serif);color:#fff}
+.bandHead h1:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.bandSub{margin:0;font-size:13px;color:#cfdcec}
+
+/* A row of figures. On the navy band it borrows the schedule's look; anywhere
+   else it sits on the panel colour. */
+.statStrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px;margin-top:15px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.stat b{display:block;font:700 23px/1.1 var(--mono);color:var(--ink)}
+.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.stat.warn b{color:var(--warn)}
+.stat.bad b{color:var(--danger)}
+.bandHead .stat{background:rgba(255,255,255,.08);border-color:rgba(233,168,33,.35)}
+.bandHead .stat b{color:var(--gold)}
+.bandHead .stat span{color:#cfdcec}
+
+/* ---------------- the area shell ---------------- */
+.areaHead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  padding-bottom:10px;margin-bottom:14px;border-bottom:2px solid var(--zone)}
+.areaHead h1{margin:0;font-size:20px}
+.areaHead .hint{font-size:12.5px;color:var(--muted)}
+.areaActions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* A thin vertical rule between two runs of buttons that mean different things. */
+.vsep{display:inline-block;width:1px;align-self:stretch;min-height:20px;
+  background:var(--line);margin:0 3px}
+
+#areaTabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;
+  border-bottom:1px solid var(--line)}
+.subTab{display:inline-flex;align-items:center;gap:6px;padding:7px 12px 6px;
+  background:none;border:0;border-bottom:3px solid transparent;
+  font-size:12.5px;color:var(--muted);cursor:pointer}
+.subTab:hover{color:var(--ink)}
+.subTab[aria-selected="true"]{color:var(--ink);font-weight:650;border-bottom-color:var(--zone)}
+
+/* The one primary button an area gets. Only inside the area shell, so the
+   picker and the workspace keep the grader's own accent. */
+#viewArea .btn.primary{background:var(--zone);border-color:var(--zone)}
+
+/* ---------------- the hub ---------------- */
+.hubGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.hubCard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px;
+  border-top:3px solid var(--line)}
+.hubCard[data-zone="a11y"]{border-top-color:var(--a11y)}
+.hubCard[data-zone="build"]{border-top-color:var(--build)}
+.hubCard[data-zone="tools"]{border-top-color:var(--tools)}
+.hubCard[data-zone="ai"]{border-top-color:var(--ai)}
+.hubCard[data-zone="grade"]{border-top-color:var(--accent)}
+.hubCard.off{opacity:.62}
+.hubCard h2{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.hubCard h2 a{color:inherit;text-decoration:none}
+.hubCard h2 a:hover{text-decoration:underline}
+.hubLines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;
+  font-size:12.5px;color:var(--muted);line-height:1.5;flex:1}
+.hubActs{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+.hubActs .btn{text-decoration:none}
+.zoneNote{margin:0;font-size:11.5px;color:var(--muted)}
+.zoneNote.bad{color:var(--danger)}
+.hubSection{margin-top:26px}
+.across{margin-top:26px}
+.acrossCard{cursor:pointer}
+.acrossCard.off{cursor:not-allowed}
+
+/* ---------------- install cards ----------------
+   What is missing, what it enables, how to install it, and Check again. */
+.needCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.needCard{display:flex;flex-direction:column;gap:6px;padding:12px 14px;
+  background:var(--warn-soft);border:1px solid var(--warn);border-radius:var(--radius);
+  font-size:12.5px;color:var(--ink)}
+.needCard b{font-size:13.5px}
+.needWhat{color:var(--muted)}
+.needHow{font:11.5px var(--mono);background:var(--panel);border:1px solid var(--line);
+  border-radius:6px;padding:6px 8px;overflow-wrap:anywhere}
+.needDetail{font-size:11.5px}
+.needActs{display:flex;gap:8px;margin-top:2px}
+
+/* ---------------- the empty state ----------------
+   Says what the first action does, and that nothing is pushed. */
+.empty{padding:20px 22px;border:1px dashed var(--line);border-radius:var(--radius);
+  background:var(--panel);color:var(--muted);font-size:13px;line-height:1.6;
+  display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.empty p{margin:0;max-width:60ch}
+
+/* ---------------- the ledger ----------------
+   What the Studio wrote to Canvas, newest first. */
+.ledger{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ledgerRow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  padding:8px 11px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius);font-size:12.5px}
+.ledgerWhen{font:11px var(--mono);color:var(--muted);white-space:nowrap}
+.ledgerWhat{flex:1;min-width:14em;line-height:1.5}
+.ledgerActs{display:flex;gap:6px;align-items:center}
+.ledgerActs .btn{text-decoration:none}
+
+/* ---------------- the five-step gateway ----------------
+   List, Scan, Review, Dry run, Apply. Nothing reaches Canvas before step 5,
+   and step 5 asks first. */
+.gw{display:flex;flex-direction:column;gap:14px}
+.steps{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0}
+.step{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;
+  border:1px solid var(--line);border-radius:99px;background:var(--panel);
+  font-size:12.5px;color:var(--muted);cursor:pointer}
+.step:disabled{opacity:.45;cursor:not-allowed}
+.step .stepNum{display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border-radius:50%;background:var(--bg);
+  border:1px solid var(--line);font:600 10.5px var(--mono)}
+.step.done{color:var(--ink)}
+.step.done .stepNum{background:var(--zone-soft);border-color:var(--zone);color:var(--zone)}
+.step[aria-current="step"]{background:var(--zone-soft);border-color:var(--zone);
+  color:var(--ink);font-weight:650}
+.step[aria-current="step"] .stepNum{background:var(--zone);border-color:var(--zone);color:var(--panel)}
+.gwNeeds:empty{display:none}
+.gwPane{min-height:120px}
+.gwH{margin:16px 0 8px;font-size:14px}
+.gwChips{margin:0 0 10px}
+.gwNote{font-size:12px;margin:12px 0 0}
+.gwFoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  border-top:1px solid var(--line);padding-top:12px}
+.gwSummary{font-size:12.5px;color:var(--muted)}
+.gwActs{display:flex;gap:8px;flex-wrap:wrap}
+.gwTableWrap{overflow-x:auto}
+.gwTable{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius)}
+.gwTable caption{text-align:left}
+.gwTable th,.gwTable td{text-align:left;vertical-align:top;padding:7px 9px;
+  border-bottom:1px solid var(--line)}
+.gwTable tbody tr{cursor:default}
+.gwTable tbody tr.picked{background:var(--zone-soft)}
+.gwTable .gwPick{width:34px;text-align:center}
+.gwTable .gwPick input{cursor:pointer}
+.gwVerify:empty{display:none}
+
+/* ---------------- the alt-text grid ---------------- */
+.altBar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.altSum{font-size:12.5px;color:var(--muted)}
+.altSection{margin-top:20px}
+.altNote{font-size:12px;margin:0 0 8px}
+.altGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.altCard{margin:0;display:flex;flex-direction:column;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.altCard.alone{opacity:.8}
+.altPic{background:var(--bg);border-bottom:1px solid var(--line);min-height:110px;
+  display:flex;align-items:center;justify-content:center;padding:8px}
+.altPic img{max-width:100%;max-height:180px;height:auto;display:block}
+.altPic.none{font-size:12px;color:var(--muted)}
+.altBody{display:flex;flex-direction:column;gap:7px;padding:10px 12px 12px}
+.altTop{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:11.5px}
+.altCtx{font-size:12px;color:var(--muted);line-height:1.5}
+.altText{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:7px;
+  background:var(--bg);font:13px/1.5 var(--sans);resize:vertical}
+.altText:disabled{opacity:.55}
+.altMeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px}
+.altCount{font:11px var(--mono);color:var(--muted)}
+.altCount.over{color:var(--danger);font-weight:700}
+.altDeco{font-size:11.5px}
+
+/* ---------------- pills ----------------
+   Every pill carries words. The colour is a second signal, never the only one. */
+.pill.ok,.pill.pass,.pill.v-pass,.pill.st-verified,.pill.st-clean,
+.pill.st-pushed,.pill.st-applied,.pill.st-uploaded,.pill.st-fixed,
+.pill.lane-full{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.pill.err,.pill.bad,.pill.v-fail,.pill.v-error,.pill.st-failed,.pill.st-error,
+.pill.lane-refused{background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
+.pill.v-warn,.pill.v-partial,.pill.st-issues,.pill.st-queued,
+.pill.lane-queued,.pill.lane-review{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.pill.v-skip,.pill.v-na,.pill.v-unknown,.pill.st-not-fetched,.pill.st-listed,
+.pill.st-excluded,.pill.lane-light,.pill.lane-skipped,
+.pill.muted{background:var(--bg);border-color:var(--line);color:var(--muted)}
+.pill.st-fetched,.pill.st-scanned,.pill.src-claude,
+.pill.v-assessed{background:var(--edit-soft);border-color:var(--edit);color:var(--edit)}
+.pill.v-ungraded,.pill.v-not{background:var(--bg);border-color:var(--muted);color:var(--muted)}
+.pill.src-you,.pill.src-human,.pill.src-user{background:var(--zone-soft);
+  border-color:var(--zone);color:var(--zone)}
+.pill.src-placeholder,.pill.src-filename,.pill.src-none{background:var(--warn-soft);
+  border-color:var(--warn);color:var(--warn)}
+
+/* ---------------- a Canvas body, shown as Canvas would ----------------
+   The preview frame is paper-coloured in both themes, because that is the
+   surface the page will actually be read on. */
+.paperFrame{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px 18px;overflow:auto}
+.canvasHtml.asIs{color:var(--ink)}
+.canvasHtml.asIs *{max-width:100%}
+
+/* ---------------- calm ----------------
+   Nothing in the Studio moves for decoration. What is left after this is the
+   three things that report live progress, and they stop too. */
+@media (prefers-reduced-motion:reduce){
+  .spin,.jiDot,.progFill.working{animation:none!important}
+  *{scroll-behavior:auto!important}
+}

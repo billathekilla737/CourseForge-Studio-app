@@ -1,0 +1,67 @@
+/* content.css: styles only the Build area uses. The zone colour (--build) is
+   already spent on the tab underline, the area head rule and the one primary
+   button; the review screen's own accent is --edit, and it means one thing
+   only: a person has edited this. */
+
+.bdBack{margin:0 0 14px}
+.bdBack .btn{text-decoration:none}
+
+.bdNew .bdCard{text-decoration:none;color:inherit}
+.bdNew .bdCard:hover{border-color:var(--build)}
+
+/* ---------------- the draft form ---------------- */
+.bdForm{max-width:720px;display:flex;flex-direction:column;gap:14px}
+.bdFormH{margin:0;font-size:17px}
+.bdForm > p{margin:0;max-width:60ch}
+.bdField{display:flex;flex-direction:column;gap:5px;font-size:11.5px;font-weight:650;
+  color:var(--muted);border:0;padding:0;margin:0}
+.bdField > span:first-child,.bdField legend{text-transform:uppercase;letter-spacing:.04em;padding:0}
+.bdField input,.bdField select,.bdField textarea{padding:8px 10px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel);color:var(--ink);
+  font:13.5px/1.5 var(--sans);font-weight:400}
+.bdField textarea{resize:vertical}
+.bdHint{font-size:11px;font-weight:400;line-height:1.5;color:var(--muted)}
+.bdRow{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+.bdLookRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.bdLook{text-align:left;font:inherit;font-weight:400;color:inherit;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--radius);padding:9px 11px;cursor:pointer}
+.bdLook b{display:block;font-size:13px;color:var(--ink)}
+.bdLook[aria-checked="true"]{border-color:var(--build);box-shadow:inset 0 0 0 1px var(--build)}
+.bdPublish{font-size:13px;color:var(--ink)}
+.bdNote{margin:-8px 0 0;font-size:11.5px;max-width:60ch}
+.bdActs{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px}
+.bdActs .hint{font-size:11.5px;color:var(--muted)}
+
+/* ---------------- the review screen ---------------- */
+.bdHead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 12px}
+.bdHead h2{margin:0;font-size:18px}
+.bdChips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+.bdWhy{font-size:11.5px;color:var(--danger)}
+
+.bdPanes{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media (max-width:1000px){.bdPanes{grid-template-columns:1fr}.bdRow{grid-template-columns:1fr}}
+.bdPanes .paperFrame{max-height:64vh}
+
+/* The body, and the one signal that matters on this screen: once a person has
+   touched it, the border says so and stays saying so. */
+.bdHtml{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--panel);color:var(--ink);font:12.5px/1.6 var(--mono);resize:vertical}
+.bdHtml.edited{border-color:var(--edit);box-shadow:inset 0 0 0 1px var(--edit)}
+.bdEditFoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.bdEditFoot .hint{font-size:11.5px;color:var(--muted);max-width:46ch}
+.bdRaw{margin-top:12px;font-size:12px}
+.bdRaw summary{cursor:pointer;color:var(--muted)}
+.bdRawPre{margin:8px 0 0;padding:11px 13px;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--radius);font:11.5px/1.6 var(--mono);white-space:pre-wrap;
+  overflow-wrap:anywhere;max-height:40vh;overflow:auto}
+
+.bdQuiz{margin-top:20px}
+.bdPlaceRow{margin-top:22px;border-top:1px solid var(--line);padding-top:16px}
+.bdPlaceRow .hint{max-width:52ch}
+
+/* ---------------- manifest and rubrics ---------------- */
+.bdPath{font-size:11.5px;margin:12px 0}
+.bdPath code{font:11.5px var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px;
+  overflow-wrap:anywhere}
+.bdProblems{margin:6px 0 0;padding-left:20px;line-height:1.6}
+.bdProblems li{margin-bottom:3px}

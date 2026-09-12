@@ -36,7 +36,16 @@ def hub_status(app, course_id) -> dict:
 
 
 def _ids(body) -> list | None:
-    ids = (body or {}).get("file_ids")
+    """Which files a verb acts on, or None for all of them.
+
+    The shared gateway component sends the ticked rows as `keys`, and for these
+    kinds a row's key is its Canvas file id. Read both names: without `keys`,
+    ticking three files and pressing Upload would quietly act on all twenty.
+    """
+    body = body or {}
+    ids = body.get("file_ids")
+    if ids in (None, "", []):
+        ids = body.get("keys")
     if ids in (None, "", []):
         return None
     if not isinstance(ids, list):

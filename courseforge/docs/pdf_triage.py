@@ -19,20 +19,32 @@ Classes (worst first):
   empty/odd     : no text and no images
 
 Usage:
-  python triage_pdf.py file1.pdf [file2.pdf ...] [--json out.json]
+  python -m courseforge.docs.pdf_triage file1.pdf [file2.pdf ...] [--json out.json]
+
+Library surface:
+  triage_one(path) -> dict        one file
+  triage_many(paths) -> list      sorted worst first
 """
-import argparse, json, os, sys
+import argparse
+import json
+import os
+import sys
 
 from pypdf import PdfReader
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
 SEVERITY = {"scanned-image": 3, "encrypted": 2, "text-untagged": 2,
             "empty/odd": 1, "tagged": 0}
+CLASS_HELP = {
+    "scanned-image": "no text layer: needs OCR at minimum, ideally the source document",
+    "text-untagged": "readable text but no headings or reading order for screen readers",
+    "tagged": "has a tag structure; spot-check the quality by hand",
+    "encrypted": "password protected; cannot be inspected",
+    "empty/odd": "no text and no images could be read",
+}
 
 
 def triage_one(path):
-    r = {"file": os.path.basename(path), "path": path}
+    r = {"file": os.path.basename(path), "path": str(path)}
     try:
         reader = PdfReader(path)
         if reader.is_encrypted:
@@ -41,6 +53,7 @@ def triage_one(path):
             except Exception:
                 r.update(cls="encrypted", pages=None,
                          note="password-protected; cannot inspect")
+                r["severity"] = SEVERITY["encrypted"]
                 return r
         n = len(reader.pages)
         text_pages = img_pages = 0
@@ -82,13 +95,17 @@ def triage_one(path):
     return r
 
 
+def triage_many(paths):
+    return sorted((triage_one(p) for p in paths), key=lambda r: (-r["severity"], r["file"].lower()))
+
+
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("pdfs", nargs="+")
     ap.add_argument("--json", default=None)
     a = ap.parse_args()
-    results = sorted((triage_one(p) for p in a.pdfs),
-                     key=lambda r: -r["severity"])
+    results = triage_many(a.pdfs)
     print("%-38s %-14s %-8s %s" % ("FILE", "CLASS", "PAGES", "NOTE"))
     print("-" * 100)
     for r in results:

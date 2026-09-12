@@ -30,8 +30,8 @@ import shutil
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import restyle_html as R
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from courseforge.a11y import restyle as R  # noqa: E402
 
 
 # --------------------------------------------------------------- fixtures
@@ -313,6 +313,16 @@ def main():
         return 1
     print("RESTYLE TESTS PASS")
     return 0
+
+
+# So `python -m unittest tests.test_restyle` runs the same harness.
+import unittest  # noqa: E402
+
+
+class RestyleHarness(unittest.TestCase):
+    def test_harness_passes(self):
+        del FAILURES[:]
+        self.assertEqual(main(), 0, FAILURES)
 
 
 if __name__ == "__main__":

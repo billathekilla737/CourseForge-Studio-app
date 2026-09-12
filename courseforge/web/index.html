@@ -5,23 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CourseForge Studio</title>
 <link rel="stylesheet" href="style.css">
+<!-- Area-only styles. An area that is not installed yet has no file here; the
+     404 is harmless and the page renders without it. -->
+<link rel="stylesheet" href="css/a11y.css">
+<link rel="stylesheet" href="css/docs.css">
+<link rel="stylesheet" href="css/pdf.css">
+<link rel="stylesheet" href="css/content.css">
+<link rel="stylesheet" href="css/courseops.css">
+<link rel="stylesheet" href="css/assistant.css">
 </head>
 <body>
 
+<button class="skip" id="skipLink" type="button">Skip to content</button>
+
 <header>
   <div class="brand">CourseForge Studio <small id="hostLine">local · not connected</small></div>
-  <div class="crumbs" id="crumbs"></div>
+  <div class="crumbs" id="crumbs" aria-label="Where you are"></div>
   <div class="spacer"></div>
   <div id="headerActions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
   <!-- Jobs whose dialog has been closed. Every view clears #headerActions, so
        running work needs a home of its own that survives navigation. -->
   <div id="jobDock" class="jobDock"></div>
-  <span class="status" id="status"></span>
+  <span class="status" id="status" role="status" aria-live="polite"></span>
 </header>
+
+<!-- The area bar: Grade, Accessibility, Build, Tools, Assistant. Shown wherever
+     a course is open and the grading workspace is not. -->
+<nav id="areaBar" class="areaBar hidden" aria-label="Course areas"></nav>
 
 <div id="banners"></div>
 
-<!-- picker -->
+<!-- picker: the course list, and the assignment list of one course -->
 <section id="viewPicker" class="wrap">
   <div class="sectionHead">
     <h2 id="pickerTitle">Your courses</h2>
@@ -30,12 +44,14 @@
     <button class="btn sm" id="btnRefresh">Refresh from Canvas</button>
   </div>
   <div id="pickerBody"></div>
+  <!-- hub.js paints "Across your courses" here on the course list only -->
+  <div id="pickerStrip"></div>
   <div id="storageBar"></div>
 </section>
 
 <!-- term schedule: every dated assignment across the term's courses -->
 <section id="viewSchedule" class="hidden">
-  <div class="schedHead">
+  <div class="schedHead bandHead">
     <div class="wrap">
       <h1 id="schedTitle">Master Schedule</h1>
       <p class="schedSub" id="schedSub"></p>
@@ -49,11 +65,37 @@
   </div>
 </section>
 
+<!-- course hub: where each area stands in one course -->
+<section id="viewHub" class="hidden">
+  <div class="bandHead">
+    <div class="wrap">
+      <h1 id="hubTitle">Course</h1>
+      <p class="bandSub" id="hubSub"></p>
+      <div id="hubStats"></div>
+    </div>
+  </div>
+  <div class="wrap" id="hubBody"></div>
+</section>
+
+<!-- shared area shell: one head, optional sub-tabs, one body -->
+<section id="viewArea" class="hidden">
+  <div class="wrap">
+    <div class="areaHead">
+      <h1 id="areaTitle"></h1>
+      <span class="hint" id="areaHint"></span>
+      <div class="spacer"></div>
+      <div id="areaActions" class="areaActions"></div>
+    </div>
+    <div id="areaTabs" role="tablist" aria-label="Sections" hidden></div>
+    <div id="areaBody" role="tabpanel"></div>
+  </div>
+</section>
+
 <!-- workspace -->
 <main class="work hidden" id="viewWork">
   <aside>
     <div class="rosterTools">
-      <input type="search" id="search" placeholder="Filter students…" autocomplete="off">
+      <input type="search" id="search" placeholder="Filter students…" autocomplete="off" aria-label="Filter students">
       <div class="chips" id="filters">
         <button class="chip" data-f="all" aria-pressed="true">All</button>
         <button class="chip" data-f="submitted" aria-pressed="false"
@@ -78,6 +120,8 @@
 <footer class="teachBar hidden" id="teachBar"></footer>
 
 <div id="modalHost"></div>
+<!-- job state changes are read out here for screen readers -->
+<div id="live" class="srOnly" aria-live="polite" aria-atomic="true"></div>
 
 <script type="importmap">
 { "imports": {
@@ -86,7 +130,20 @@
 } }
 </script>
 <script src="vendor/highlight/highlight.min.js"></script>
-<script src="app.js"></script>
+<!-- Load order matters: the shell, the components, then every area, then the
+     boot call. An area script that does not exist yet is a 404 the page
+     shrugs off; its hub card says "Not installed". -->
+<script src="js/core.js"></script>
+<script src="js/components.js"></script>
+<script src="js/grade.js"></script>
+<script src="js/hub.js"></script>
+<script src="js/a11y.js"></script>
+<script src="js/docs.js"></script>
+<script src="js/pdf.js"></script>
+<script src="js/content.js"></script>
+<script src="js/courseops.js"></script>
+<script src="js/assistant.js"></script>
+<script src="js/boot.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>
 </html>

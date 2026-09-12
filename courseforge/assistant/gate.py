@@ -1,60 +1,61 @@
 """
-cf_assistant_hook.py - the permission gate for CourseForge Assistant.
+gate.py - the permission gate for the CourseForge Studio Assistant.
 
-Claude Code runs this as a PreToolUse hook (wired through --settings) before
-EVERY tool call in an Assistant session. It lets reads, searches, dumps, dry
-runs and local transforms proceed on their own, and it asks the person -
-through a real Allow / Deny dialog in the Assistant window - before anything
-else. That is the PDF Fixer's rule ("anything destructive gets a real dialog")
-carried over.
+Claude Code runs this (through hook.py, wired in with --settings) as a
+PreToolUse hook before EVERY tool call in an Assistant session. It lets reads,
+searches, dumps, dry runs and local transforms proceed on their own, and it
+asks the person - through the Allow / Deny card in the Studio's browser page -
+before anything else.
 
 The gate is an ALLOW-LIST, not a deny-list. The first version keyed on write
 verbs and let anything that matched no pattern run; a two-step "write a script
-into the course folder, then run it" walked straight past it, and so did an
-encoded command. Now a shell command runs unasked only when every piece of it
-is one of:
-  - a script from the CourseForge toolkit, called by its known name (and,
-    when the app tells us where the toolkit lives, from that folder), without
-    a write switch
+into the folder, then run it" walked straight past it, and so did an encoded
+command. A shell command runs unasked only when every piece of it is one of:
+  - a Studio verb, `python -m courseforge <area> <verb> ...`, WITHOUT --apply
+    (every writing verb is a dry run without it)
   - a read-only cmdlet or alias from a short list, with any literal URL on the
     connected Canvas host
-  - a local file operation whose every path is inside the course folder and is
-    not a script, a Claude Code config file, or the app's own assistant\\ folder
-Anything else - an unknown script, a one-liner, an encoded command, a .NET
-call, a web request elsewhere - is a question for the person. File writes get
-the same treatment: a script file or a config file written into the course
-folder is a question, because the next step could run or load it.
+  - a local file operation whose every path is inside the workspace folder and
+    is not a script, a Claude Code config file, or the Studio's own assistant\\
+    folder
+Anything else - a Studio verb WITH --apply, an unknown command, a one-liner,
+python -c, a PowerShell script, an encoded command, a .NET call, a web request
+elsewhere, anything that touches grading data - is a question for the person.
+File writes get the same treatment: a script file or a config file written into
+the workspace is a question, because the next step could run or load it.
 
-Two halves, deliberately in one stdlib-only file:
-  classify()   the pure rules. The app imports them to label activity in the
-               conversation pane and the tests exercise them directly;
-               nothing in here touches the network.
-  main()       the hook process: stdin JSON -> classify -> allow, or ask the
-               app over a localhost socket and relay the person's answer.
+Two halves:
+  classify()   the pure rules. The Studio imports them to label activity in the
+               transcript and the tests exercise them directly; nothing in here
+               touches the network.
+  main()       the hook process, which lives in hook.py: stdin JSON ->
+               classify -> allow, or ask the Studio over localhost HTTP and
+               relay the person's answer. gate.main() delegates to it.
 
-Fail closed, for real: any exception, a missing window, an unreachable
-socket, or no answer within ASK_TIMEOUT seconds all produce a deny that
-Claude can read. Claude Code treats a hook that crashes as "proceed", so
-main() never lets an exception escape. This file must stay importable by the
-bundled embeddable Python (no third-party modules).
+Fail closed, for real: any exception, no Studio to ask, an unreachable port, or
+no answer within ASK_TIMEOUT seconds all produce a deny that Claude can read.
+Claude Code treats a hook that crashes as "proceed", so main() never lets an
+exception escape. This file stays standard-library only.
 """
 import json
 import os
 import re
 import shlex
-import socket
 import sys
 
 # Tools that only look at things, or that only organise Claude's own work.
 # Sub-agents (Task/Agent) are fine: every tool call they make comes back
 # through this hook. WebFetch is NOT here: it is an outbound request whose
-# address the model chooses, so it is gated on the host below.
+# address the model chooses, so it is gated on the host below. The path-taking
+# readers are allowed inside the workspace (and the skill folder) and are a
+# question outside it, because the folder next door holds grading.
 READ_ONLY_TOOLS = {
     "Read", "Glob", "Grep", "LS", "WebSearch", "TodoWrite", "TodoRead",
     "Task", "Agent", "Skill", "ToolSearch", "NotebookRead",
     "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "ListAgents",
     "TaskOutput", "TaskStop", "Monitor", "Workflow", "ReportFindings",
 }
+PATH_READERS = {"Read", "Glob", "Grep", "LS", "NotebookRead"}
 FILE_TOOLS = {"Edit", "MultiEdit", "Write", "NotebookEdit"}
 SHELL_TOOLS = {"Bash", "PowerShell"}
 WEB_TOOLS = {"WebFetch"}
@@ -64,49 +65,34 @@ WEB_TOOLS = {"WebFetch"}
 # tool call proceeds, so this one must always come first.
 ASK_TIMEOUT = float(os.environ.get("CF_ASSISTANT_ASK_TIMEOUT") or 1200)
 
-# --------------------------------------------------------- the toolkit's names
+# ------------------------------------------------------ the Studio's verbs
 
-# Skill scripts that write to Canvas the moment they run (no -Apply switch).
-# Empty since the 2026-09 pass made every writer dry-run by default; kept so
-# an older toolkit copy can be listed here again if it ever has to be.
-CANVAS_WRITE_ALWAYS = ()
-
-# Skill scripts that are a dry run WITHOUT -Apply and a Canvas write WITH it.
-CANVAS_WRITE_WITH_APPLY = (
-    "Push-CanvasRemediation", "Push-CanvasRubrics", "Set-DueDates",
-    "Import-CanvasCourse", "Post-Grades", "Fix-BoldAsStructure",
-    "Remove-BorderedBoxes", "Batch-Remediate", "Remediate-CanvasPptx",
-    "Remediate-CanvasDocx", "Remediate-CanvasPdfText", "Remediate-OfficeText",
-    "Fastlane-CanvasPdfs", "Check-SLOAlignment", "Backup-CanvasQuiz",
-    "Push-CanvasPages", "Push-CanvasProject", "Trim-CanvasNav",
-)
-
-# Skill scripts that only read Canvas or work on local files.
-CANVAS_READ_SCRIPTS = (
-    "Dump-CanvasContent", "Export-CanvasCourse", "Get-TermCalendar",
-    "Compute-DueDates", "Verify-Slots", "Triage-CanvasPdfs",
-    "Build-GradingBundle", "CanvasContext", "CanvasToken",
-)
-
-# Scripts that open an interactive token prompt: never from an Assistant session.
-CANVAS_SETUP_SCRIPTS = ("Setup-Canvas", "Extract-CanvasToken")
-
-KNOWN_PS = {n.lower() for n in CANVAS_WRITE_ALWAYS + CANVAS_WRITE_WITH_APPLY
-            + CANVAS_READ_SCRIPTS + CANVAS_SETUP_SCRIPTS}
-
-# The skill's Python tools. They work on local files; uploads go through the
-# PowerShell gateways above. courseforge_pdf.py is left out on purpose: its
-# verbs upload to Canvas.
-KNOWN_PY = {
-    "restyle_html.py", "triage_pdf.py", "pdf_fastlane.py", "pdf_text_tool.py",
-    "office_text_tool.py", "remediate_docx.py", "remediate_pptx.py",
-    "extract_attachment_text.py", "slo_framework_tool.py",
+# `python -m courseforge <area> <verb> ...`. Every writing verb is a dry run
+# without --apply and a Canvas write with it, so the list is one table: any
+# known verb without --apply may run; any known verb with --apply is a question.
+STUDIO_VERBS = {
+    "a11y": {"dump", "restyle", "verify", "push", "restore", "bold-structure",
+             "bordered-boxes", "batch"},
+    "docs": {"list", "fetch", "describe", "push", "triage"},
+    "pdf": {"list", "fetch", "fix", "figures", "describe", "apply-alt", "prove",
+            "push", "rollback"},
+    "content": {"draft", "place", "push-pages", "push-project", "rubrics",
+                "verify-slots", "check-style", "check-quiz"},
+    "course": {"export", "import", "clone", "nav", "due-dates", "quiz-backup", "slo"},
+    "assistant": {"ask"},
 }
+# Top-level commands that only read: the doctor checks logins, courses lists them.
+STUDIO_READ_COMMANDS = {"doctor", "courses"}
+# Verbs that create a Canvas object without changing any course content. An
+# export makes Canvas build a file; nothing a student sees moves. Allowed,
+# and said so in the verdict.
+STUDIO_OBJECT_ONLY = {("course", "export")}
 
-# -Apply, or any unambiguous PowerShell prefix of it (-Ap, -App, -Appl), or
-# --apply. PowerShell binds parameter prefixes, so "-Ap" applies just as well.
-_APPLY = re.compile(r"(?<![\w-])(-A(?:p(?:p(?:l(?:y)?)?)?)?|--apply)(?=[\s:=]|$)", re.I)
+# --apply, or any unambiguous prefix argparse would bind (--a, --ap, --app,
+# --appl). Also the PowerShell forms, for a script that asks anyway.
+_APPLY = re.compile(r"(?<![\w-])(--a(?:p(?:p(?:l(?:y)?)?)?)?|-A(?:p(?:p(?:l(?:y)?)?)?)?)(?=[\s:=]|$)", re.I)
 _DRY = re.compile(r"(?<![\w-])(-WhatIf|-DryRun|--dry-run)(?=[\s:]|$)", re.I)
+_COURSE_ARG = re.compile(r"(?<![\w-])--course(?:[\s=]+|$)(\d+)?", re.I)
 
 # --------------------------------------------------- write verbs (kept from v1)
 # Still useful: they turn "ask" into a labelled Canvas-write question instead
@@ -127,6 +113,7 @@ _HTTP_WRITES = [
     re.compile(r"WebRequest\b[^\n]*\.Method\s*=", re.I),
     re.compile(r"\b(Post-Canvas|Send-CanvasForm|Send-Json|Write-CanvasBody|"
                r"Add-ModuleItem|Set-Tab)\b", re.I),
+    re.compile(r"\b\w[\w-]*\b[^\n]*\s-Verb\s+['\"]?" + _WRITE_VERB + r"\b", re.I),
 ]
 _CANVAS_API = re.compile(r"/api/v1/|instructure\.com|canvas", re.I)
 _BARE_VERB = re.compile(r"(?<![\w-])(POST|PUT|DELETE|PATCH)(?![\w-])")
@@ -139,7 +126,7 @@ def _http_write(cmd):
     return bool(_CANVAS_API.search(cmd) and _BARE_VERB.search(cmd))
 
 
-# Changes to the PC itself, not to Canvas. Labelled so the dialog reads well.
+# Changes to the PC itself, not to Canvas. Labelled so the card reads well.
 _SYSTEM_CHANGES = [
     (re.compile(r"\b(Remove-Item|rm|del|erase|rmdir|rd)\b[^\n|;]*"
                 r"(-Recurse\b|\s-r[f]?\b|\s-fr\b|\s/s\b)", re.I),
@@ -147,7 +134,7 @@ _SYSTEM_CHANGES = [
     (re.compile(r"\bgit\s+(push|reset\s+--hard|clean\s+-[a-z]*f|"
                 r"checkout\s+--|branch\s+-D)\b", re.I),
      "Change a git repository"),
-    (re.compile(r"\b(pip3?|python\s+-m\s+pip)\s+install\b|\bnpm\s+(install|i)\b|"
+    (re.compile(r"\b(pip3?|python\s+-m\s+pip|uv\s+pip)\s+install\b|\bnpm\s+(install|i)\b|"
                 r"\bwinget\s+install\b|\bchoco\s+install\b|\bmsiexec\b", re.I),
      "Install software on this PC"),
     (re.compile(r"\|\s*iex\b|\bInvoke-Expression\b", re.I),
@@ -172,7 +159,19 @@ _OPAQUE = re.compile(
     r"certutil|bitsadmin|wmic|pwsh)(\.exe)?\b",
     re.I)
 
-_SETUP = re.compile(r"\b(Setup-Canvas|Extract-CanvasToken)(\.ps1)?\b", re.I)
+# The Canvas token lives in the Studio's per-user store and never moves.
+# Anything that names a token file or the token variable is a question.
+_TOKEN = re.compile(r"canvas\.token|CANVAS_TOKEN|\.token\.enc\b|\btoken-[\w.-]+\.bin\b|"
+                    r"\bsecrets\.json\b|Setup-Canvas|Extract-CanvasToken", re.I)
+
+# Grading is the Studio's own screens. The Assistant never touches it: not the
+# gradebook, not the per-assignment folders next to the workspace, not the
+# pseudonym map or the draft grades. "graded discussion" is content and passes.
+_GRADING = re.compile(
+    r"\bgrades?\b|\bgrading\b|\bgradebook\b|\bmap\.json\b|\bdraft\.json\b|"
+    r"proposed-grades|[\\/]data[\\/]\d+[\\/]\d+(?=[\\/\s\"']|$)|"
+    r"\baccommodations\.json\b|\bextracted\.json\b|\bsubmission",
+    re.I)
 
 # Commands that only read or compute. Cmdlet verbs first, then aliases.
 _READ_VERBS = re.compile(
@@ -186,15 +185,15 @@ _READ_ALIASES = {
     "push-location", "pop-location", "pushd", "popd", "findstr", "where",
     "where.exe", "whoami", "hostname", "date", "measure", "select", "sort",
     "group", "sls", "true", "false", "exit", "return", "start-sleep",
-    "sleep", "wc", "head", "tail", "grep", "cut", "tr", "uniq", "basename",
-    "dirname", "realpath", "file", "stat", "test", "printf", "[", "seq",
+    "sleep", "wc", "head", "tail", "grep", "rg", "cut", "tr", "uniq", "basename",
+    "dirname", "realpath", "file", "stat", "test", "printf", "[", "seq", "tree",
 }
 _HTTP_READERS = {"invoke-restmethod", "invoke-webrequest", "irm", "iwr", "curl",
                  "curl.exe", "wget", "invoke-canvasapi", "get-canvaspaged"}
 _GIT_READ = re.compile(r"^git\s+(status|log|diff|show|branch|rev-parse|ls-files|"
                        r"remote|describe|blame|tag)\b", re.I)
 
-# Local file operations: fine inside the course folder, a question elsewhere.
+# Local file operations: fine inside the workspace, a question elsewhere.
 _LOCAL_WRITERS = {
     "new-item", "ni", "mkdir", "md", "copy-item", "cp", "cpi", "copy",
     "move-item", "mv", "mi", "move", "rename-item", "ren", "rni",
@@ -209,7 +208,8 @@ _SCRIPT_EXT = (".ps1", ".psm1", ".psd1", ".ps1xml", ".py", ".pyw", ".pyc",
                ".jse", ".wsf", ".wsh", ".msi", ".msc", ".scr", ".lnk", ".reg",
                ".sh", ".hta", ".pth", ".inf")
 _CONTROL_NAMES = {"claude.md", "claude.local.md", ".mcp.json", "settings.json",
-                  "settings.local.json", ".claude.json"}
+                  "settings.local.json", ".claude.json", "session.json",
+                  "system-prompt.md", "config.json"}
 _CONTROL_DIRS = {".claude", "assistant", ".git", ".vscode", ".idea"}
 
 _URL = re.compile(r"https?://[^\s\"'<>()\]]+", re.I)
@@ -236,9 +236,9 @@ def _first_line(cmd):
 
 
 def summarize(tool_name, tool_input):
-    """One plain line for the conversation pane: what Claude SAYS it is
-    doing. For a shell that is the model's own description - fine for the
-    pane, never for the dialog (see `what`)."""
+    """One plain line for the transcript: what Claude SAYS it is doing. For a
+    shell that is the model's own description - fine for the transcript,
+    never for the Allow / Deny card (see `what`)."""
     ti = tool_input or {}
     if tool_name in SHELL_TOOLS:
         desc = (ti.get("description") or "").strip()
@@ -270,7 +270,7 @@ def summarize(tool_name, tool_input):
 
 
 def _what_for(tool_name, tool_input):
-    """The gate's OWN headline for the dialog, from the tool input alone.
+    """The gate's OWN headline for the card, from the tool input alone.
     Never the model's description: an injected model can call a destructive
     command 'Reading the syllabus'."""
     ti = tool_input or {}
@@ -279,6 +279,9 @@ def _what_for(tool_name, tool_input):
     if tool_name in FILE_TOOLS:
         return "%s file: %s" % ("Write" if tool_name == "Write" else "Edit",
                                 ti.get("file_path") or ti.get("notebook_path") or "?")
+    if tool_name in PATH_READERS:
+        return "Read: %s" % (ti.get("file_path") or ti.get("notebook_path")
+                             or ti.get("path") or "?")
     if tool_name in WEB_TOOLS:
         return "Fetch: " + _shorten(ti.get("url", "?"), 160)
     return "%s: %s" % (tool_name, _shorten(json.dumps(ti, sort_keys=True), 140))
@@ -306,9 +309,12 @@ def _canvas_host():
     return (os.environ.get("CF_ASSISTANT_CANVAS_HOST") or "").lower().strip()
 
 
-def _skill_scripts_dir():
-    d = os.environ.get("CF_ASSISTANT_SKILL") or ""
-    return os.path.join(d, "scripts") if d else ""
+def _skill_dir():
+    return os.environ.get("CF_ASSISTANT_SKILL") or ""
+
+
+def _connected_course():
+    return os.environ.get("CF_STUDIO_COURSE") or ""
 
 
 def _expand(path, cwd):
@@ -331,7 +337,7 @@ def _local_path_problem(path, cwd):
     if full is None:
         return "a path the gate cannot resolve"
     if not (_under(full, cwd) or _is_temp(full)):
-        return "a file outside the course folder"
+        return "a file outside the workspace folder"
     low = os.path.normcase(full)
     parts = low.replace("/", "\\").split("\\")
     name = parts[-1]
@@ -348,8 +354,23 @@ def _local_path_problem(path, cwd):
         pass
     for d in rel_parts[:-1]:
         if d in _CONTROL_DIRS:
-            return "the %s folder, which the app and Claude Code read on the next session" % d
+            return "the %s folder, which the Studio and Claude Code read on the next session" % d
     return None
+
+
+def _read_path_problem(path, cwd):
+    """None when a path may be READ unasked: inside the workspace, in temp, or
+    in the installed skill (its references are meant to be read). The folders
+    next door hold grading, so anything else is a question."""
+    full = _expand(path, cwd)
+    if full is None:
+        return "a path the gate cannot resolve"
+    if _under(full, cwd) or _is_temp(full):
+        return None
+    sdir = _skill_dir()
+    if sdir and _under(full, sdir):
+        return None
+    return "a file outside the workspace folder"
 
 
 def _split_segments(cmd):
@@ -358,6 +379,7 @@ def _split_segments(cmd):
     (& "x.ps1"), and splitting on it would leave a bare string literal that
     looks harmless. Separators inside quotes are text (grep -E "a|b")."""
     text = re.sub(r"`\r?\n", " ", cmd or "")          # PowerShell line continuation
+    text = re.sub(r"\\\r?\n", " ", text)              # sh line continuation
     out, buf, quote, i = [], [], None, 0
     while i < len(text):
         c = text[i]
@@ -382,8 +404,8 @@ def _split_segments(cmd):
 
 def _tokens(seg):
     """Whitespace-and-quote aware split that leaves backslashes alone (posix
-    shlex would turn .\\Push-X.ps1 into .Push-X.ps1). Quotes stay on the
-    tokens; the callers strip them where a name or path is compared."""
+    shlex would turn .\\x.ps1 into .x.ps1). Quotes stay on the tokens; the
+    callers strip them where a name or path is compared."""
     try:
         return shlex.split(seg, posix=False)
     except ValueError:
@@ -433,47 +455,49 @@ def _urls_problem(seg):
     return None
 
 
-def _script_problem(path, args, cwd):
-    """A toolkit .ps1 by known name (and from the toolkit folder when the app
-    says where that is). Returns (problem, kind) or (None, None)."""
-    base = os.path.basename(path.strip("\"'")).lower()
-    name = base[:-4] if base.endswith(".ps1") else base
-    if name not in KNOWN_PS:
-        return ("%s is not a script from the CourseForge toolkit" % base, "run")
-    if name in {n.lower() for n in CANVAS_SETUP_SCRIPTS}:
-        return ("Setup-Canvas would open an interactive prompt; Canvas is "
-                "already connected by the app", "system")
-    sdir = _skill_scripts_dir()
-    if sdir:
-        full = _expand(path, cwd)
-        if full is None or not _under(full, sdir):
-            return ("%s is not being run from the CourseForge toolkit folder" % base, "run")
-    argtext = " ".join(args)
-    if _APPLY.search(argtext) or _APPLY.search(path):
-        pretty = next((n for n in CANVAS_WRITE_WITH_APPLY if n.lower() == name), base)
-        return ("%s with -Apply changes the live course" % pretty, "canvas-write")
-    for n in CANVAS_WRITE_ALWAYS:
-        if n.lower() == name and not _DRY.search(argtext):
-            return ("%s writes to Canvas as soon as it runs" % n, "canvas-write")
-    return (None, None)
+def _course_of(args):
+    """The course id a Studio verb names (--course N), else the connected one."""
+    m = _COURSE_ARG.search(" ".join(args))
+    if m and m.group(1):
+        return m.group(1)
+    return _connected_course() or "?"
 
 
-def _pyscript_problem(path, args, cwd):
-    base = os.path.basename(path.strip("\"'")).lower()
-    if base not in KNOWN_PY:
-        return ("%s is not a tool from the CourseForge toolkit" % base, "run")
-    sdir = _skill_scripts_dir()
-    if sdir:
-        full = _expand(path, cwd)
-        if full is None or not _under(full, sdir):
-            return ("%s is not being run from the CourseForge toolkit folder" % base, "run")
-    if _APPLY.search(" ".join(args)):
-        return ("%s with --apply changes files that go to Canvas" % base, "canvas-write")
+def _studio_problem(args, seg):
+    """`python -m courseforge ARGS` judged by the Studio's own table. Returns
+    (problem, kind[, what]) or (None, None)."""
+    args = list(args)
+    # an explicit config path is fine in front of the area
+    if args and args[0].lower().startswith("--config"):
+        args = args[1:] if "=" in args[0] else args[2:]
+    if not args:
+        return ("python -m courseforge alone starts the web server", "run")
+    head = args[0].strip("\"'").lower()
+    if head in STUDIO_READ_COMMANDS:
+        return (None, None)
+    if head in ("serve", "gui") or head.startswith("-"):
+        return ("python -m courseforge %s starts a program, not a verb" % head, "run")
+    if head not in STUDIO_VERBS:
+        return ("%s is not an area of CourseForge Studio" % head, "run")
+    verb = args[1].strip("\"'").lower() if len(args) > 1 else ""
+    if verb in ("-h", "--help"):
+        return (None, None)
+    if verb not in STUDIO_VERBS[head]:
+        return ("%s %s is not a verb the Studio knows" % (head, verb or "(none)"), "run")
+    if head == "assistant":
+        return ("a nested Assistant session", "run")
+    rest = args[2:]
+    if _APPLY.search(" ".join(rest)):
+        cid = _course_of(rest)
+        return ("%s %s with --apply changes the live Canvas course" % (head, verb),
+                "canvas-write",
+                "Apply %s %s to Canvas course %s: %s" % (head, verb, cid, _first_line(seg)))
     return (None, None)
 
 
 def _segment_problem(seg, cwd):
-    """None when one piece of a command may run unasked; else (why, kind)."""
+    """None when one piece of a command may run unasked; else (why, kind) or
+    (why, kind, what)."""
     s = seg.strip()
     if not s or s.startswith("#"):
         return None
@@ -495,62 +519,40 @@ def _segment_problem(seg, cwd):
     low = head.lower()
     args = [a.strip("\"'") if a[:1] in "\"'" else a for a in toks[1:]]
 
-    # -- & "script" / . "script"  (call operator, dot-source): judge the target
-    if low in ("&", "."):
-        if not args:
-            return ("a bare call operator", "run")
+    # -- env prefix: VAR=value command   (sh) -> judge the command
+    while re.match(r"^[A-Za-z_]\w*=", head) and args:
         head = args[0].strip("\"'")
         low = head.lower()
         args = args[1:]
-        if not low.endswith(".ps1"):
-            return ("%s called through the %s operator" % (head, toks[0]), "run")
+
+    # -- & "script" / . "script"  (call operator, dot-source): nothing the
+    #    Studio ships is run that way, so it is always a question
+    if low in ("&", "."):
+        return ("%s called through the %s operator" % (args[0] if args else "nothing", toks[0]), "run")
     if "&" in args:
         return ("the & operator inside a command", "run")
 
-    # -- a toolkit script named without .ps1 (a function of the same name)
-    if low in KNOWN_PS:
-        p = _script_problem(head, args, cwd)
-        return p if p[0] else None
+    # -- PowerShell, inline or a script file: the Studio's verbs are Python
+    if low in ("powershell", "powershell.exe", "pwsh", "pwsh.exe") or low.endswith(".ps1"):
+        return ("a PowerShell script or inline command; the Studio's verbs are "
+                "python -m courseforge ...", "run")
 
-    # -- powershell -File <toolkit script>
-    if low in ("powershell", "powershell.exe"):
-        allowed_flags = {"-noprofile", "-nologo", "-noninteractive", "-executionpolicy",
-                         "-nop", "-noni", "-ep", "-file", "-f", "-windowstyle", "-w",
-                         "-inputformat", "-outputformat", "-mta", "-sta"}
-        i, script = 0, None
-        while i < len(args):
-            a = args[i].lower()
-            if a in ("-file", "-f"):
-                script = args[i + 1] if i + 1 < len(args) else None
-                rest = args[i + 2:]
-                break
-            if a in ("-executionpolicy", "-ep", "-windowstyle", "-w", "-inputformat",
-                     "-outputformat"):
-                i += 2
-                continue
-            if a not in allowed_flags:
-                return ("powershell called with %s, which the gate cannot inspect" % args[i], "run")
-            i += 1
-        if not script:
-            return ("powershell without -File (an inline command)", "run")
-        p = _script_problem(script, rest, cwd)
-        return p if p[0] else None
-
-    # -- .\Some-Script.ps1 args  (direct invocation)
-    if low.endswith(".ps1"):
-        p = _script_problem(head, args, cwd)
-        return p if p[0] else None
-
-    # -- python <toolkit tool>
-    if low in ("python", "python.exe", "py", "python3"):
+    # -- python: only the Studio's own command line, never a file or a one-liner
+    if low in ("python", "python.exe", "py", "py.exe", "python3", "python3.exe"):
         if not args:
             return ("an interactive python", "run")
         if args[0] in ("--version", "-V", "-VV"):
             return None
+        if args[0] == "-m":
+            if len(args) < 2:
+                return ("python -m with no module", "run")
+            if args[1].strip("\"'").lower() == "courseforge":
+                p = _studio_problem(args[2:], s)
+                return p if p[0] else None
+            return ("python -m %s (a module the gate cannot inspect)" % args[1], "run")
         if args[0].startswith("-"):
-            return ("python %s (inline code or a module the gate cannot inspect)" % args[0], "run")
-        p = _pyscript_problem(args[0], args[1:], cwd)
-        return p if p[0] else None
+            return ("python %s (inline code or a flag the gate cannot inspect)" % args[0], "run")
+        return ("%s is a python file, not the Studio's command line" % os.path.basename(args[0]), "run")
 
     if low in ("claude", "claude.exe", "claude.cmd"):
         if args and args[0] in ("--version", "-v"):
@@ -587,7 +589,7 @@ def _segment_problem(seg, cwd):
                 return ("%s saving under a name the server chooses" % head, "local-change")
         return None
 
-    # -- local file operations inside the course folder
+    # -- local file operations inside the workspace
     if low in _LOCAL_WRITERS or ">" in s:
         for tok in _path_like(args if low in _LOCAL_WRITERS else toks[1:]):
             prob = _local_path_problem(tok, cwd)
@@ -626,12 +628,24 @@ def _path_like(tokens):
 
 def classify(tool_name, tool_input, cwd):
     """Pure decision: allow, or ask the person. Never deny on its own - a
-    deny is always a person's choice (or the app being unreachable)."""
+    deny is always a person's choice (or the Studio being unreachable)."""
     ti = tool_input if isinstance(tool_input, dict) else {}
     summary = summarize(tool_name, ti)
     what = _what_for(tool_name, ti)
 
     if tool_name in READ_ONLY_TOOLS:
+        if tool_name in PATH_READERS:
+            path = str(ti.get("file_path") or ti.get("notebook_path") or ti.get("path") or "")
+            if path:
+                if _GRADING.search(path):
+                    return _verdict("ask", "student-data", summary,
+                                    "grading data; grades are the Studio's own screens and "
+                                    "never go through the Assistant", what)
+                prob = _read_path_problem(path, cwd)
+                if prob:
+                    return _verdict("ask", "read", summary,
+                                    "reading %s; the folders next to the workspace hold "
+                                    "grading" % prob, what)
         return _verdict("allow", "read", summary, "read-only tool", what)
 
     if tool_name in WEB_TOOLS:
@@ -646,9 +660,13 @@ def classify(tool_name, tool_input, cwd):
 
     if tool_name in FILE_TOOLS:
         path = str(ti.get("file_path") or ti.get("notebook_path") or "")
+        if path and _GRADING.search(path):
+            return _verdict("ask", "student-data", "Change grading data: %s" % path,
+                            "grading data; grades are the Studio's own screens and never "
+                            "go through the Assistant", what)
         prob = _local_path_problem(path, cwd) if path else "a file with no path"
         if prob is None:
-            return _verdict("allow", "local", summary, "file inside the course folder", what)
+            return _verdict("allow", "local", summary, "file inside the workspace folder", what)
         kind = "local-change"
         if "script" in prob or "configuration" in prob or "assistant" in prob or ".claude" in prob:
             kind = "local-script"
@@ -660,10 +678,14 @@ def classify(tool_name, tool_input, cwd):
         if not isinstance(cmd, str) or not cmd.strip():
             return _verdict("ask", "run", summary,
                             "a shell call with no readable command", what)
-        if _SETUP.search(cmd):
+        if _TOKEN.search(cmd):
             return _verdict("ask", "system", summary,
-                            "Setup-Canvas would open an interactive prompt; Canvas is "
-                            "already connected by the app", what)
+                            "touches the Canvas token; Canvas is already connected in the "
+                            "Studio and the token never moves", what)
+        if _GRADING.search(cmd):
+            return _verdict("ask", "student-data", summary,
+                            "grading data; grades are the Studio's own screens and never "
+                            "go through the Assistant", what)
         if _http_write(cmd):
             return _verdict("ask", "canvas-write", summary,
                             "a direct web request that changes data", what)
@@ -675,13 +697,20 @@ def classify(tool_name, tool_input, cwd):
             return _verdict("ask", "system", "Run code the gate cannot read: %s" % summary,
                             "an encoded, built-up or nested command the Assistant "
                             "cannot inspect", what)
+        export_only = False
         for seg in _split_segments(cmd):
             prob = _segment_problem(seg, cwd)
             if prob:
-                why, kind = prob
-                return _verdict("ask", kind, summary, why, what)
+                why, kind = prob[0], prob[1]
+                return _verdict("ask", kind, summary, why, prob[2] if len(prob) > 2 else what)
+            if re.search(r"\bcourseforge\s+course\s+export\b", seg, re.I):
+                export_only = True
+        if export_only:
+            return _verdict("allow", "run", summary,
+                            "course export asks Canvas to build an export file; no course "
+                            "content changes", what)
         return _verdict("allow", "run", summary,
-                        "reads, dumps, transforms or a dry run from the toolkit", what)
+                        "reads, dumps, transforms or a dry run from the Studio's verbs", what)
 
     # Unknown tool (an MCP server, a future built-in): a person decides.
     return _verdict("ask", "unknown", "%s (%s)" % (tool_name, summary),
@@ -690,90 +719,31 @@ def classify(tool_name, tool_input, cwd):
 
 # ------------------------------------------------------------------ the hook
 
-DENY_TEXT = ("The person clicked Deny in CourseForge Assistant. Do not retry it "
+DENY_TEXT = ("The person clicked Deny in CourseForge Studio. Do not retry it "
              "or work around it; tell them what you were about to do and ask "
              "what they would like instead.")
 
 
-def _emit(decision, reason):
-    out = {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                  "permissionDecision": decision,
-                                  "permissionDecisionReason": reason}}
-    sys.stdout.write(json.dumps(out))
-    sys.stdout.flush()
-
-
-def ask_app(payload, port, timeout_connect=10, timeout_answer=None):
-    """Send one JSON line to the Assistant window and wait for one line back,
-    but not forever: past ASK_TIMEOUT the answer is a deny, because Claude
-    Code's own hook timeout would otherwise let the call through."""
-    wait = ASK_TIMEOUT if timeout_answer is None else timeout_answer
-    with socket.create_connection(("127.0.0.1", int(port)), timeout=timeout_connect) as s:
-        s.settimeout(wait)
-        s.sendall((json.dumps(payload) + "\n").encode("utf-8"))
-        f = s.makefile("r", encoding="utf-8")
-        line = f.readline()
-    return json.loads(line) if line.strip() else {}
-
-
-def _main():
-    try:
-        req = json.loads(sys.stdin.read() or "{}")
-    except Exception:
-        _emit("deny", "CourseForge Assistant could not read this request; nothing was run.")
-        return 0
-    if not isinstance(req, dict):
-        _emit("deny", "CourseForge Assistant could not read this request; nothing was run.")
-        return 0
-    tool = str(req.get("tool_name") or "")
-    ti = req.get("tool_input")
-    if not isinstance(ti, dict):
-        _emit("deny", "CourseForge Assistant could not read this tool call; nothing was run.")
-        return 0
-    cwd = str(req.get("cwd") or os.getcwd())
-    v = classify(tool, ti, cwd)
-    if v["decision"] == "allow":
-        _emit("allow", v["why"])
-        return 0
-    port = os.environ.get("CF_ASSISTANT_PORT")
-    if not port:
-        _emit("deny", "This needs the person's approval, but CourseForge Assistant "
-                      "is not running to ask them. Nothing was run.")
-        return 0
-    payload = {"secret": os.environ.get("CF_ASSISTANT_SECRET", ""),
-               "tool_name": tool, "tool_input": ti, "cwd": cwd,
-               "summary": v["summary"], "why": v["why"], "kind": v["kind"],
-               "what": v["what"], "timeout_s": ASK_TIMEOUT,
-               "tool_use_id": req.get("tool_use_id"),
-               "session_id": req.get("session_id")}
-    try:
-        ans = ask_app(payload, port)
-    except socket.timeout:
-        _emit("deny", "No answer in CourseForge Assistant within %d minutes, so this "
-                      "was not run. Ask the person whether to try it again."
-                      % int(ASK_TIMEOUT // 60))
-        return 0
-    except Exception as e:
-        _emit("deny", "Could not reach CourseForge Assistant to ask for approval "
-                      "(%s). Nothing was run." % e)
-        return 0
-    if isinstance(ans, dict) and ans.get("decision") == "allow":
-        _emit("allow", "approved by the person in CourseForge Assistant")
-    else:
-        reason = ans.get("reason") if isinstance(ans, dict) else None
-        _emit("deny", reason or DENY_TEXT)
-    return 0
-
-
 def main():
-    """Never let an exception escape: Claude Code treats a hook that exits
-    non-zero (other than 2) as a non-blocking error and RUNS the tool."""
+    """The hook entry, for `python -m courseforge.assistant.gate` and for any
+    settings.json still naming this file. The process half lives in hook.py;
+    this never lets an exception escape, because Claude Code treats a hook
+    that crashes as 'proceed'."""
     try:
-        return _main()
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from courseforge.assistant import hook
+        return hook.main()
     except Exception as e:                       # noqa: BLE001 - fail closed
         try:
-            _emit("deny", "CourseForge Assistant's permission check failed (%s: %s); "
-                          "nothing was run." % (type(e).__name__, e))
+            out = {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                          "permissionDecision": "deny",
+                                          "permissionDecisionReason":
+                                          "CourseForge Studio's permission check failed (%s: %s); "
+                                          "nothing was run." % (type(e).__name__, e)}}
+            sys.stdout.write(json.dumps(out))
+            sys.stdout.flush()
         except Exception:
             pass
         return 0

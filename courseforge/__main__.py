@@ -74,8 +74,38 @@ def cmd_doctor(cfg: Config) -> int:
         print("                 Install from https://www.blender.org/download/, or set")
         print('                 "blender_path" in config.json.')
 
+    # The optional tools behind the accessibility areas. Missing ones are not a
+    # failure: each area disables the verbs that need them and says how to install.
+    print()
+    from . import tools as _tools
+    found = _tools.detect(cfg)
+    for name, label in (("tesseract", "Tesseract OCR"), ("verapdf", "veraPDF"),
+                        ("java", "Java runtime"), ("pdf_engine", "PDF engine"),
+                        ("python_pptx", "python-pptx"), ("python_docx", "python-docx")):
+        info = found.get(name, {})
+        state = "OK" if info.get("ok") else "not found"
+        extra = info.get("version") or info.get("path") or ""
+        print(f"{label:15s}: {state}" + (f"  ({extra})" if info.get("ok") and extra else ""))
+        if not info.get("ok"):
+            print(f"                 enables: {info.get('enables', '')}")
+            if info.get("install"):
+                print(f"                 install: {info['install']}")
+
+    print()
+    try:
+        from .server import App
+        areas = App(cfg).area_status
+        bad = {k: v.get("error") for k, v in areas.items() if not v.get("ok")}
+        print(f"Areas          : {', '.join(k for k, v in areas.items() if v.get('ok')) or 'none'}")
+        for name, err in bad.items():
+            ok = False
+            print(f"                 {name}: FAILED to load\n{_indent(err)}")
+    except Exception as exc:  # noqa: BLE001
+        ok = False
+        print(f"Areas          : FAILED\n{_indent(exc)}")
+
     print(f"\nData directory : {cfg.data}")
-    print(f"Model          : {cfg.model}")
+    print(f"Model          : {cfg.model}  (backend: {llm.backend_name()})")
     print(f"Pseudonymize   : {cfg.pseudonymize}")
     print(f"Canvas writes  : {'allowed, each one confirmed first'
                                  if cfg.allow_canvas_writes else 'LOCKED OFF'}")
@@ -95,17 +125,16 @@ def cmd_courses(cfg: Config) -> int:
 def main(argv: list[str] | None = None) -> int:
     from . import cli as area_cli
     argv = list(sys.argv[1:] if argv is None else argv)
-    # `python -m courseforge` alone starts the server, as the grader did.
-    if not argv or argv[0].startswith("-"):
-        argv = ["serve"] + argv
 
     parser = argparse.ArgumentParser(
         prog="courseforge",
-        description="CourseForge Studio: grading, accessibility, content and course tools for Canvas.")
+        description="CourseForge Studio: grading, accessibility, content and course tools for Canvas. "
+                    "With no command it starts the local web UI.")
     parser.add_argument("--config", help="path to config.json")
-    sub = parser.add_subparsers(dest="command")
+    parser.add_argument("--port", type=int, help="override the listen port (serve)")
+    sub = parser.add_subparsers(dest="command", metavar="command")
     p_serve = sub.add_parser("serve", help="start the local web UI (default)")
-    p_serve.add_argument("--port", type=int, help="override the listen port")
+    p_serve.add_argument("--port", type=int, dest="serve_port", help="override the listen port")
     sub.add_parser("gui", help="the tkinter status window that owns the server")
     sub.add_parser("doctor", help="check the Canvas token, Claude login and tools")
     sub.add_parser("courses", help="list your courses")
@@ -113,8 +142,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     cfg = Config.load(args.config)
-    if getattr(args, "port", None):
-        cfg.port = args.port
+    port = getattr(args, "serve_port", None) or args.port
+    if port:
+        cfg.port = port
 
     if args.command == "doctor":
         return cmd_doctor(cfg)

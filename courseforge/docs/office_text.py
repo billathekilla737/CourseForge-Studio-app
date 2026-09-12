@@ -29,10 +29,15 @@ HONEST SCOPE
     File > Save As > .docx). The tool says so per file.
 
 USAGE
-  python office_text_tool.py scan  f1.docx [f2.pptx ...] --pattern "regex" [--json out]
-  python office_text_tool.py apply in.docx --map map.json --out fixed.docx
+  python -m courseforge.docs.office_text scan  f1.docx [f2.pptx ...] --pattern "regex" [--json out]
+  python -m courseforge.docs.office_text apply in.docx --map map.json --out fixed.docx
         map.json: [ {"find": "Jane Smith", "replace": "John Doe"}, ... ]
         options: --set-author X  --set-lastmodifiedby X  [--json report]
+
+Library surface (what the Studio's gateway calls; nothing here prints):
+  scan_file(path, pattern) -> dict         {"kind", "hits", "unsupported", "parts"}
+  apply_map(path, mappings, out, set_author=None, set_lastmodifiedby=None) -> dict
+  verify_file(out, mappings) -> dict       {"ok", "residual", "zip_ok"}
 
 EXIT CODES  0 ok | 1 usage/IO | 2 verification failed | 4 unsupported format
 """
@@ -43,8 +48,6 @@ import os
 import re
 import sys
 import zipfile
-
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 BINARY_EXT = {".png", ".jpg", ".jpeg", ".gif", ".emf", ".wmf", ".bin", ".bmp",
               ".tiff", ".tif", ".mp3", ".mp4", ".wav", ".m4a", ".ttf", ".otf",
@@ -68,8 +71,7 @@ def classify(path):
     try:
         with open(path, "rb") as f:
             head = f.read(8)
-    except OSError as e:
-        print("UNREADABLE  %s  (%s)" % (path, e))
+    except OSError:
         return "other"
     if head[:8] == OLE_MAGIC:
         return "legacy"
@@ -89,28 +91,60 @@ def iter_text_parts(zf):
             yield item, None, data
 
 
+def _normalize(mappings):
+    """Accept [{find, replace}] or {find: replace}; drop empty finds."""
+    if isinstance(mappings, dict):
+        mappings = [{"find": k, "replace": v} for k, v in mappings.items()]
+    out = []
+    for m in mappings or []:
+        find = (m.get("find") or "")
+        if not find:
+            continue
+        out.append({"find": find, "replace": m.get("replace") or ""})
+    return out
+
+
+# ---------- scan ----------
+
+def scan_file(path, pattern):
+    """Regex search over every text part of one OOXML file. Read-only."""
+    kind = classify(path)
+    res = {"file": str(path), "kind": kind, "hits": [], "unsupported": kind != "ooxml",
+           "parts": 0, "pattern": pattern}
+    if kind == "legacy":
+        res["reason"] = ("legacy binary Office format; convert to .docx/.pptx/.xlsx "
+                         "first (File > Save As)")
+        return res
+    if kind != "ooxml":
+        res["reason"] = "not an OOXML container"
+        return res
+    rx = re.compile(pattern, re.I)
+    with zipfile.ZipFile(path) as zf:
+        for item, text, _raw in iter_text_parts(zf):
+            if text is None:
+                continue
+            res["parts"] += 1
+            for m in rx.finditer(text):
+                s = max(0, m.start() - 70)
+                res["hits"].append({"part": item.filename, "term": m.group(0),
+                                    "context": re.sub(r"\s+", " ", text[s:m.end() + 70])})
+    return res
+
+
 def cmd_scan(args):
-    rx = re.compile(args.pattern, re.I)
     hits, unsupported = [], []
     for path in args.files:
-        kind = classify(path)
-        if kind == "legacy":
+        res = scan_file(path, args.pattern)
+        if res["kind"] == "legacy":
             unsupported.append(path)
             print("UNSUPPORTED %s - legacy binary Office format; convert to "
                   ".docx/.pptx/.xlsx first (File > Save As)." % path)
             continue
-        if kind != "ooxml":
+        if res["kind"] != "ooxml":
             print("SKIP        %s - not an OOXML container." % path)
             continue
-        zf = zipfile.ZipFile(path)
-        for item, text, _raw in iter_text_parts(zf):
-            if text is None:
-                continue
-            for m in rx.finditer(text):
-                s = max(0, m.start() - 70)
-                hits.append({"file": path, "part": item.filename, "term": m.group(0),
-                             "context": re.sub(r"\s+", " ", text[s:m.end() + 70])})
-        zf.close()
+        for h in res["hits"]:
+            hits.append({"file": path, **h})
     for h in hits:
         print("HIT  %-30s %-34s %-18s ...%s..." %
               (os.path.basename(h["file"])[:30], h["part"][:34],
@@ -123,6 +157,8 @@ def cmd_scan(args):
     return 4 if (unsupported and not hits) else 0
 
 
+# ---------- apply ----------
+
 def set_core_prop(text, tag, value):
     """Set <dc:creator> / <cp:lastModifiedBy> in core.xml text, creating if empty."""
     pat = re.compile(r"(<%s[^>]*>)(.*?)(</%s>)" % (tag, tag), re.S)
@@ -131,26 +167,52 @@ def set_core_prop(text, tag, value):
     return text, False
 
 
-def cmd_apply(args):
-    kind = classify(args.file)
-    if kind == "legacy":
-        print("UNSUPPORTED: legacy binary Office format - convert to OOXML first.")
-        return 4
-    if kind != "ooxml":
-        print("UNSUPPORTED: not an OOXML container.")
-        return 4
-    with open(args.map, encoding="utf-8-sig") as f:
-        mappings = json.load(f)
+def verify_file(out, mappings):
+    """Archive intact and zero residual across every text part."""
+    mappings = _normalize(mappings)
+    residual = {m["find"]: 0 for m in mappings}
+    try:
+        zv = zipfile.ZipFile(out)
+    except zipfile.BadZipFile as exc:
+        return {"ok": False, "zip_ok": False, "residual": residual,
+                "problems": ["output is not a zip: %s" % exc]}
+    with zv:
+        bad_entry = zv.testzip()
+        for item, text, _raw in iter_text_parts(zv):
+            if text is None:
+                continue
+            for m in mappings:
+                for variant in find_variants(m["find"]):
+                    residual[m["find"]] += len(re.findall(re.escape(variant), text, re.I))
+    problems = []
+    if bad_entry is not None:
+        problems.append("zip integrity failed at %r" % bad_entry)
+    left = {k: v for k, v in residual.items() if v}
+    if left:
+        problems.append("text still present: " + ", ".join("%r x%d" % kv for kv in list(left.items())[:6]))
+    return {"ok": not problems, "zip_ok": bad_entry is None, "residual": residual,
+            "problems": problems}
 
-    zin = zipfile.ZipFile(args.file)
+
+def apply_map(path, mappings, out, set_author=None, set_lastmodifiedby=None):
+    """Replace every mapping across every text part, write `out`, verify it."""
+    kind = classify(path)
+    if kind != "ooxml":
+        reason = ("legacy binary Office format; convert to OOXML first"
+                  if kind == "legacy" else "not an OOXML container")
+        return {"ok": False, "refused": True, "reason": reason, "kind": kind,
+                "replacements": {}, "residual": {}, "parts_changed": {},
+                "unmatched_mappings": [], "zip_ok": False, "notes": []}
+    mappings = _normalize(mappings)
     replaced = {m["find"]: 0 for m in mappings}
     changed_parts = {}
-    out = io.BytesIO()
+    notes = []
+    buf = io.BytesIO()
     # single pass over EVERY part: binary parts copy through byte-for-byte,
     # text parts get the replacements. (A second bookkeeping pass over the
     # half-written archive is unreadable mid-write - central directory only
     # exists after close - and cost a real crash before this comment existed.)
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
             raw = zin.read(item.filename)
             if os.path.splitext(item.filename)[1].lower() in BINARY_EXT:
@@ -169,60 +231,63 @@ def cmd_apply(args):
                     total += n
                     replaced[m["find"]] += n
             if item.filename == CORE_PROPS:
-                if args.set_author is not None:
-                    text, ok = set_core_prop(text, "dc:creator", args.set_author)
+                if set_author is not None:
+                    text, ok = set_core_prop(text, "dc:creator", set_author)
                     changed_parts.setdefault(item.filename, 0)
                     if not ok:
-                        print("  note: no <dc:creator> element to set in core.xml")
-                if args.set_lastmodifiedby is not None:
-                    text, ok = set_core_prop(text, "cp:lastModifiedBy", args.set_lastmodifiedby)
+                        notes.append("no <dc:creator> element to set in core.xml")
+                if set_lastmodifiedby is not None:
+                    text, ok = set_core_prop(text, "cp:lastModifiedBy", set_lastmodifiedby)
                     changed_parts.setdefault(item.filename, 0)
                     if not ok:
-                        print("  note: no <cp:lastModifiedBy> element to set in core.xml")
+                        notes.append("no <cp:lastModifiedBy> element to set in core.xml")
             if total:
                 changed_parts[item.filename] = changed_parts.get(item.filename, 0) + total
             zout.writestr(item, text.encode("utf-8"))
-    zin.close()
-    with open(args.out, "wb") as f:
-        f.write(out.getvalue())
+    with open(out, "wb") as f:
+        f.write(buf.getvalue())
 
-    # verify: archive intact and zero residual across every text part
-    zv = zipfile.ZipFile(args.out)
-    bad_entry = zv.testzip()
-    residual = {m["find"]: 0 for m in mappings}
-    for item, text, _raw in iter_text_parts(zv):
-        if text is None:
-            continue
-        for m in mappings:
-            for variant in find_variants(m["find"]):
-                residual[m["find"]] += len(re.findall(re.escape(variant), text, re.I))
-    zv.close()
-
-    for k, v in replaced.items():
-        flag = "" if residual[k] == 0 else "   RESIDUAL=%d !!" % residual[k]
-        print("%-52s x%d%s" % (k[:52], v, flag))
+    ver = verify_file(out, mappings)
     never = [k for k, v in replaced.items() if v == 0]
-    if never:
+    return {"ok": ver["ok"], "refused": False, "input": str(path), "output": str(out),
+            "replacements": replaced, "residual": ver["residual"],
+            "parts_changed": changed_parts, "unmatched_mappings": never,
+            "zip_ok": ver["zip_ok"], "problems": ver["problems"], "notes": notes,
+            "total": sum(replaced.values())}
+
+
+def cmd_apply(args):
+    with open(args.map, encoding="utf-8-sig") as f:
+        mappings = json.load(f)
+    res = apply_map(args.file, mappings, args.out,
+                    set_author=args.set_author, set_lastmodifiedby=args.set_lastmodifiedby)
+    if res.get("refused"):
+        print("UNSUPPORTED: %s." % res["reason"])
+        return 4
+    for note in res["notes"]:
+        print("  note: %s" % note)
+    for k, v in res["replacements"].items():
+        left = res["residual"].get(k, 0)
+        flag = "" if left == 0 else "   RESIDUAL=%d !!" % left
+        print("%-52s x%d%s" % (k[:52], v, flag))
+    if res["unmatched_mappings"]:
         print("NEVER MATCHED (word may have split the text across runs - check with "
-              "`scan`): %s" % ", ".join(repr(n) for n in never))
-    if bad_entry is not None:
-        print("ZIP INTEGRITY FAILED at %r" % bad_entry)
-    for p, n in sorted(changed_parts.items()):
+              "`scan`): %s" % ", ".join(repr(n) for n in res["unmatched_mappings"]))
+    if not res["zip_ok"]:
+        print("ZIP INTEGRITY FAILED")
+    for p, n in sorted(res["parts_changed"].items()):
         print("  part %-40s %d change(s)" % (p, n))
-    bad = sum(residual.values()) + (1 if bad_entry else 0)
     print("\n%s  (%d replacement(s), %d residual)"
-          % ("CLEAN" if bad == 0 else "VERIFY FAILED", sum(replaced.values()),
-             sum(residual.values())))
+          % ("CLEAN" if res["ok"] else "VERIFY FAILED", res["total"],
+             sum(res["residual"].values())))
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
-            json.dump({"input": args.file, "output": args.out, "replacements": replaced,
-                       "residual": residual, "parts_changed": changed_parts,
-                       "unmatched_mappings": never, "zip_ok": bad_entry is None},
-                      f, indent=1)
-    return 0 if bad == 0 else 2
+            json.dump(res, f, indent=1)
+    return 0 if res["ok"] else 2
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan")

@@ -39,12 +39,12 @@ HONEST SCOPE (do not oversell this)
     prefer regenerating from a source .docx when one exists.
 
 USAGE
-  python pdf_text_tool.py scan f1.pdf [f2 ...] --pattern "regex" [--json out.json]
-  python pdf_text_tool.py apply in.pdf --map map.json --out fixed.pdf
+  python -m courseforge.docs.pdf_text scan f1.pdf [f2 ...] --pattern "regex" [--json out.json]
+  python -m courseforge.docs.pdf_text apply in.pdf --map map.json --out fixed.pdf
         map.json: [ {"find":"Jane Smith","replace":"John Doe","limit":1}, ... ]
                   "replace":"" removes the text (white-out).
         options: --set-author X  --set-title X  --update-toc  --allow-signed
-  python pdf_text_tool.py fill in.pdf --map fill.json --out filled.pdf
+  python -m courseforge.docs.pdf_text fill in.pdf --map fill.json --out filled.pdf
         options: --preview p.png (numbered boxes; red=collision)  --dry-run
         fill.json: [ {"page":1,"anchor":"Full Name:","dx":8,"text":"John A. Doe"},
                      {"page":1,"at":[220,415],"text":"555-0142","size":10} ]
@@ -54,21 +54,32 @@ USAGE
   overlap another placement, or run off the page. Underscore/dot leader runs are
   treated as the blank being filled, not as a collision.
 
+Library surface (what the Studio's gateway calls; nothing here prints):
+  scan_file(path, pattern) -> dict
+  apply_map(path, mappings, out, set_author=None, set_title=None, update_toc=False,
+            allow_signed=False, strip_signature=False) -> dict
+  fill_map(path, items, out, dry_run=False, allow_signed=False, strip_signature=False,
+           preview=None) -> dict
+  verify_file(original, out, mappings) -> dict
+
 EXIT CODES  0 ok | 1 usage/IO | 2 verification failed | 3 refused (signed)
 """
 import argparse
 import json
+import os
 import re
 import sys
 
 import pymupdf
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
 # A full page carrying under ~200 chars is a form/scan drawn as vectors or an
 # image: `apply` has almost nothing to match there, so `fill` is the only route.
 # Deliberately generous - this is a NOTE, and a false positive costs nothing.
 LOW_TEXT_CHARS = 200
+
+
+class Refused(Exception):
+    """Writing was refused (signed document) and nothing was written."""
 
 
 def signature_state(doc):
@@ -91,18 +102,19 @@ def signature_state(doc):
     return (bool(reasons), "; ".join(reasons))
 
 
-def guard_signed(doc, allow, strip=False):
+def guard_signed(doc, allow, strip=False, notes=None):
     """Return True if writing may proceed. Optionally remove signature fields.
 
     Editing a signed PDF leaves the PKCS7 blob and /ByteRange copied verbatim
     while the surrounding bytes shift, so the digest can no longer match. The
     file then reads as "signed but ALTERED" in a viewer, which is worse than
-    unsigned - it looks like tampering. --strip-signature removes the signature
-    widgets so the output is honestly unsigned instead.
+    unsigned - it looks like tampering. strip removes the signature widgets so
+    the output is honestly unsigned instead.
     """
+    notes = notes if notes is not None else []
     signed, why = signature_state(doc)
     if signed:
-        print("SIGNED DOCUMENT DETECTED: %s" % why)
+        notes.append("signed document detected: %s" % why)
         if strip:
             removed = 0
             for page in doc:
@@ -112,64 +124,107 @@ def guard_signed(doc, allow, strip=False):
                             page.delete_widget(w)
                             removed += 1
                         except Exception as e:
-                            print("  could not remove widget %r: %s" % (w.field_name, e))
-            print("  --strip-signature: removed %d signature widget(s); output will be "
-                  "unsigned rather than invalid-signed." % removed)
+                            notes.append("could not remove widget %r: %s" % (w.field_name, e))
+            notes.append("strip signature: removed %d signature widget(s); output will be "
+                         "unsigned rather than invalid-signed." % removed)
             return True
         if not allow:
-            print("REFUSED: writing would invalidate the signature. Use "
-                  "--strip-signature to drop it honestly, or --allow-signed to "
-                  "keep a signature that will read as ALTERED.")
+            notes.append("refused: writing would invalidate the signature. Strip the "
+                         "signature to drop it honestly, or allow signed to keep a "
+                         "signature that will read as ALTERED.")
             return False
-        print("WARNING: --allow-signed given. The signature blob is preserved but the "
-              "content changes, so viewers will report the document as ALTERED. "
-              "Prefer --strip-signature unless you specifically want that.")
+        notes.append("allow signed: the signature blob is preserved but the content "
+                     "changes, so viewers will report the document as ALTERED.")
     return True
 
 
-def report_hazards(doc, path, mappings=None):
-    """Print structural warnings a caller needs before/after editing."""
+def hazards(doc, mappings=None):
+    """Structural facts a caller needs before/after editing, as a dict."""
     signed, why = signature_state(doc)
-    if signed:
-        print("  HAZARD signed        : %s" % why)
     low = [i + 1 for i, p in enumerate(doc) if len(p.get_text().strip()) < LOW_TEXT_CHARS]
-    if low:
-        print("  HAZARD low/no text   : page(s) %s - image-only or vector-drawn; "
-              "text replacement cannot reach content there (use `fill`)."
-              % ", ".join(map(str, low)))
     toc = doc.get_toc()
-    if toc:
-        print("  NOTE   outline/TOC   : %d entr(ies); replacing heading text does NOT "
-              "update these (use --update-toc)." % len(toc))
-        if mappings:
-            stale = [t[1] for t in toc
-                     if any(m["find"].lower() in t[1].lower() for m in mappings)]
-            if stale:
-                print("  HAZARD stale TOC     : %s" % "; ".join(repr(s) for s in stale))
+    out = {"signed": signed, "signed_reason": why, "low_text_pages": low,
+           "toc_entries": len(toc), "stale_toc": []}
+    if toc and mappings:
+        out["stale_toc"] = [t[1] for t in toc
+                            if any(m["find"].lower() in t[1].lower() for m in mappings)]
+    return out
 
 
-def cmd_scan(args):
-    rx = re.compile(args.pattern, re.I)
-    hits = []
-    for path in args.pdfs:
-        try:
-            doc = pymupdf.open(path)
-        except Exception as e:
-            print("UNREADABLE  %s  (%s)" % (path, e))
+def hazard_lines(h):
+    lines = []
+    if h["signed"]:
+        lines.append("  HAZARD signed        : %s" % h["signed_reason"])
+    if h["low_text_pages"]:
+        lines.append("  HAZARD low/no text   : page(s) %s - image-only or vector-drawn; "
+                     "text replacement cannot reach content there (use `fill`)."
+                     % ", ".join(map(str, h["low_text_pages"])))
+    if h["toc_entries"]:
+        lines.append("  NOTE   outline/TOC   : %d entr(ies); replacing heading text does NOT "
+                     "update these (use --update-toc)." % h["toc_entries"])
+        if h["stale_toc"]:
+            lines.append("  HAZARD stale TOC     : %s" % "; ".join(repr(s) for s in h["stale_toc"]))
+    return lines
+
+
+def _normalize(mappings):
+    if isinstance(mappings, dict):
+        mappings = [{"find": k, "replace": v} for k, v in mappings.items()]
+    out = []
+    for m in mappings or []:
+        find = m.get("find") or ""
+        if not find:
             continue
-        print("--- %s (%d page(s)) ---" % (path, len(doc)))
-        report_hazards(doc, path)
+        entry = {"find": find, "replace": m.get("replace") or ""}
+        if m.get("limit") is not None:
+            try:
+                entry["limit"] = int(m["limit"])
+            except (TypeError, ValueError):
+                pass
+        out.append(entry)
+    return out
+
+
+# ---------- scan ----------
+
+def scan_file(path, pattern):
+    """Regex search over every page's text and the metadata. Read-only."""
+    res = {"file": str(path), "hits": [], "pages": 0, "pattern": pattern}
+    try:
+        doc = pymupdf.open(path)
+    except Exception as e:
+        res.update(unreadable=True, reason=str(e), hazards={})
+        return res
+    with doc:
+        res["pages"] = len(doc)
+        res["hazards"] = hazards(doc)
+        rx = re.compile(pattern, re.I)
         meta_blob = " ".join("%s=%s" % (k, v) for k, v in (doc.metadata or {}).items() if v)
         for m in rx.finditer(meta_blob):
-            hits.append({"file": path, "page": "[metadata]", "term": m.group(0),
-                         "context": meta_blob[max(0, m.start() - 60):m.end() + 60]})
+            res["hits"].append({"page": "[metadata]", "term": m.group(0),
+                                "context": meta_blob[max(0, m.start() - 60):m.end() + 60]})
         for i, page in enumerate(doc, 1):
             text = page.get_text()
             for m in rx.finditer(text):
                 s = max(0, m.start() - 80)
-                hits.append({"file": path, "page": i, "term": m.group(0),
-                             "context": re.sub(r"\s+", " ", text[s:m.end() + 80])})
-        doc.close()
+                res["hits"].append({"page": i, "term": m.group(0),
+                                    "context": re.sub(r"\s+", " ", text[s:m.end() + 80])})
+    res["unreadable"] = False
+    return res
+
+
+def cmd_scan(args):
+    hits = []
+    for path in args.pdfs:
+        res = scan_file(path, args.pattern)
+        if res.get("unreadable"):
+            print("UNREADABLE  %s  (%s)" % (path, res["reason"]))
+            continue
+        print("--- %s (%d page(s)) ---" % (path, res["pages"]))
+        for line in hazard_lines(res["hazards"]):
+            print(line)
+        for h in res["hits"]:
+            hits.append({"file": path, **h})
     for h in hits:
         print("HIT  %-34s p%-10s %-20s ...%s..." %
               (h["file"][-34:], h["page"], h["term"][:20], h["context"][:80]))
@@ -180,13 +235,57 @@ def cmd_scan(args):
     return 0
 
 
-def cmd_apply(args):
-    with open(args.map, encoding="utf-8-sig") as f:
-        mappings = json.load(f)
-    doc = pymupdf.open(args.pdf)
-    if not guard_signed(doc, args.allow_signed, args.strip_signature):
-        return 3
-    report_hazards(doc, args.pdf, mappings)
+# ---------- apply ----------
+
+def verify_file(original, out, mappings):
+    """Zero residual (limits respected), page count unchanged, file opens."""
+    mappings = _normalize(mappings)
+    problems = []
+    residual = {m["find"]: 0 for m in mappings}
+    try:
+        check = pymupdf.open(out)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "opens": False, "residual": residual,
+                "problems": ["the fixed file does not open: %s" % exc]}
+    with check:
+        blob = " ".join(p.get_text() for p in check)
+        blob += " " + " ".join("%s" % v for v in (check.metadata or {}).values() if v)
+        blob += " " + " ".join(t[1] for t in check.get_toc())
+        pages_out = len(check)
+    pages_in = None
+    if original:
+        try:
+            with pymupdf.open(original) as o:
+                pages_in = len(o)
+        except Exception:  # noqa: BLE001
+            pages_in = None
+    for m in mappings:
+        n = len(re.findall(re.escape(m["find"]), blob, re.I))
+        # a mapping with an explicit limit is expected to leave the rest behind
+        residual[m["find"]] = 0 if m.get("limit") is not None else n
+    left = {k: v for k, v in residual.items() if v}
+    if left:
+        problems.append("text still present: " + ", ".join("%r x%d" % kv for kv in list(left.items())[:6]))
+    pages_same = pages_in is None or pages_in == pages_out
+    if not pages_same:
+        problems.append("page count changed (%s to %s)" % (pages_in, pages_out))
+    return {"ok": not problems, "opens": True, "pages_same": pages_same,
+            "residual": residual, "problems": problems}
+
+
+def apply_map(path, mappings, out, set_author=None, set_title=None, update_toc=False,
+              allow_signed=False, strip_signature=False):
+    """Replace every mapping in place via redactions, write `out`, verify it."""
+    mappings = _normalize(mappings)
+    notes = []
+    doc = pymupdf.open(path)
+    if not guard_signed(doc, allow_signed, strip_signature, notes):
+        haz = hazards(doc, mappings)
+        doc.close()
+        return {"ok": False, "refused": True, "reason": "signed document", "notes": notes,
+                "hazards": haz, "replacements": {}, "residual": {}, "per_page": {},
+                "unmatched_mappings": [], "overlaps": [], "total": 0}
+    haz = hazards(doc, mappings)
 
     replaced = {m["find"]: 0 for m in mappings}
     per_page = {}
@@ -216,64 +315,76 @@ def cmd_apply(args):
                 rect, text=m["replace"], fontname="helv",
                 fontsize=max(6.0, rect.height * 0.72), fill=(1, 1, 1))
         if planned:
-            per_page[pno] = len(planned)
+            per_page[str(pno)] = len(planned)
             page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)
-    if overlaps:
-        print("  NOTE   overlaps      : %d nested match(es) skipped so text is not "
-              "double-drawn:" % len(overlaps))
-        for o in overlaps[:8]:
-            print("           p%d %r inside %r" % (o["page"], o["skipped"], o["overlapped_by"]))
 
-    if args.update_toc:
+    toc_changed = 0
+    if update_toc:
         toc = doc.get_toc()
         if toc:
-            new_toc, changed = [], 0
+            new_toc = []
             for lvl, title, pg in toc:
                 nt = title
                 for m in mappings:
                     nt = re.sub(re.escape(m["find"]), m["replace"], nt, flags=re.I)
                 if nt != title:
-                    changed += 1
+                    toc_changed += 1
                 new_toc.append([lvl, nt, pg])
             doc.set_toc(new_toc)
-            print("  TOC rewritten: %d of %d entr(ies) changed" % (changed, len(toc)))
+            notes.append("TOC rewritten: %d of %d entr(ies) changed" % (toc_changed, len(toc)))
 
     meta = doc.metadata or {}
-    if args.set_author is not None:
-        meta["author"] = args.set_author
-    if args.set_title is not None:
-        meta["title"] = args.set_title
+    if set_author is not None:
+        meta["author"] = set_author
+    if set_title is not None:
+        meta["title"] = set_title
     doc.set_metadata(meta)
-    doc.save(args.out, garbage=3, deflate=True)
+    doc.save(out, garbage=3, deflate=True)
     doc.close()
 
-    check = pymupdf.open(args.out)
-    blob = " ".join(p.get_text() for p in check)
-    blob += " " + " ".join("%s" % v for v in (check.metadata or {}).values() if v)
-    blob += " " + " ".join(t[1] for t in check.get_toc())
-    check.close()
-    residual = {}
-    for m in mappings:
-        n = len(re.findall(re.escape(m["find"]), blob, re.I))
-        # a mapping with an explicit limit is expected to leave the rest behind
-        residual[m["find"]] = 0 if m.get("limit") is not None else n
-    report = {"input": args.pdf, "output": args.out, "replacements": replaced,
-              "residual": residual, "per_page": per_page,
-              "unmatched_mappings": [k for k, v in replaced.items() if v == 0]}
+    ver = verify_file(path, out, mappings)
+    return {"ok": ver["ok"], "refused": False, "input": str(path), "output": str(out),
+            "replacements": replaced, "residual": ver["residual"], "per_page": per_page,
+            "unmatched_mappings": [k for k, v in replaced.items() if v == 0],
+            "overlaps": overlaps, "hazards": haz, "notes": notes, "problems": ver["problems"],
+            "toc_changed": toc_changed, "total": sum(replaced.values())}
+
+
+def cmd_apply(args):
+    with open(args.map, encoding="utf-8-sig") as f:
+        mappings = json.load(f)
+    res = apply_map(args.pdf, mappings, args.out, set_author=args.set_author,
+                    set_title=args.set_title, update_toc=args.update_toc,
+                    allow_signed=args.allow_signed, strip_signature=args.strip_signature)
+    for n in res["notes"]:
+        print("  %s" % n)
+    if res.get("refused"):
+        print("REFUSED: %s" % res["reason"])
+        return 3
+    for line in hazard_lines(res["hazards"]):
+        print(line)
+    if res["overlaps"]:
+        print("  NOTE   overlaps      : %d nested match(es) skipped so text is not "
+              "double-drawn:" % len(res["overlaps"]))
+        for o in res["overlaps"][:8]:
+            print("           p%d %r inside %r" % (o["page"], o["skipped"], o["overlapped_by"]))
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
-            json.dump(report, f, indent=1)
-    for k, v in replaced.items():
-        flag = "" if residual[k] == 0 else "   RESIDUAL=%d !!" % residual[k]
+            json.dump(res, f, indent=1)
+    for k, v in res["replacements"].items():
+        left = res["residual"].get(k, 0)
+        flag = "" if left == 0 else "   RESIDUAL=%d !!" % left
         print("%-52s x%d%s" % (k[:52], v, flag))
-    if report["unmatched_mappings"]:
+    if res["unmatched_mappings"]:
         print("NEVER MATCHED (check exact wording via `scan`, or it wraps lines): %s"
-              % ", ".join(repr(u) for u in report["unmatched_mappings"]))
-    bad = sum(residual.values())
+              % ", ".join(repr(u) for u in res["unmatched_mappings"]))
+    bad = sum(res["residual"].values())
     print("\n%s  (%d replacement(s), %d residual)"
-          % ("CLEAN" if bad == 0 else "VERIFY FAILED", sum(replaced.values()), bad))
-    return 0 if bad == 0 else 2
+          % ("CLEAN" if res["ok"] else "VERIFY FAILED", res["total"], bad))
+    return 0 if res["ok"] else 2
 
+
+# ---------- fill ----------
 
 # Rule/leader characters, as explicit escapes. This line used to be
 # MOJIBAKE: the intended dot leaders and dashes had been UTF-8 encoded
@@ -283,9 +394,9 @@ def cmd_apply(args):
 # through the wrong encoding.
 BLANK_CHARS = set(
     "_."                     # underscore rules, period leaders
-    "\u00b7"                 # MIDDLE DOT
-    "\u2024\u2025\u2026"       # ONE/TWO DOT LEADER, HORIZONTAL ELLIPSIS
-    "-\u2013\u2014"            # hyphen, EN DASH, EM DASH
+    "·"                 # MIDDLE DOT
+    "․‥…"       # ONE/TWO DOT LEADER, HORIZONTAL ELLIPSIS
+    "-–—"            # hyphen, EN DASH, EM DASH
     " \t"
 )
 
@@ -305,20 +416,16 @@ def _glyph_rect(x, y, text, size):
     return pymupdf.Rect(x, y - size * 0.80, x + w, y + size * 0.22)
 
 
-def cmd_fill(args):
-    with open(args.map, encoding="utf-8-sig") as f:
-        items = json.load(f)
-    doc = pymupdf.open(args.pdf)
-    if not guard_signed(doc, args.allow_signed, args.strip_signature):
-        return 3
+def _plan_fill(doc, items):
+    """Resolve every placement BEFORE drawing anything.
 
-    # ---- resolve every placement BEFORE drawing anything -------------------
-    # Anchored placement is "find the label, step right by dx". That is fragile:
-    # on a multi-column form, or where a label repeats in another table cell, the
-    # value lands on top of unrelated content - and a plain text-presence check
-    # cannot see it, because the text IS in the file, just in the wrong place.
-    # So resolve, then geometrically check each target against (a) existing words
-    # that are not blank rules, (b) other planned placements, (c) the page edge.
+    Anchored placement is "find the label, step right by dx". That is fragile:
+    on a multi-column form, or where a label repeats in another table cell, the
+    value lands on top of unrelated content - and a plain text-presence check
+    cannot see it, because the text IS in the file, just in the wrong place.
+    So resolve, then geometrically check each target against (a) existing words
+    that are not blank rules, (b) other planned placements, (c) the page edge.
+    """
     plans, missing = [], []
     for idx, it in enumerate(items, 1):
         pno = int(it.get("page", 1)) - 1
@@ -349,16 +456,14 @@ def cmd_fill(args):
             y = anchor_rect.y1 + float(it.get("dy", -2.5))
         plans.append({"idx": idx, "item": it, "page": pno, "x": x, "y": y,
                       "size": size, "rect": _glyph_rect(x, y, it["text"], size),
-                      "anchor_rect": anchor_rect, "problems": []})
+                      "anchor_rect": anchor_rect, "problems": [], "notes": []})
 
-    # ---- geometric checks --------------------------------------------------
     words_cache = {}
     for p in plans:
         page = doc[p["page"]]
         if p["page"] not in words_cache:
             words_cache[p["page"]] = page.get_text("words")
         tgt = p["rect"]
-        p["notes"] = []
         if tgt.x1 > page.rect.x1 - 4 or tgt.y0 < page.rect.y0 or tgt.y1 > page.rect.y1:
             p["problems"].append("runs past the page edge (x1=%.0f, page width %.0f)"
                                  % (tgt.x1, page.rect.x1))
@@ -389,14 +494,32 @@ def cmd_fill(args):
             if q["idx"] < p["idx"] and (q["rect"] & tgt).get_area() > 0:
                 p["problems"].append("overlaps placement #%d (%r)"
                                      % (q["idx"], q["item"]["text"][:24]))
+    return plans, missing
 
-    collisions = [p for p in plans
-                  if p["problems"] and not p["item"].get("allow_overlap")]
 
-    # ---- optional visual preview ------------------------------------------
-    if args.preview:
-        import os
-        base, ext = os.path.splitext(args.preview)
+def _plan_rows(plans):
+    return [{"idx": p["idx"], "text": p["item"]["text"], "page": p["page"] + 1,
+             "x": round(p["x"], 1), "y": round(p["y"], 1), "size": p["size"],
+             "width": round(p["rect"].width, 1), "problems": p["problems"],
+             "notes": p["notes"], "allow_overlap": bool(p["item"].get("allow_overlap"))}
+            for p in plans]
+
+
+def fill_map(path, items, out, dry_run=False, allow_signed=False, strip_signature=False,
+             preview=None):
+    """Insert values onto a form. Refuses on collisions; verifies its own output."""
+    notes = []
+    doc = pymupdf.open(path)
+    if not guard_signed(doc, allow_signed, strip_signature, notes):
+        doc.close()
+        return {"ok": False, "refused": True, "reason": "signed document", "notes": notes,
+                "placed": 0, "unplaced": [], "collisions": [], "plans": []}
+    plans, missing = _plan_fill(doc, items)
+    collisions = [p for p in plans if p["problems"] and not p["item"].get("allow_overlap")]
+
+    previews = []
+    if preview:
+        base, ext = os.path.splitext(preview)
         ext = ext or ".png"
         for pno in sorted({p["page"] for p in plans}):
             page = doc[pno]
@@ -409,79 +532,95 @@ def cmd_fill(args):
                 shape.insert_text((p["rect"].x0, p["rect"].y0 - 1.5), "#%d" % p["idx"],
                                   fontname="helv", fontsize=5.5, color=col)
             shape.commit(overlay=True)
-            out = "%s-p%d%s" % (base, pno + 1, ext)
-            page.get_pixmap(dpi=150).save(out)
-            print("  preview -> %s" % out)
+            target = "%s-p%d%s" % (base, pno + 1, ext)
+            page.get_pixmap(dpi=150).save(target)
+            previews.append(target)
         doc.close()
         # preview must never be mistaken for a committed edit
-        doc = pymupdf.open(args.pdf)
-        if not guard_signed(doc, args.allow_signed, args.strip_signature):
-            return 3
+        doc = pymupdf.open(path)
+        if not guard_signed(doc, allow_signed, strip_signature, []):
+            doc.close()
+            return {"ok": False, "refused": True, "reason": "signed document", "notes": notes,
+                    "placed": 0, "unplaced": [], "collisions": [], "plans": []}
 
-    for p in plans:
-        tag = "OK  " if not p["problems"] else ("WARN" if p["item"].get("allow_overlap") else "BAD ")
-        print("  %s #%-2d %-28r p%d at (%.0f, %.0f) size %.1f w=%.0f"
-              % (tag, p["idx"], p["item"]["text"][:28], p["page"] + 1,
-                 p["x"], p["y"], p["size"], p["rect"].width))
-        for prob in p["problems"]:
-            print("            %s %s" % ("(allowed)" if p["item"].get("allow_overlap") else "->", prob))
-        for note in p.get("notes", []):
-            print("            NOTE %s" % note)
-
-    if missing:
-        print("\nUNPLACED:")
-        for m in missing:
-            print("  %s" % m)
-    if collisions:
-        print("\nPLACEMENT COLLISIONS (%d) - refusing to write. Adjust dx/dy/size/"
-              "occurrence, or set \"allow_overlap\": true on an item that is meant to "
-              "overprint." % len(collisions))
-
+    rows = _plan_rows(plans)
+    coll_rows = [{"idx": p["idx"], "text": p["item"]["text"], "problems": p["problems"]}
+                 for p in collisions]
     if missing or collisions:
-        print("\nVERIFY FAILED  (0 written, %d unplaced, %d colliding)"
-              % (len(missing), len(collisions)))
-        if args.json:
-            with open(args.json, "w", encoding="utf-8") as f:
-                json.dump({"written": 0, "unplaced": missing,
-                           "collisions": [{"idx": p["idx"], "text": p["item"]["text"],
-                                           "problems": p["problems"]} for p in collisions]},
-                          f, indent=1)
         doc.close()
-        return 2
-
-    if args.dry_run:
-        print("\nDRY RUN  (%d placement(s) validated, nothing written)" % len(plans))
+        return {"ok": False, "refused": False, "written": 0, "placed": 0, "unplaced": missing,
+                "collisions": coll_rows, "plans": rows, "notes": notes, "previews": previews}
+    if dry_run:
         doc.close()
-        return 0
+        return {"ok": True, "refused": False, "dry_run": True, "placed": 0, "unplaced": [],
+                "collisions": [], "plans": rows, "notes": notes, "previews": previews}
 
     for p in plans:
         doc[p["page"]].insert_text((p["x"], p["y"]), p["item"]["text"],
                                    fontname="helv", fontsize=p["size"], color=(0, 0, 0))
     placed = len(plans)
-    doc.save(args.out, garbage=3, deflate=True)
+    doc.save(out, garbage=3, deflate=True)
     doc.close()
 
-    check = pymupdf.open(args.out)
-    blob = " ".join(p.get_text() for p in check)
-    check.close()
+    with pymupdf.open(out) as check:
+        blob = " ".join(p.get_text() for p in check)
     absent = [it["text"] for it in items if it["text"] and it["text"] not in blob]
-    if absent:
-        print("\nNOT FOUND IN OUTPUT TEXT (drawn but unextractable): %s"
-              % ", ".join(repr(a) for a in absent))
-    ok = not absent
-    print("\n%s  (%d placed, 0 unplaced, %d unverified)"
-          % ("CLEAN" if ok else "VERIFY FAILED", placed, len(absent)))
+    return {"ok": not absent, "refused": False, "placed": placed, "unplaced": [],
+            "absent": absent, "collisions": [], "plans": rows, "notes": notes,
+            "previews": previews, "output": str(out),
+            "warned_overlaps": [{"idx": p["idx"], "text": p["item"]["text"],
+                                 "problems": p["problems"]} for p in plans if p["problems"]]}
+
+
+def cmd_fill(args):
+    with open(args.map, encoding="utf-8-sig") as f:
+        items = json.load(f)
+    res = fill_map(args.pdf, items, args.out, dry_run=args.dry_run,
+                   allow_signed=args.allow_signed, strip_signature=args.strip_signature,
+                   preview=args.preview)
+    for n in res["notes"]:
+        print("  %s" % n)
+    if res.get("refused"):
+        print("REFUSED: %s" % res["reason"])
+        return 3
+    for target in res.get("previews", []):
+        print("  preview -> %s" % target)
+    for p in res["plans"]:
+        tag = "OK  " if not p["problems"] else ("WARN" if p["allow_overlap"] else "BAD ")
+        print("  %s #%-2d %-28r p%d at (%.0f, %.0f) size %.1f w=%.0f"
+              % (tag, p["idx"], p["text"][:28], p["page"], p["x"], p["y"], p["size"], p["width"]))
+        for prob in p["problems"]:
+            print("            %s %s" % ("(allowed)" if p["allow_overlap"] else "->", prob))
+        for note in p["notes"]:
+            print("            NOTE %s" % note)
+    if res["unplaced"]:
+        print("\nUNPLACED:")
+        for m in res["unplaced"]:
+            print("  %s" % m)
+    if res["collisions"]:
+        print("\nPLACEMENT COLLISIONS (%d) - refusing to write. Adjust dx/dy/size/"
+              "occurrence, or set \"allow_overlap\": true on an item that is meant to "
+              "overprint." % len(res["collisions"]))
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
-            json.dump({"placed": placed, "unplaced": [], "absent": absent,
-                       "warned_overlaps": [{"idx": p["idx"], "text": p["item"]["text"],
-                                            "problems": p["problems"]}
-                                           for p in plans if p["problems"]]},
-                      f, indent=1)
-    return 0 if ok else 2
+            json.dump(res, f, indent=1)
+    if res["unplaced"] or res["collisions"]:
+        print("\nVERIFY FAILED  (0 written, %d unplaced, %d colliding)"
+              % (len(res["unplaced"]), len(res["collisions"])))
+        return 2
+    if res.get("dry_run"):
+        print("\nDRY RUN  (%d placement(s) validated, nothing written)" % len(res["plans"]))
+        return 0
+    if res.get("absent"):
+        print("\nNOT FOUND IN OUTPUT TEXT (drawn but unextractable): %s"
+              % ", ".join(repr(a) for a in res["absent"]))
+    print("\n%s  (%d placed, 0 unplaced, %d unverified)"
+          % ("CLEAN" if res["ok"] else "VERIFY FAILED", res["placed"], len(res.get("absent", []))))
+    return 0 if res["ok"] else 2
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
 

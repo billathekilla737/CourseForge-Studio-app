@@ -17,24 +17,36 @@ with zero per-file human oversight:
               they are design judgments - surface to the instructor).
 
 Usage:
-  python remediate_pptx.py scan   deck.pptx --workdir W
-  python remediate_pptx.py apply  deck.pptx --workdir W --out fixed.pptx
-  python remediate_pptx.py verify fixed.pptx
+  python -m courseforge.docs.pptx scan   deck.pptx --workdir W
+  python -m courseforge.docs.pptx apply  deck.pptx --workdir W --out fixed.pptx
+  python -m courseforge.docs.pptx verify fixed.pptx [--original deck.pptx --workdir W]
 
-fixes.json (written by the agent into workdir):
+fixes.json (written by the agent or the Studio into workdir):
   {
     "alts":   { "<imageKey>": "concise description (<=110 chars)" | "" },   # "" = decorative
+    "sources": { "<imageKey>": "model" | "human" },                           # who wrote it
     "titles": { "<slideNumber>": "Title text" },
     "table_headers": true
   }
+
+Library surface (what the Studio's gateway calls; nothing here prints):
+  scan_report(path, workdir) -> dict          the report, also written to report.json
+  apply(path, fixes, out)    -> dict          counts of what was written
+  verify(original, fixed, fixes, workdir=None) -> dict   {"ok", "checks", "remaining", ...}
 """
-import argparse, copy, json, os, re, sys
+import argparse
+import copy
+import hashlib
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
 
 from pptx import Presentation
 from pptx.util import Emu
 from lxml import etree
-
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 NS = {
     "a":   "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -43,6 +55,7 @@ NS = {
 }
 DECOR_URI = "{C183D7F6-B498-43B3-948B-1728B52AA6E4}"
 MAX_ALT = 110
+REPORT_ONLY = "report-only"
 
 
 def q(tag):
@@ -101,16 +114,32 @@ def slide_title_shape(slide):
 
 
 def slide_text_snippet(slide, limit=160):
-    parts = []
+    return re.sub(r"\s+", " ", " | ".join(slide_texts(slide)))[:limit]
+
+
+def slide_texts(slide):
+    """Every non-empty text frame on the slide, as a list (order kept)."""
+    out = []
     for sh in slide.shapes:
         if getattr(sh, "has_text_frame", False):
             t = sh.text_frame.text.strip()
             if t:
-                parts.append(t)
-    return re.sub(r"\s+", " ", " | ".join(parts))[:limit]
+                out.append(t)
+    return out
 
 
 FILENAME_RX = re.compile(r"\.(png|jpe?g|gif|bmp|svg|webp|tiff?)\s*$", re.I)
+
+
+def alt_problem(alt):
+    """Why this alt text would be flagged, or None when it is fine."""
+    if not alt:
+        return "image missing alt"
+    if FILENAME_RX.search(alt) or (" " not in alt and "." in alt):
+        return "alt is a filename: %r" % alt[:40]
+    if len(alt) > MAX_ALT:
+        return "alt too long (%d chars)" % len(alt)
+    return None
 
 
 # ---------- contrast (report-only, explicit colors only) ----------
@@ -159,32 +188,35 @@ def check_contrast(slide, slide_no, issues):
 
 # ---------- scan ----------
 
-def scan(path, workdir):
+def is_hard(issue):
+    return REPORT_ONLY not in issue.get("type", "")
+
+
+def scan_report(path, workdir):
+    """Scan one deck. Writes images and report.json under workdir, returns the report."""
     prs = Presentation(path)
     os.makedirs(os.path.join(workdir, "images"), exist_ok=True)
-    issues, images, untitled = [], [], []
+    issues, images, untitled, tables = [], [], [], []
     for i, slide in enumerate(prs.slides, start=1):
         for pic in iter_pictures(slide.shapes):
             alt = get_alt(pic)
             key = "s%d_id%d" % (i, pic.shape_id)
-            problem = None
-            if is_decorative(pic):
-                pass  # explicitly decorative = fine
-            elif not alt:
-                problem = "image missing alt"
-            elif FILENAME_RX.search(alt) or (" " not in alt and "." in alt):
-                problem = "alt is a filename: %r" % alt[:40]
-            elif len(alt) > MAX_ALT:
-                problem = "alt too long (%d chars)" % len(alt)
+            decorative = is_decorative(pic)
+            problem = None if decorative else alt_problem(alt)
             ext = pic.image.ext
+            blob = pic.image.blob
             img_path = os.path.join(workdir, "images", key + "." + ext)
             with open(img_path, "wb") as f:
-                f.write(pic.image.blob)
+                f.write(blob)
+            c = cnvpr_of(pic)
             images.append({
-                "key": key, "slide": i, "path": img_path, "current_alt": alt,
-                "decorative": is_decorative(pic),
+                "key": key, "slide": i, "path": img_path, "ext": ext,
+                "hash": hashlib.sha1(blob).hexdigest(),
+                "current_alt": alt, "decorative": decorative,
+                "needs_alt": bool(problem),
                 "size_px": [pic.image.size[0], pic.image.size[1]],
                 "slide_context": slide_text_snippet(slide),
+                "name": (c.get("name") if c is not None else "") or "",
             })
             if problem:
                 issues.append({"type": problem.split(":")[0], "slide": i,
@@ -195,23 +227,34 @@ def scan(path, workdir):
                            "detail": "no title placeholder text"})
             untitled.append({"slide": i, "existing_text": slide_text_snippet(slide),
                              "has_empty_placeholder": ts is not None})
-        for tf in iter_tables(slide.shapes):
-            if not tf.table.first_row:
+        for t_i, tf in enumerate(iter_tables(slide.shapes)):
+            has_header = bool(tf.table.first_row)
+            tables.append({"slide": i, "index": t_i, "header_row": has_header,
+                           "rows": len(tf.table.rows), "cols": len(tf.table.columns)})
+            if not has_header:
                 issues.append({"type": "table missing header row", "slide": i,
                                "detail": "first_row flag not set"})
         check_contrast(slide, i, issues)
+    hard = [x for x in issues if is_hard(x)]
     report = {"deck": os.path.basename(path), "slides": len(prs.slides),
-              "issues": issues, "images": images, "untitled": untitled}
+              "issues": issues, "hard_issues": len(hard),
+              "report_only": len(issues) - len(hard),
+              "images": images, "untitled": untitled, "tables": tables}
     rp = os.path.join(workdir, "report.json")
     with open(rp, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1)
-    hard = [x for x in issues if "report-only" not in x["type"]]
+    return report
+
+
+def scan(path, workdir):
+    """CLI form of scan_report: prints the summary, returns an exit code."""
+    report = scan_report(path, workdir)
     print("SCAN %s: %d slides, %d hard issues, %d report-only, %d images extracted"
-          % (report["deck"], report["slides"], len(hard),
-             len(issues) - len(hard), len(images)))
-    for x in issues:
+          % (report["deck"], report["slides"], report["hard_issues"],
+             report["report_only"], len(report["images"])))
+    for x in report["issues"]:
         print("  [slide %2d] %s - %s" % (x["slide"], x["type"], x["detail"]))
-    print("report: %s" % rp)
+    print("report: %s" % os.path.join(workdir, "report.json"))
     return 0
 
 
@@ -240,6 +283,17 @@ def set_decorative(shape):
     d.set("val", "1")
 
 
+def _next_shape_id(slide):
+    ids = [0]
+    for el in slide.shapes._spTree.iter():
+        if el.tag.endswith("}cNvPr"):
+            try:
+                ids.append(int(el.get("id") or 0))
+            except ValueError:
+                pass
+    return max(ids) + 1
+
+
 def ensure_title(slide, prs, text):
     """Fill the empty title placeholder, or clone the layout's, or synthesize one.
     Cloned/synthesized titles are positioned OFF-CANVAS (visuals unchanged,
@@ -249,6 +303,7 @@ def ensure_title(slide, prs, text):
         ts.text_frame.text = text
         return "filled placeholder"
     spTree = slide.shapes._spTree
+    new_id = _next_shape_id(slide)
     # try cloning the layout's title placeholder so it is a REAL title ph
     layout_title = None
     try:
@@ -257,6 +312,10 @@ def ensure_title(slide, prs, text):
         pass
     if layout_title is not None:
         sp = copy.deepcopy(layout_title._element)
+        for el in sp.iter():
+            if el.tag.endswith("}cNvPr"):
+                el.set("id", str(new_id))
+                break
         spTree.append(sp)
         slide_w = prs.slide_width
         xml = (
@@ -277,57 +336,168 @@ def ensure_title(slide, prs, text):
     # synthesize a minimal title placeholder sp
     sp_xml = (
         '<p:sp xmlns:p="%s" xmlns:a="%s">'
-        '<p:nvSpPr><p:cNvPr id="0" name="Title"/><p:cNvSpPr/>'
+        '<p:nvSpPr><p:cNvPr id="%d" name="Title"/><p:cNvSpPr/>'
         '<p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>'
         '<p:spPr><a:xfrm><a:off x="0" y="-914400"/>'
         '<a:ext cx="%d" cy="457200"/></a:xfrm></p:spPr>'
         '<p:txBody><a:bodyPr/><a:p><a:r><a:t>%s</a:t></a:r></a:p></p:txBody>'
-        '</p:sp>' % (NS["p"], NS["a"], prs.slide_width,
+        '</p:sp>' % (NS["p"], NS["a"], new_id, prs.slide_width,
                      text.replace("&", "&amp;").replace("<", "&lt;")))
     spTree.append(etree.fromstring(sp_xml))
     return "synthesized title (off-canvas)"
 
 
-def apply_fixes(path, workdir, out):
-    fx_path = os.path.join(workdir, "fixes.json")
-    with open(fx_path, encoding="utf-8") as f:
-        fixes = json.load(f)
-    alts = fixes.get("alts", {})
-    titles = {str(k): v for k, v in fixes.get("titles", {}).items()}
+def clip_alt(val):
+    val = (val or "").strip()
+    if len(val) > MAX_ALT:
+        val = val[:MAX_ALT - 1].rstrip() + "."
+    return val
+
+
+def apply(path, fixes, out):
+    """Write a remediated copy of `path` to `out` from a fixes dict. Returns counts."""
+    alts = fixes.get("alts", {}) or {}
+    titles = {str(k): v for k, v in (fixes.get("titles", {}) or {}).items() if (v or "").strip()}
     fix_tables = fixes.get("table_headers", True)
     prs = Presentation(path)
     n_alt = n_dec = n_title = n_tbl = 0
+    title_how = {}
     for i, slide in enumerate(prs.slides, start=1):
         for pic in iter_pictures(slide.shapes):
             key = "s%d_id%d" % (i, pic.shape_id)
-            if key in alts:
-                val = alts[key].strip()
+            if key in alts and alts[key] is not None:
+                val = clip_alt(alts[key])
                 if val == "":
-                    set_decorative(pic); n_dec += 1
+                    set_decorative(pic)
+                    n_dec += 1
                 else:
-                    if len(val) > MAX_ALT:
-                        val = val[:MAX_ALT - 1].rstrip() + "."
-                    set_alt(pic, val); n_alt += 1
+                    set_alt(pic, val)
+                    n_alt += 1
         if str(i) in titles:
-            how = ensure_title(slide, prs, titles[str(i)])
+            title_how[str(i)] = ensure_title(slide, prs, titles[str(i)].strip())
             n_title += 1
-            print("  slide %d title: %s" % (i, how))
         if fix_tables:
             for tf in iter_tables(slide.shapes):
                 if not tf.table.first_row:
-                    tf.table.first_row = True; n_tbl += 1
+                    tf.table.first_row = True
+                    n_tbl += 1
     prs.save(out)
+    return {"alts": n_alt, "decorative": n_dec, "titles": n_title,
+            "table_headers": n_tbl, "title_how": title_how, "out": str(out)}
+
+
+def apply_fixes(path, workdir, out):
+    """CLI form of apply: reads workdir/fixes.json, prints, returns an exit code."""
+    fx_path = os.path.join(workdir, "fixes.json")
+    with open(fx_path, encoding="utf-8") as f:
+        fixes = json.load(f)
+    res = apply(path, fixes, out)
+    for slide_no, how in res["title_how"].items():
+        print("  slide %s title: %s" % (slide_no, how))
     print("APPLY: %d alts, %d decorative, %d titles, %d table headers -> %s"
-          % (n_alt, n_dec, n_title, n_tbl, out))
+          % (res["alts"], res["decorative"], res["titles"], res["table_headers"], out))
     return 0
 
 
+# ---------- verify ----------
+
+def _image_hashes(prs):
+    out = []
+    for slide in prs.slides:
+        for pic in iter_pictures(slide.shapes):
+            out.append(hashlib.sha1(pic.image.blob).hexdigest())
+    return sorted(out)
+
+
+def verify(original, fixed, fixes=None, workdir=None):
+    """Prove the fixed deck is the original plus the requested fixes, nothing less.
+
+    Checks: the file opens; the slide count is unchanged; every text the original
+    showed is still there (titles may be added, nothing removed); the pictures are
+    the same set; every alt and title asked for landed. `remaining` lists the hard
+    issues a second scan still finds (untitled slides nobody named, and so on);
+    they do not fail verify, they are reported so the person can decide.
+    """
+    fixes = fixes or {}
+    checks = {}
+    problems = []
+    tmp = None
+    try:
+        try:
+            orig = Presentation(original)
+            new = Presentation(fixed)
+            checks["opens"] = True
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "checks": {"opens": False}, "remaining": [],
+                    "remaining_hard": None, "report_only": [],
+                    "problems": ["the fixed file does not open: %s" % exc]}
+        checks["slides_same"] = len(orig.slides) == len(new.slides)
+        if not checks["slides_same"]:
+            problems.append("slide count changed (%d to %d)" % (len(orig.slides), len(new.slides)))
+        lost = []
+        for i, (a, b) in enumerate(zip(orig.slides, new.slides), start=1):
+            have = set(slide_texts(b))
+            for t in slide_texts(a):
+                if t not in have:
+                    lost.append("slide %d: %r" % (i, t[:60]))
+        checks["text_kept"] = not lost
+        if lost:
+            problems.append("text missing after the fix: " + "; ".join(lost[:5]))
+        checks["images_same"] = _image_hashes(orig) == _image_hashes(new)
+        if not checks["images_same"]:
+            problems.append("the set of pictures changed")
+
+        wanted = {k: clip_alt(v) for k, v in (fixes.get("alts") or {}).items() if v is not None}
+        missing_alts = []
+        for i, slide in enumerate(new.slides, start=1):
+            for pic in iter_pictures(slide.shapes):
+                key = "s%d_id%d" % (i, pic.shape_id)
+                if key not in wanted:
+                    continue
+                if wanted[key] == "":
+                    if not is_decorative(pic):
+                        missing_alts.append(key)
+                elif get_alt(pic) != wanted[key]:
+                    missing_alts.append(key)
+        checks["alts_landed"] = not missing_alts
+        if missing_alts:
+            problems.append("alt text did not land on: " + ", ".join(missing_alts[:8]))
+
+        titles = {str(k): (v or "").strip() for k, v in (fixes.get("titles") or {}).items()}
+        missing_titles = []
+        for i, slide in enumerate(new.slides, start=1):
+            want = titles.get(str(i))
+            if not want:
+                continue
+            if want not in slide_texts(slide):
+                missing_titles.append(str(i))
+        checks["titles_landed"] = not missing_titles
+        if missing_titles:
+            problems.append("titles did not land on slides " + ", ".join(missing_titles))
+
+        if workdir is None:
+            tmp = tempfile.mkdtemp(prefix="pptx_verify_")
+        report = scan_report(fixed, workdir or tmp)
+        remaining = [x for x in report["issues"] if is_hard(x)]
+        report_only = [x for x in report["issues"] if not is_hard(x)]
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+    ok = all(checks.values())
+    return {"ok": ok, "checks": checks, "problems": problems,
+            "remaining": remaining, "remaining_hard": len(remaining),
+            "report_only": report_only}
+
+
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["scan", "apply", "verify"])
     ap.add_argument("deck")
     ap.add_argument("--workdir", default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--original", default=None,
+                    help="verify: the deck the fixed one was made from")
     a = ap.parse_args()
     if a.cmd == "scan":
         return scan(a.deck, a.workdir or a.deck + ".work")
@@ -335,15 +505,26 @@ def main():
         if not a.out:
             ap.error("--out required for apply")
         return apply_fixes(a.deck, a.workdir or a.deck + ".work", a.out)
-    if a.cmd == "verify":
-        import shutil
-        import tempfile
-        tmp = None if a.workdir else tempfile.mkdtemp(prefix="pptx_verify_")
-        try:
-            return scan(a.deck, a.workdir or tmp)
-        finally:
-            if tmp:      # every image of the deck was extracted here
-                shutil.rmtree(tmp, ignore_errors=True)
+    if a.original:
+        fixes = {}
+        fx = os.path.join(a.workdir or a.original + ".work", "fixes.json")
+        if os.path.isfile(fx):
+            with open(fx, encoding="utf-8") as f:
+                fixes = json.load(f)
+        res = verify(a.original, a.deck, fixes)
+        print("VERIFY %s: %s" % (os.path.basename(a.deck), "ok" if res["ok"] else "FAILED"))
+        for k, v in res["checks"].items():
+            print("  %-14s %s" % (k, "yes" if v else "NO"))
+        for p in res["problems"]:
+            print("  problem: %s" % p)
+        print("  %d hard issue(s) remain" % res["remaining_hard"])
+        return 0 if res["ok"] else 2
+    tmp = None if a.workdir else tempfile.mkdtemp(prefix="pptx_verify_")
+    try:
+        return scan(a.deck, a.workdir or tmp)
+    finally:
+        if tmp:      # every image of the deck was extracted here
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

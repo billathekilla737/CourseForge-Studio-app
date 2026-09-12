@@ -23,23 +23,34 @@ author's job. python-docx has no first-class alt API - we edit the drawing XML
 (wp:docPr @descr) directly.
 
 Usage:
-  python remediate_docx.py scan   doc.docx --workdir W
-  python remediate_docx.py apply  doc.docx --workdir W --out fixed.docx
-  python remediate_docx.py verify fixed.docx
+  python -m courseforge.docs.docx scan   doc.docx --workdir W
+  python -m courseforge.docs.docx apply  doc.docx --workdir W --out fixed.docx
+  python -m courseforge.docs.docx verify fixed.docx [--original doc.docx --workdir W]
 
-fixes.json (agent-written, in workdir):
+fixes.json (agent-written or Studio-written, in workdir):
   {
     "alts":     { "<imageKey>": "concise description (<=110 chars)" | "" },
+    "sources":  { "<imageKey>": "model" | "human" },
     "headings": { "<paragraphIndex>": 1|2|3 },     # opt-in style promotion
     "table_headers": true
   }
+
+Library surface (what the Studio's gateway calls; nothing here prints):
+  scan_report(path, workdir) -> dict
+  apply(path, fixes, out)    -> dict
+  verify(original, fixed, fixes, workdir=None) -> dict
 """
-import argparse, json, os, re, sys
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
 
 from docx import Document
 from docx.oxml.ns import qn
-
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 MAX_ALT = 110
 FILENAME_RX = re.compile(r"\.(png|jpe?g|gif|bmp|svg|webp|tiff?)\s*$", re.I)
@@ -78,6 +89,16 @@ def get_image_blob(doc, blip):
         return None, None
 
 
+def alt_problem(alt):
+    if not alt:
+        return "image missing alt"
+    if FILENAME_RX.search(alt) or (" " not in alt and "." in alt):
+        return "alt is a filename: %r" % alt[:40]
+    if len(alt) > MAX_ALT:
+        return "alt too long (%d chars)" % len(alt)
+    return None
+
+
 # ---------- headings ----------
 
 def heading_level(par):
@@ -93,6 +114,13 @@ def looks_like_faux_heading(par):
         return False
     runs = [r for r in par.runs if r.text.strip()]
     return bool(runs) and all(r.bold for r in runs)
+
+
+def _context(paras, i, span=1):
+    """A little of the text around paragraph i, for the review table."""
+    before = " ".join(p.text.strip() for p in paras[max(0, i - span):i] if p.text.strip())
+    after = " ".join(p.text.strip() for p in paras[i + 1:i + 1 + span] if p.text.strip())
+    return {"before": before[-120:], "after": after[:120]}
 
 
 # ---------- tables ----------
@@ -114,31 +142,36 @@ def set_table_header_row(table):
         trPr.append(tr.makeelement(qn("w:tblHeader"), {}))
 
 
+def _table_preview(table):
+    try:
+        return [c.text.strip()[:30] for c in table.rows[0].cells][:6]
+    except Exception:
+        return []
+
+
 # ---------- scan ----------
 
-def scan(path, workdir):
+def scan_report(path, workdir):
+    """Scan one document. Writes images and report.json under workdir, returns the report."""
     doc = Document(path)
     os.makedirs(os.path.join(workdir, "images"), exist_ok=True)
-    issues, images, faux = [], [], []
+    issues, images, faux, tables = [], [], [], []
 
     for idx, docPr, blip in iter_drawings(doc):
         alt = (docPr.get("descr") or "").strip()
         key = "img%d" % idx
         blob, ext = get_image_blob(doc, blip)
         img_path = None
+        digest = None
         if blob:
             img_path = os.path.join(workdir, "images", "%s.%s" % (key, ext or "png"))
             with open(img_path, "wb") as f:
                 f.write(blob)
-        problem = None
-        if not alt:
-            problem = "image missing alt"
-        elif FILENAME_RX.search(alt) or (" " not in alt and "." in alt):
-            problem = "alt is a filename: %r" % alt[:40]
-        elif len(alt) > MAX_ALT:
-            problem = "alt too long (%d chars)" % len(alt)
-        images.append({"key": key, "path": img_path, "current_alt": alt,
-                       "name": docPr.get("name") or ""})
+            digest = hashlib.sha1(blob).hexdigest()
+        problem = alt_problem(alt)
+        images.append({"key": key, "path": img_path, "ext": ext or "", "hash": digest,
+                       "current_alt": alt, "needs_alt": bool(problem),
+                       "decorative": False, "name": docPr.get("name") or ""})
         if problem:
             issues.append({"type": problem.split(":")[0], "detail": problem, "key": key})
 
@@ -156,46 +189,66 @@ def scan(path, workdir):
         prev = lv
     for i, p in enumerate(paras):
         if looks_like_faux_heading(p):
-            faux.append({"index": i, "text": p.text.strip()[:70]})
+            faux.append({"index": i, "text": p.text.strip()[:70], **_context(paras, i)})
 
     for t_i, table in enumerate(doc.tables):
-        if not table_has_header_row(table):
+        has_header = table_has_header_row(table)
+        tables.append({"index": t_i, "header_row": has_header, "rows": len(table.rows),
+                       "cols": len(table.columns), "first_row": _table_preview(table)})
+        if not has_header:
             issues.append({"type": "table missing header row",
                            "detail": "table %d: first row not marked w:tblHeader" % t_i})
 
     report = {"doc": os.path.basename(path), "paragraphs": len(paras),
-              "issues": issues, "images": images, "faux_heading_candidates": faux}
+              "issues": issues, "hard_issues": len(issues), "report_only": 0,
+              "images": images, "faux_heading_candidates": faux, "tables": tables}
     rp = os.path.join(workdir, "report.json")
     with open(rp, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1)
+    return report
+
+
+def scan(path, workdir):
+    """CLI form of scan_report: prints the summary, returns an exit code."""
+    report = scan_report(path, workdir)
     print("SCAN %s: %d issues, %d image(s), %d faux-heading candidate(s)"
-          % (report["doc"], len(issues), len(images), len(faux)))
-    for x in issues:
+          % (report["doc"], len(report["issues"]), len(report["images"]),
+             len(report["faux_heading_candidates"])))
+    for x in report["issues"]:
         print("  %s - %s" % (x["type"], x["detail"]))
-    for c in faux:
+    for c in report["faux_heading_candidates"]:
         print("  [candidate heading] par %d: %r" % (c["index"], c["text"]))
-    print("report: %s" % rp)
+    print("report: %s" % os.path.join(workdir, "report.json"))
     return 0
 
 
 # ---------- apply ----------
 
-def apply_fixes(path, workdir, out):
-    with open(os.path.join(workdir, "fixes.json"), encoding="utf-8") as f:
-        fixes = json.load(f)
-    alts = fixes.get("alts", {})
-    headings = {int(k): int(v) for k, v in fixes.get("headings", {}).items()}
+def clip_alt(val):
+    val = (val or "").strip()
+    if len(val) > MAX_ALT:
+        val = val[:MAX_ALT - 1].rstrip() + "."
+    return val
+
+
+def apply(path, fixes, out):
+    """Write a remediated copy of `path` to `out` from a fixes dict. Returns counts."""
+    alts = fixes.get("alts", {}) or {}
+    headings = {}
+    for k, v in (fixes.get("headings", {}) or {}).items():
+        try:
+            if v not in (None, "", 0, "0"):
+                headings[int(k)] = int(v)
+        except (TypeError, ValueError):
+            continue
     fix_tables = fixes.get("table_headers", True)
 
     doc = Document(path)
     n_alt = n_head = n_tbl = 0
     for idx, docPr, _blip in iter_drawings(doc):
         key = "img%d" % idx
-        if key in alts:
-            val = alts[key].strip()
-            if len(val) > MAX_ALT:
-                val = val[:MAX_ALT - 1].rstrip() + "."
-            docPr.set("descr", val)
+        if key in alts and alts[key] is not None:
+            docPr.set("descr", clip_alt(alts[key]))
             n_alt += 1
     for i, lv in headings.items():
         if 0 <= i < len(doc.paragraphs) and 1 <= lv <= 4:
@@ -207,17 +260,109 @@ def apply_fixes(path, workdir, out):
                 set_table_header_row(table)
                 n_tbl += 1
     doc.save(out)
+    return {"alts": n_alt, "headings": n_head, "table_headers": n_tbl, "out": str(out)}
+
+
+def apply_fixes(path, workdir, out):
+    """CLI form of apply: reads workdir/fixes.json, prints, returns an exit code."""
+    with open(os.path.join(workdir, "fixes.json"), encoding="utf-8") as f:
+        fixes = json.load(f)
+    res = apply(path, fixes, out)
     print("APPLY: %d alt(s), %d heading promotion(s), %d table header row(s) -> %s"
-          % (n_alt, n_head, n_tbl, out))
+          % (res["alts"], res["headings"], res["table_headers"], out))
     return 0
 
 
+# ---------- verify ----------
+
+def _image_hashes(doc):
+    out = []
+    for _idx, _docPr, blip in iter_drawings(doc):
+        blob, _ext = get_image_blob(doc, blip)
+        if blob:
+            out.append(hashlib.sha1(blob).hexdigest())
+    return sorted(out)
+
+
+def verify(original, fixed, fixes=None, workdir=None):
+    """Prove the fixed document is the original plus the requested fixes.
+
+    Checks: opens; the paragraph text is identical, paragraph for paragraph (a
+    heading promotion changes a style, never a word); the tables and pictures
+    are the same; every alt asked for landed; every promotion asked for landed.
+    `remaining` lists what a second scan still flags; it is reported, not fatal.
+    """
+    fixes = fixes or {}
+    checks = {}
+    problems = []
+    tmp = None
+    try:
+        try:
+            orig = Document(original)
+            new = Document(fixed)
+            checks["opens"] = True
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "checks": {"opens": False}, "remaining": [],
+                    "remaining_hard": None, "report_only": [],
+                    "problems": ["the fixed file does not open: %s" % exc]}
+        a = [p.text for p in orig.paragraphs]
+        b = [p.text for p in new.paragraphs]
+        checks["text_identical"] = a == b
+        if a != b:
+            problems.append("paragraph text differs after the fix")
+        checks["tables_same"] = len(orig.tables) == len(new.tables) and all(
+            [[c.text for c in r.cells] for r in t1.rows] == [[c.text for c in r.cells] for r in t2.rows]
+            for t1, t2 in zip(orig.tables, new.tables))
+        if not checks["tables_same"]:
+            problems.append("table contents differ after the fix")
+        checks["images_same"] = _image_hashes(orig) == _image_hashes(new)
+        if not checks["images_same"]:
+            problems.append("the set of pictures changed")
+
+        wanted = {k: clip_alt(v) for k, v in (fixes.get("alts") or {}).items() if v is not None}
+        missing = []
+        for idx, docPr, _blip in iter_drawings(new):
+            key = "img%d" % idx
+            if key in wanted and (docPr.get("descr") or "").strip() != wanted[key]:
+                missing.append(key)
+        checks["alts_landed"] = not missing
+        if missing:
+            problems.append("alt text did not land on: " + ", ".join(missing[:8]))
+
+        bad_heads = []
+        for k, v in (fixes.get("headings") or {}).items():
+            try:
+                i, lv = int(k), int(v)
+            except (TypeError, ValueError):
+                continue
+            if lv < 1 or i < 0 or i >= len(new.paragraphs):
+                continue
+            if heading_level(new.paragraphs[i]) != lv:
+                bad_heads.append(str(i))
+        checks["headings_landed"] = not bad_heads
+        if bad_heads:
+            problems.append("heading promotions did not land on paragraphs " + ", ".join(bad_heads))
+
+        if workdir is None:
+            tmp = tempfile.mkdtemp(prefix="docx_verify_")
+        report = scan_report(fixed, workdir or tmp)
+        remaining = list(report["issues"])
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return {"ok": all(checks.values()), "checks": checks, "problems": problems,
+            "remaining": remaining, "remaining_hard": len(remaining), "report_only": []}
+
+
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["scan", "apply", "verify"])
     ap.add_argument("doc")
     ap.add_argument("--workdir", default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--original", default=None,
+                    help="verify: the document the fixed one was made from")
     a = ap.parse_args()
     if a.cmd == "scan":
         return scan(a.doc, a.workdir or a.doc + ".work")
@@ -225,8 +370,20 @@ def main():
         if not a.out:
             ap.error("--out required for apply")
         return apply_fixes(a.doc, a.workdir or a.doc + ".work", a.out)
-    import shutil
-    import tempfile
+    if a.original:
+        fixes = {}
+        fx = os.path.join(a.workdir or a.original + ".work", "fixes.json")
+        if os.path.isfile(fx):
+            with open(fx, encoding="utf-8") as f:
+                fixes = json.load(f)
+        res = verify(a.original, a.doc, fixes)
+        print("VERIFY %s: %s" % (os.path.basename(a.doc), "ok" if res["ok"] else "FAILED"))
+        for k, v in res["checks"].items():
+            print("  %-16s %s" % (k, "yes" if v else "NO"))
+        for p in res["problems"]:
+            print("  problem: %s" % p)
+        print("  %d issue(s) remain" % res["remaining_hard"])
+        return 0 if res["ok"] else 2
     tmp = None if a.workdir else tempfile.mkdtemp(prefix="docx_verify_")
     try:
         return scan(a.doc, a.workdir or tmp)

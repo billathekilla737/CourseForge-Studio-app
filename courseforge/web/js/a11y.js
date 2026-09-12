@@ -1,0 +1,433 @@
+/* a11y.js: the Accessibility area.
+
+   Renders the kind tabs (HTML, PowerPoint, Word, PDFs, PDF text, Office text),
+   owns the HTML gateway (fetch, restyle, verify, push, restore, and the two
+   markup sweeps), and delegates the other kinds to docs.js and pdf.js through
+   Studio.a11yKinds. Also #/batch, the cross-course run.
+
+   Everything that writes goes through runJobConfirmed: the server refuses the
+   first attempt with a sentence, the page shows it as-is, and the token only
+   spends on that exact change. */
+(function () {
+  'use strict';
+
+  window.Studio = window.Studio || {};
+  Studio.a11yKinds = Studio.a11yKinds || {};
+  S.a11y = S.a11y || {};
+
+  const KINDS = [
+    { id: 'html', label: 'HTML' },
+    { id: 'pptx', label: 'PowerPoint' },
+    { id: 'docx', label: 'Word' },
+    { id: 'pdf', label: 'PDFs' },
+    { id: 'pdf-text', label: 'PDF text' },
+    { id: 'office-text', label: 'Office text' },
+  ];
+  const LOOKS = [
+    { id: 'clean', label: 'Clean', hint: 'No background fills. Navy headings and borders only. Scores 0 use-of-colour advisories in Ally.' },
+    { id: 'hybrid', label: 'Hybrid', hint: 'Filled navy hero and footer. Adds advisory colour flags, about 2 per page.' },
+    { id: 'rich', label: 'Rich', hint: 'Every component filled. Adds advisory colour flags, up to 7 per page.' },
+  ];
+
+  const has = name => typeof window[name] === 'function';
+  const base = cid => '/a11y/' + encodeURIComponent(cid) + '/html';
+  const fmtSize = n => (n == null ? '' : (n < 1024 ? n + ' B' : (n / 1024).toFixed(1) + ' KB'));
+
+  function pillHtml(text, cls) {
+    if (has('pill')) return pill(text, cls);
+    return '<span class="pill ' + esc(cls || '') + '">' + esc(text) + '</span>';
+  }
+
+  function mountEmpty(host, text, buttonLabel, onClick) {
+    if (has('emptyState')) {
+      const out = emptyState(text, buttonLabel, onClick);
+      if (typeof out === 'string') {
+        host.innerHTML = out;
+        const b = host.querySelector('button');
+        if (b && onClick) b.onclick = onClick;
+      } else if (out instanceof Node) {
+        host.innerHTML = '';
+        host.appendChild(out);
+      }
+      return;
+    }
+    host.innerHTML = '<div class="emptyState"><p>' + esc(text) + '</p>'
+      + (buttonLabel ? '<button class="btn primary">' + esc(buttonLabel) + '</button>' : '') + '</div>';
+    const b = host.querySelector('button');
+    if (b && onClick) b.onclick = onClick;
+  }
+
+  function modal(html) {
+    if (has('openModal')) { openModal(html); return $('#modalHost'); }
+    const host = $('#modalHost');
+    host.innerHTML = '<div class="modalBack"><div class="modal">' + html + '</div></div>';
+    return host;
+  }
+  function closeTheModal() {
+    if (has('closeModal')) closeModal(); else $('#modalHost').innerHTML = '';
+  }
+
+  /* ------------------------------------------------------------- the area */
+  function openA11y(cid, rest) {
+    rest = Array.isArray(rest) ? rest : [];
+    const kind = rest[0] || 'html';
+    S.a11y.courseId = cid;
+    showView('area');
+    crumbs([
+      { label: 'Courses', href: '#/' },
+      { label: (S.course && S.course.name) || S.a11y.courseLabel || 'Course', href: '#/c/' + cid },
+      { label: 'Accessibility' },
+    ]);
+    $('#headerActions').innerHTML = '';
+    areaHead('Accessibility', 'Fetch, restyle, verify, push. Visible text never changes.');
+    areaTabs(KINDS.map(k => ({ id: k.id, label: k.label })), kind, id => {
+      if (id !== kind) location.hash = '#/c/' + cid + '/a11y/' + id;
+    });
+    const body = $('#areaBody');
+    if (kind === 'html') return openHtml(cid, body);
+    const opener = Studio.a11yKinds[kind];
+    if (typeof opener === 'function') return opener(cid, rest.slice(1));
+    const label = (KINDS.find(k => k.id === kind) || {}).label || kind;
+    body.innerHTML = '';
+    mountEmpty(body, 'The ' + label + ' fixer is not installed in this build, so there is nothing to '
+      + 'do here yet. Nothing has been pushed.', null, null);
+  }
+
+  /* --------------------------------------------------------- HTML gateway */
+  function openHtml(cid, body) {
+    body.innerHTML = '<div class="a11yVerbs" id="a11yVerbs"></div><div id="a11yGateway"></div>';
+    renderVerbs(cid);
+    const host = $('#a11yGateway');
+    if (!has('renderGateway')) {
+      host.innerHTML = '<div class="callout">The shared gateway component (components.js) is not '
+        + 'loaded, so the steps cannot be shown. The command line still works: '
+        + '<code>python -m courseforge a11y dump --course ' + esc(cid) + '</code></div>';
+      return;
+    }
+    renderGateway(host, {
+      kind: 'html',
+      courseId: cid,
+      label: 'HTML bodies',
+      endpoints: {
+        state: base(cid) + '/state',
+        list: base(cid) + '/list',
+        fetch: base(cid) + '/fetch',
+        describe: null,
+        fixes: base(cid) + '/fixes',
+        push: base(cid) + '/push',
+      },
+      listColumns: [
+        { id: 'title', label: 'Name' },
+        { id: 'kind', label: 'Type' },
+        { id: 'size', label: 'Size', format: fmtSize },
+        { id: 'modified', label: 'Modified', format: v => (has('fmtDate') ? fmtDate(v) : (v || '')) },
+        { id: 'state', label: 'State' },
+      ],
+      reviewRenderer: renderHtmlReview,
+      confirmTitle: 'Replace these bodies in Canvas?',
+      describeLabel: null,
+      fetchLabel: 'Fetch & scan',
+      applyLabel: 'Apply',
+      emptyText: 'Fetch reads every page, assignment, discussion and quiz body plus the syllabus '
+        + 'into a local folder and scans them. Nothing is pushed.',
+    });
+  }
+
+  function renderVerbs(cid) {
+    const host = $('#a11yVerbs');
+    if (!host) return;
+    host.innerHTML = ''
+      + '<button class="btn" id="a11yBold" title="Report wholly-bold paragraphs by class; remedies are opt-in">Bold used as structure</button>'
+      + '<button class="btn" id="a11yBoxes" title="Find inline bordered-box spans; dry run first">Bordered boxes</button>'
+      + '<span class="spacer"></span>'
+      + '<button class="btn danger" id="a11yRestore" title="Put back the bodies the last push replaced">Restore previous bodies</button>';
+    $('#a11yBold').onclick = () => runBold(cid, {}, false);
+    $('#a11yBoxes').onclick = () => runBoxes(cid, false);
+    $('#a11yRestore').onclick = () => runRestore(cid);
+  }
+
+  function refreshHtml(cid) {
+    // Never location.reload(): re-run the opener.
+    if (location.hash.indexOf('#/c/' + cid + '/a11y') === 0) openA11y(cid, ['html']);
+  }
+
+  /* ---------------------------------------------------------- the review */
+  function verifyLine(state) {
+    if (!state.verified_at) return state.transformed_at ? 'Restyled, not verified yet.' : 'Not restyled yet.';
+    const c = state.counts || {};
+    return 'Verified ' + (has('fmtDate') ? fmtDate(state.verified_at) : state.verified_at)
+      + ' (' + state.look + ' look): ' + (c.verified || 0) + ' pass'
+      + (c.failed ? ', ' + c.failed + ' fail and will not be pushed' : '') + '.';
+  }
+
+  function lookCard(l, current) {
+    const on = l.id === current;
+    return '<button type="button" class="a11yLook" role="radio" aria-checked="' + on + '" data-look="' + l.id + '">'
+      + '<b>' + esc(l.label) + '</b>' + (l.id === 'clean' ? ' <span class="pill">default</span>' : '')
+      + '<div class="hint">' + esc(l.hint) + '</div></button>';
+  }
+
+  function itemRow(it, selected) {
+    const v = it.verify;
+    let pills;
+    if (it.excluded) pills = pillHtml('left alone', 'warn');
+    else if (!v) pills = pillHtml('not verified', 'muted');
+    else if (v.ok) pills = pillHtml('text identical', 'ok') + pillHtml('links unchanged', 'ok') + pillHtml('images unchanged', 'ok');
+    else pills = v.issues.map(x => pillHtml(x, 'err')).join('') + pillHtml('excluded from push', 'warn');
+    return '<div class="a11yItem" role="option" aria-selected="' + (selected ? 'true' : 'false') + '" data-key="' + esc(it.key) + '">'
+      + '<button type="button" class="a11yItemBtn" data-key="' + esc(it.key) + '">' + esc(it.title || it.key) + '</button>'
+      + ' <span class="pill">' + esc(it.kind) + '</span>'
+      + (it.transform_note === 'wrapped' ? ' <span class="pill">heading added</span>' : '')
+      + (it.pushed ? ' <span class="pill ok">pushed</span>' : '')
+      + '<div class="a11yPills">' + pills + '</div>'
+      + '<label class="a11yExcludeLbl"><input type="checkbox" class="a11yExclude" data-key="' + esc(it.key) + '"'
+      + (it.excluded ? ' checked' : '') + '> Leave this one alone</label>'
+      + '</div>';
+  }
+
+  function renderHtmlReview(host, state) {
+    state = state || {};
+    const cid = state.course_id || S.a11y.courseId;
+    S.a11y.reviewHost = host;
+    S.a11y.courseLabel = state.course_label || S.a11y.courseLabel;
+    const look = S.a11y.look || state.look || state.default_look || 'clean';
+    S.a11y.look = look;
+    const items = (state.items || []).filter(it => it.fetched);
+    const styled = items.filter(it => it.styled);
+    const selectedKey = (S.a11y.selected && styled.some(i => i.key === S.a11y.selected))
+      ? S.a11y.selected : (styled[0] && styled[0].key);
+
+    host.innerHTML = ''
+      + '<div class="a11yLooks" role="radiogroup" aria-label="Look">' + LOOKS.map(l => lookCard(l, look)).join('') + '</div>'
+      + (look !== 'clean'
+        ? '<div class="callout a11yWarn">The ' + esc(look) + ' look adds background fills, and Ally raises an '
+          + 'advisory "use of colour" flag on every fill (about ' + (look === 'hybrid' ? '2' : '7')
+          + ' per page). It lowers the score until each one is reviewed in Ally. Pick Clean for a compliance-driven pass.</div>'
+        : '')
+      + '<div class="a11yVerbs">'
+      + '<button class="btn primary" id="a11yRestyle"' + (items.length ? '' : ' disabled title="Fetch first"') + '>Restyle &amp; verify (' + esc(look) + ')</button>'
+      + '<span class="hint" id="a11yVerifyLine">' + esc(verifyLine(state)) + '</span>'
+      + '</div>'
+      + '<div class="a11yReview">'
+      + '<div class="a11yItems" role="listbox" aria-label="Restyled items" id="a11yItems">'
+      + (styled.length ? styled.map(it => itemRow(it, it.key === selectedKey)).join('')
+        : '<div class="a11yNone">Nothing restyled yet. Pick a look and click Restyle &amp; verify. Nothing is pushed.</div>')
+      + '</div>'
+      + '<div class="a11yPanesWrap"><div id="a11yPanes" class="a11yPanes"><div class="a11yNone">Select an item to compare before and after.</div></div></div>'
+      + '</div>';
+
+    host.querySelectorAll('.a11yLook').forEach(el => {
+      el.onclick = () => { S.a11y.look = el.dataset.look; renderHtmlReview(host, state); };
+    });
+    const restyleBtn = host.querySelector('#a11yRestyle');
+    if (restyleBtn) restyleBtn.onclick = () => runJob('Restyle & verify (' + S.a11y.look + ' look)',
+      () => api(base(cid) + '/transform', { body: { look: S.a11y.look } }),
+      res => {
+        const v = (res && res.verify) || {};
+        setStatus('verified ' + (v.count || 0) + ' items, ' + (v.fails || 0) + ' failing; nothing pushed', v.fails ? 'err' : 'ok');
+        renderHtmlReview(host, (res && res.state) || state);
+      });
+    host.querySelectorAll('.a11yItemBtn').forEach(btn => {
+      btn.onclick = () => showItem(cid, btn.dataset.key, host);
+    });
+    host.querySelectorAll('.a11yExclude').forEach(cb => {
+      cb.onchange = async () => {
+        try {
+          const st = await api(base(cid) + '/fixes', { body: { key: cb.dataset.key, excluded: cb.checked } });
+          renderHtmlReview(host, st);
+        } catch (err) { setStatus(err.message, 'err'); }
+      };
+    });
+    if (selectedKey) showItem(cid, selectedKey, host);
+  }
+
+  async function showItem(cid, key, host) {
+    S.a11y.selected = key;
+    host.querySelectorAll('.a11yItem').forEach(el => el.setAttribute('aria-selected', String(el.dataset.key === key)));
+    const panes = host.querySelector('#a11yPanes');
+    if (!panes) return;
+    panes.innerHTML = '<div class="a11yNone">Loading the before and after...</div>';
+    const q = which => api(base(cid) + '/item/' + encodeURIComponent(key) + '?which=' + which).catch(err => ({ error: err.message }));
+    const [before, after] = await Promise.all([q('before'), q('after')]);
+    if (S.a11y.selected !== key) return;
+    const pane = (title, r) => '<section><h4>' + esc(title)
+      + (r && r.chars != null ? ' <span class="hint">' + esc(fmtSize(r.chars)) + '</span>' : '') + '</h4>'
+      + '<div class="paperFrame"><div class="canvasHtml asIs">'
+      + (r && !r.error ? (r.html || '<p class="hint">(empty)</p>') : '<p class="hint">' + esc((r && r.error) || 'not available') + '</p>')
+      + '</div></div>'
+      + (r && r.issues && r.issues.length ? '<div class="a11yPills">' + r.issues.map(x => pillHtml(x, 'warn')).join('') + '</div>' : '')
+      + '</section>';
+    panes.innerHTML = pane('Before', before) + pane('After', after);
+  }
+
+  /* ------------------------------------------------------------- restore */
+  function runRestore(cid) {
+    runJobConfirmed('Restore previous bodies',
+      token => api(base(cid) + '/restore', { body: { apply: true, confirm: token } }),
+      res => {
+        setStatus('restored ' + (res.written_count || 0) + ' bodies'
+          + (res.live_fails ? ', ' + res.live_fails + ' live check(s) failed' : ''), res.live_fails ? 'err' : 'ok');
+        refreshHtml(cid);
+      },
+      { title: 'Put the previous bodies back?', verb: 'Yes, restore them' });
+  }
+
+  /* ---------------------------------------------------- bold as structure */
+  function runBold(cid, options, apply) {
+    const start = token => api(base(cid) + '/bold-structure', { body: { apply: !!apply, options: options || {}, confirm: token } });
+    const done = res => showBoldReport(cid, res, options || {});
+    if (apply) runJobConfirmed('Bold used as structure: apply', start, done, { title: 'Change this markup in Canvas?' });
+    else runJob('Bold used as structure: ' + (hasRemedy(options) ? 'dry run' : 'report'), () => start(null), done);
+  }
+  const hasRemedy = o => !!(o && (o.promote_labels || o.unbold_sentences || o.convert_code_runs));
+
+  function showBoldReport(cid, res, options) {
+    res = res || {};
+    const c = res.counts || {};
+    const items = res.items || [];
+    const changes = res.changes || [];
+    const applied = res.dry_run === false;
+    const rows = items.map(it => '<tr><th scope="row">' + esc(it.label) + '</th><td>'
+      + (it.hits || []).map(h => '<div><span class="pill ' + esc(h.cls) + '">' + esc(h.cls) + '</span> ' + esc(h.text.length > 70 ? h.text.slice(0, 70) + '...' : h.text) + '</div>').join('')
+      + (it.made && it.made.length ? '<div class="hint">' + it.made.map(esc).join('<br>') + '</div>' : '')
+      + (it.skipped_reason ? '<div class="hint">' + esc(it.skipped_reason) + '</div>' : '')
+      + '</td></tr>').join('');
+    const labels = (options.labels && options.labels.length) ? options.labels : (res.options && res.options.labels) || [];
+    const host = modal(''
+      + '<h3>Bold used as structure</h3>'
+      + '<p class="hint">' + esc((res.hit_count || 0) + ' wholly-bold paragraphs: ' + (c.label || 0) + ' labels, '
+        + (c.sentence || 0) + ' sentences, ' + (c.code || 0) + ' code, ' + (c.unclassified || 0) + ' unclassified.')
+      + (applied ? ' Changed ' + (res.written_count || 0) + ' item(s).' : ' Nothing has been written.') + '</p>'
+      + '<div class="a11yOptions">'
+      + '<label><input type="checkbox" id="boPromote"' + (options.promote_labels ? ' checked' : '') + '> Promote allowlisted labels to real h3 headings</label>'
+      + '<label><input type="checkbox" id="boUnbold"' + (options.unbold_sentences ? ' checked' : '') + '> Drop the blanket bold on instruction sentences</label>'
+      + '<label><input type="checkbox" id="boCode"' + (options.convert_code_runs ? ' checked' : '') + '> Collapse bolded code into one code block</label>'
+      + '<label>Label allowlist (one regex per line)<textarea id="boLabels" rows="3">' + esc(labels.join('\n')) + '</textarea></label>'
+      + '</div>'
+      + (changes.length && !applied ? '<div class="applyList">' + changes.map(ch => '<div class="planned"><b>' + esc(ch.label) + '</b> ' + esc(ch.from) + ' -&gt; ' + esc(ch.to) + '</div>').join('') + '</div>' : '')
+      + '<div class="a11yTableWrap"><table class="a11yTable"><caption>Hits by item</caption><thead><tr><th scope="col">Item</th><th scope="col">Paragraphs</th></tr></thead><tbody>'
+      + (rows || '<tr><td colspan="2">No wholly-bold paragraphs found.</td></tr>') + '</tbody></table></div>'
+      + '<div class="foot"><span class="spacer"></span>'
+      + '<button class="btn" id="boClose">Close</button>'
+      + '<button class="btn primary" id="boDry">Dry run with these options</button>'
+      + (changes.length && !applied ? '<button class="btn danger" id="boApply">Apply ' + changes.length + ' change(s)</button>' : '')
+      + '</div>');
+    const read = () => ({
+      promote_labels: host.querySelector('#boPromote').checked,
+      unbold_sentences: host.querySelector('#boUnbold').checked,
+      convert_code_runs: host.querySelector('#boCode').checked,
+      labels: host.querySelector('#boLabels').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+    });
+    host.querySelector('#boClose').onclick = closeTheModal;
+    host.querySelector('#boDry').onclick = () => { const o = read(); closeTheModal(); runBold(cid, o, false); };
+    const ap = host.querySelector('#boApply');
+    if (ap) ap.onclick = () => { const o = read(); closeTheModal(); runBold(cid, o, true); };
+  }
+
+  /* -------------------------------------------------------- bordered boxes */
+  function runBoxes(cid, apply) {
+    const start = token => api(base(cid) + '/bordered-boxes', { body: { apply: !!apply, confirm: token } });
+    const done = res => showBoxesPlan(cid, res);
+    if (apply) runJobConfirmed('Bordered boxes: apply', start, done, { title: 'Remove these bordered boxes in Canvas?' });
+    else runJob('Bordered boxes: dry run', () => start(null), done);
+  }
+
+  function showBoxesPlan(cid, res) {
+    res = res || {};
+    const items = res.items || [];
+    const skipped = res.skipped || [];
+    const applied = res.dry_run === false;
+    const host = modal(''
+      + '<h3>Inline bordered boxes</h3>'
+      + '<p class="hint">' + esc((res.box_count || 0) + ' bordered-box span(s) (' + (res.color || '') + ') in ' + items.length + ' item(s).')
+      + (applied ? ' Removed ' + (res.boxes_removed || 0) + ' from ' + (res.written_count || 0) + ' item(s).' : ' Nothing has been written.') + '</p>'
+      + '<div class="applyList">'
+      + (items.length ? items.map(it => '<div class="planned"><b>' + esc(it.label) + '</b> ' + it.boxes + ' box(es) -&gt; ' + it.boxes_after + '</div>').join('')
+        : '<div class="hint">No inline bordered boxes found.</div>')
+      + (skipped.length ? '<h4>Left alone</h4>' + skipped.map(it => '<div class="planned"><b>' + esc(it.label) + '</b> ' + esc(it.skipped_reason) + '</div>').join('') : '')
+      + '</div>'
+      + '<div class="foot"><span class="spacer"></span><button class="btn" id="bbClose">Close</button>'
+      + (items.length && !applied ? '<button class="btn danger" id="bbApply">Remove ' + res.box_count + ' box(es)</button>' : '')
+      + '</div>');
+    host.querySelector('#bbClose').onclick = closeTheModal;
+    const ap = host.querySelector('#bbApply');
+    if (ap) ap.onclick = () => { closeTheModal(); runBoxes(cid, true); };
+  }
+
+  /* --------------------------------------------------------------- batch */
+  async function openBatch() {
+    showView('area');
+    crumbs([{ label: 'Courses', href: '#/' }, { label: 'Batch accessibility' }]);
+    $('#headerActions').innerHTML = '';
+    areaHead('Batch accessibility', 'Fetch, restyle, verify and push several courses in one run. Dry run first; nothing is pushed until you confirm.');
+    if (has('areaTabs')) areaTabs([], null, null);
+    const body = $('#areaBody');
+    body.innerHTML = '<div class="hint">Loading your courses...</div>';
+    let courses = [];
+    try {
+      const got = (S.courses && S.courses.length) ? S.courses : await api('/courses');
+      courses = Array.isArray(got) ? got : (got && got.courses) || [];
+    } catch (err) {
+      body.innerHTML = '<div class="callout">Could not load the course list: ' + esc(err.message) + '</div>';
+      return;
+    }
+    const last = await api('/batch/a11y').catch(() => null);
+    const look = S.a11y.batchLook || 'clean';
+    const picked = new Set(S.a11y.batchPicked || []);
+    body.innerHTML = ''
+      + '<div class="a11yBatch">'
+      + '<section><h3>Courses</h3><div class="a11yCourseList">'
+      + courses.filter(c => !c.excluded).map(c => '<label class="a11yCourse"><input type="checkbox" class="a11yPick" value="' + esc(String(c.id)) + '"'
+        + (picked.has(String(c.id)) ? ' checked' : '') + '> ' + esc(c.name || c.id) + (c.term_label ? ' <span class="pill">' + esc(c.term_label) + '</span>' : '') + '</label>').join('')
+      + '</div></section>'
+      + '<section><h3>Look</h3><div class="a11yLooks" role="radiogroup" aria-label="Look">' + LOOKS.map(l => lookCard(l, look)).join('') + '</div>'
+      + (look !== 'clean' ? '<div class="callout a11yWarn">The ' + esc(look) + ' look adds advisory colour flags in Ally on every filled element.</div>' : '')
+      + '<div class="a11yVerbs">'
+      + '<button class="btn primary" id="batchDry">Dry run</button>'
+      + '<button class="btn danger" id="batchApply" title="Runs the dry run again, then asks before pushing">Apply to every course that passes verify</button>'
+      + '</div></section>'
+      + '<section id="batchResult"></section>'
+      + '</div>';
+    body.querySelectorAll('.a11yLook').forEach(el => { el.onclick = () => { S.a11y.batchLook = el.dataset.look; openBatch(); }; });
+    const pickedIds = () => Array.from(body.querySelectorAll('.a11yPick:checked')).map(el => el.value);
+    body.querySelectorAll('.a11yPick').forEach(el => { el.onchange = () => { S.a11y.batchPicked = pickedIds(); }; });
+    const result = $('#batchResult');
+    if (last && last.rows && last.rows.length) renderBatchSummary(result, last, true);
+    $('#batchDry').onclick = () => {
+      const ids = pickedIds();
+      if (!ids.length) { setStatus('pick at least one course', 'err'); return; }
+      runJob('Batch accessibility: dry run', () => api('/batch/a11y', { body: { course_ids: ids, look: S.a11y.batchLook || 'clean', apply: false } }),
+        res => renderBatchSummary(result, res, false));
+    };
+    $('#batchApply').onclick = () => {
+      const ids = pickedIds();
+      if (!ids.length) { setStatus('pick at least one course', 'err'); return; }
+      runJobConfirmed('Batch accessibility: apply',
+        token => api('/batch/a11y', { body: { course_ids: ids, look: S.a11y.batchLook || 'clean', apply: true, confirm: token } }),
+        res => renderBatchSummary(result, res, false),
+        { title: 'Push the restyled bodies to these courses?' });
+    };
+  }
+
+  function renderBatchSummary(host, s, previous) {
+    if (!host) return;
+    const rows = (s && s.rows) || [];
+    host.innerHTML = '<h3>' + (previous ? 'Last run' : 'Result') + ' <span class="hint">' + esc((s.ran_at ? (has('fmtDate') ? fmtDate(s.ran_at) : s.ran_at) : '') + ' (' + (s.look || '') + ' look, ' + (s.applied ? 'applied' : 'dry run, nothing written') + ')') + '</span></h3>'
+      + '<div class="a11yTableWrap"><table class="a11yTable"><caption>One row per course</caption><thead><tr>'
+      + ['Course', 'Items', 'Styled', 'Wrapped', 'Skipped', 'Fills', 'Verify', 'Push', 'Error'].map(h => '<th scope="col">' + h + '</th>').join('')
+      + '</tr></thead><tbody>'
+      + rows.map(r => '<tr><th scope="row">' + esc(r.name || r.course) + ' <span class="hint">' + esc(String(r.course)) + '</span></th><td>' + r.items + '</td><td>' + r.styled + '</td><td>' + r.wrapped + '</td><td>' + r.skipped + '</td><td>' + r.fills + '</td>'
+        + '<td>' + pillHtml(r.verify, r.verify === 'PASS' ? 'ok' : (r.verify === '-' ? 'muted' : 'err')) + '</td><td>' + esc(r.push) + '</td><td>' + esc(r.error || '') + '</td></tr>').join('')
+      + '</tbody></table></div>';
+  }
+
+  /* ------------------------------------------------------------ register */
+  window.openBatch = openBatch;
+  window.openA11y = openA11y;
+  if (has('registerArea')) {
+    registerArea({
+      id: 'a11y', label: 'Accessibility', zone: 'a11y', open: openA11y,
+      badge: hub => (hub && hub.a11y && hub.a11y.badge != null) ? hub.a11y.badge : null,
+    });
+  }
+})();

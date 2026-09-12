@@ -1,0 +1,58 @@
+/* a11y.css: styles only the Accessibility area uses. Zone colour appears in
+   the tab underline, the area head rule and the one primary button, which the
+   shared shell paints; nothing here adds a fourth place. Tokens fall back to
+   plain values so the area renders even before the shell defines them. */
+
+.a11yVerbs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
+.a11yVerbs .hint{font-size:12.5px;color:var(--muted,#4b5563)}
+
+.a11yLooks{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:0 0 12px}
+.a11yLook{text-align:left;font:inherit;color:inherit;background:var(--card,#fff);
+  border:1px solid var(--line,#d7dce3);border-radius:8px;padding:10px 12px;cursor:pointer}
+.a11yLook[aria-checked="true"]{border-color:var(--zone,#0f766e);box-shadow:inset 0 0 0 1px var(--zone,#0f766e)}
+.a11yLook:focus-visible{outline:2px solid var(--zone,#0f766e);outline-offset:2px}
+.a11yLook .hint{display:block;margin-top:4px;font-size:12px;color:var(--muted,#4b5563)}
+.a11yWarn{margin:0 0 12px}
+
+.a11yReview{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:14px;align-items:start}
+.a11yItems{max-height:68vh;overflow:auto;border:1px solid var(--line,#d7dce3);border-radius:8px;background:var(--card,#fff)}
+.a11yItem{padding:8px 10px;border-bottom:1px solid var(--line,#d7dce3)}
+.a11yItem:last-child{border-bottom:0}
+.a11yItem[aria-selected="true"]{background:var(--zone-soft,#e2f3f0)}
+.a11yItemBtn{font:inherit;font-weight:600;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
+.a11yItemBtn:hover{text-decoration:underline}
+.a11yItemBtn:focus-visible{outline:2px solid var(--zone,#0f766e);outline-offset:2px}
+.a11yPills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.a11yExcludeLbl{display:block;margin-top:6px;font-size:12.5px;color:var(--muted,#4b5563)}
+.a11yNone{padding:14px;font-size:13px;color:var(--muted,#4b5563)}
+
+.a11yPanes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.a11yPanes h4{margin:0 0 6px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted,#4b5563)}
+.a11yPanes h4 .hint{text-transform:none;letter-spacing:0;font-weight:400}
+.a11yPanes .paperFrame{border:1px solid var(--line,#d7dce3);border-radius:8px;background:#fff;color:#1f2937;
+  padding:14px;max-height:70vh;overflow:auto}
+/* The panes show the body the way Canvas would: author styles kept. */
+.a11yPanes .canvasHtml.asIs{color:inherit}
+.a11yPanes .canvasHtml.asIs img{max-width:100%;height:auto}
+
+.a11yOptions{display:grid;gap:8px;margin:10px 0}
+.a11yOptions label{display:block;font-size:13.5px}
+.a11yOptions textarea{display:block;width:100%;margin-top:4px;font:12.5px/1.4 ui-monospace,Consolas,monospace}
+.a11yTableWrap{overflow-x:auto;margin:10px 0}
+.a11yTable{width:100%;border-collapse:collapse;font-size:13px}
+.a11yTable caption{text-align:left;font-size:12px;color:var(--muted,#4b5563);padding:0 0 6px}
+.a11yTable th,.a11yTable td{text-align:left;vertical-align:top;padding:6px 8px;border-bottom:1px solid var(--line,#d7dce3)}
+.a11yTable th[scope="row"]{font-weight:600}
+.pill.label,.pill.sentence,.pill.code,.pill.unclassified{font-family:ui-monospace,Consolas,monospace}
+
+.a11yBatch{display:grid;gap:18px}
+.a11yCourseList{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px 14px}
+.a11yCourse{display:flex;gap:8px;align-items:center;font-size:13.5px;padding:4px 0}
+
+@media (max-width:900px){
+  .a11yReview,.a11yPanes{grid-template-columns:1fr}
+  .a11yItems{max-height:40vh}
+}
+@media (prefers-reduced-motion:reduce){
+  .a11yLook{transition:none}
+}

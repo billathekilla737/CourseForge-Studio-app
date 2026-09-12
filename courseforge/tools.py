@@ -276,6 +276,14 @@ def remember_setup(**changes) -> dict:
     return state
 
 
+def forget_setup() -> None:
+    """Throw away the remembered answer so the offer comes back."""
+    try:
+        _setup_path().unlink()
+    except OSError:
+        pass
+
+
 def should_offer_setup(cfg=None) -> dict | None:
     """The first-run offer, or None when there is nothing to say.
 

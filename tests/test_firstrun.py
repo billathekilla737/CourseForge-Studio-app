@@ -188,5 +188,65 @@ class AlreadyInstalled(unittest.TestCase):
             self.assertFalse(tools.detect(self.cfg)["java"]["ok"])
 
 
+class ClosingIsNotAnswering(unittest.TestCase):
+    """Shutting the window must not count as declining the offer.
+
+    The titlebar X used to run the same handler as Not now, so closing the
+    window wrote down a permanent answer. When a layout bug put the buttons out
+    of reach, the X was the only way out -- and taking it silently turned the
+    offer off for good on a machine that had none of the tools.
+    """
+
+    def setUp(self):
+        try:
+            probe = __import__("tkinter").Tk()
+            probe.destroy()
+        except Exception as exc:  # noqa: BLE001
+            self.skipTest(f"no display: {exc}")
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.cfg = Config.load(REPO / "config.example.json")
+        self.patch = mock.patch.object(tools, "_setup_path",
+                                       lambda: self.tmp / "tools-setup.json")
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        self.plan = {"winget": True, "found": {}, "rows": [
+            {"tool": "tesseract", "label": "Tesseract OCR", "how": "winget",
+             "package": "X", "command": "c"}]}
+
+    def _window(self):
+        from courseforge import setup_window
+        win = setup_window.SetupWindow(self.cfg, self.plan)
+        win.root.update()
+        return win
+
+    def test_the_close_box_writes_nothing_down(self):
+        win = self._window()
+        # exactly what the window manager calls when the X is clicked
+        win.root.protocol("WM_DELETE_WINDOW")
+        win._dismiss()
+        self.assertEqual(tools.setup_state(), {}, "closing the window recorded an answer")
+        self.assertEqual(win.answer, "dismissed")
+
+    def test_so_the_offer_comes_back_next_launch(self):
+        self._window()._dismiss()
+        with mock.patch.object(tools, "install_plan", lambda c=None: self.plan):
+            self.assertIsNotNone(tools.should_offer_setup(self.cfg),
+                                 "the offer vanished after the window was merely closed")
+
+    def test_but_not_now_is_an_answer_and_sticks(self):
+        self._window()._skip()
+        self.assertTrue(tools.setup_state().get("asked"))
+        with mock.patch.object(tools, "install_plan", lambda c=None: self.plan):
+            self.assertIsNone(tools.should_offer_setup(self.cfg),
+                              "Not now did not stop it asking again")
+
+    def test_and_the_answer_can_be_thrown_away(self):
+        self._window()._skip()
+        tools.forget_setup()
+        with mock.patch.object(tools, "install_plan", lambda c=None: self.plan):
+            self.assertIsNotNone(tools.should_offer_setup(self.cfg))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

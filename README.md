@@ -48,8 +48,9 @@ Three rules hold everywhere:
   The first launch offers to install the two that have official packages, and
   tells you the two steps for veraPDF. You can decline: everything else works
   without them, and the accessibility area says what is missing where it matters.
-  Later, `python -m courseforge tools` reports the same thing and
-  `python -m courseforge tools --install --yes` does the install.
+  Later, `python -m courseforge tools` reports the same thing,
+  `python -m courseforge tools --install --yes` does the install, and
+  `python -m courseforge tools --ask-again` brings the first-run offer back.
 
 ## Setup
 

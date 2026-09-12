@@ -47,7 +47,7 @@ class SetupWindow:
         # the way they did on the machine that wrote it, and when that bet is
         # wrong the buttons are the part that falls off the bottom.
         self.root.resizable(True, True)
-        self.root.protocol("WM_DELETE_WINDOW", self._skip)
+        self.root.protocol("WM_DELETE_WINDOW", self._dismiss)
 
         self.f_title = tkfont.Font(family="Segoe UI", size=14, weight="bold")
         self.f_body = tkfont.Font(family="Segoe UI", size=9)
@@ -138,12 +138,28 @@ class SetupWindow:
 
     # ------------------------------------------------------------- answers
     def _skip(self) -> None:
+        """The Not now button: a real answer, and it is remembered."""
         if self.busy:
             # Leaving mid-install would orphan the installer, not stop it.
             self._say("Still installing. Let it finish, or close the window from the taskbar.")
             return
         self.answer = "skip"
         tools.remember_setup(asked=True, installed=[], skipped=True)
+        self.root.destroy()
+
+    def _dismiss(self) -> None:
+        """The titlebar X: not an answer, so nothing is written down.
+
+        Closing a window and answering its question are different acts, and
+        treating them the same is how someone ends up never seeing an offer
+        they never actually declined -- which is exactly what happened when a
+        layout bug put the buttons out of reach and the only way out was the X.
+        There are two plain ways to stop being asked, and both are on the window.
+        """
+        if self.busy:
+            self._say("Still installing. Let it finish, or close the window from the taskbar.")
+            return
+        self.answer = "dismissed"
         self.root.destroy()
 
     def _never(self) -> None:

@@ -122,8 +122,12 @@ def cmd_courses(cfg: Config) -> int:
     return 0
 
 
-def cmd_tools(cfg: Config, install: bool = False, yes: bool = False) -> int:
+def cmd_tools(cfg: Config, install: bool = False, yes: bool = False,
+              ask_again: bool = False) -> int:
     from . import tools as _tools
+    if ask_again:
+        _tools.forget_setup()
+        print("Forgotten. The next launch will offer to install what is missing.\n")
     if install:
         return _tools.install(cfg, yes=yes)
     found = _tools.detect(cfg)
@@ -169,6 +173,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="install what a package manager can fetch")
     p_tools.add_argument("--yes", action="store_true",
                          help="with --install, run the installers rather than printing them")
+    p_tools.add_argument("--ask-again", action="store_true",
+                         help="forget the saved answer so the first-run offer returns")
     area_cli.register_all(sub)
     args = parser.parse_args(argv)
 
@@ -182,7 +188,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "courses":
         return cmd_courses(cfg)
     if args.command == "tools":
-        return cmd_tools(cfg, install=args.install, yes=args.yes)
+        return cmd_tools(cfg, install=args.install, yes=args.yes,
+                         ask_again=args.ask_again)
     if args.command == "gui":
         from .launcher import main as gui_main
         return gui_main()

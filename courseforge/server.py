@@ -302,6 +302,10 @@ class App:
             "data_dir": str(self.cfg.data),
             "model": self.cfg.model,
             "models": self.cfg.models,
+            # What actually reads a submission carrying images. Worth sending
+            # even when it equals `model`, so the page can say which students
+            # the chosen model will not be used on rather than implying none.
+            "vision_model": getattr(self.cfg, "vision_model", "") or self.cfg.model,
             "pseudonymize": self.cfg.pseudonymize,
             "concurrency": self.cfg.grading_concurrency,
             "allow_canvas_writes": self.cfg.allow_canvas_writes,
@@ -325,12 +329,12 @@ class App:
 
     def set_settings(self, changes: dict) -> dict:
         """Change a runtime setting from the UI and persist it to config.json."""
-        allowed = {"model", "grading_concurrency", "pseudonymize"}
+        allowed = {"model", "vision_model", "grading_concurrency", "pseudonymize"}
         applied: dict = {}
         for key, value in changes.items():
             if key not in allowed:
                 continue
-            if key == "model":
+            if key in ("model", "vision_model"):
                 value = str(value)
                 if value not in self.cfg.models:
                     raise ValueError(
@@ -344,7 +348,9 @@ class App:
         if applied:
             self.cfg.persist(**applied)
         return {"ok": True, "applied": applied, "model": self.cfg.model,
-                "models": self.cfg.models, "concurrency": self.cfg.grading_concurrency,
+                "models": self.cfg.models,
+                "vision_model": getattr(self.cfg, "vision_model", "") or self.cfg.model,
+                "concurrency": self.cfg.grading_concurrency,
                 "pseudonymize": self.cfg.pseudonymize}
 
     def courses(self, refresh: bool = False) -> list[dict]:

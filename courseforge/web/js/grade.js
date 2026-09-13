@@ -2073,9 +2073,17 @@ function renderHeaderActions() {
     ${hasBlend ? `<button class="btn" id="btnBlend" ${blenderOk ? '' : 'disabled'}
       title="${blenderOk ? 'Open every .blend in Blender and extract stats, renders and a 3D preview'
                          : 'Blender was not found on this machine'}">Blender pass</button>` : ''}
-    <select class="modelSel" id="selModel" title="Which Claude model grades with">
-      ${models.map(m => `<option value="${esc(m)}"${m === S.health.model ? ' selected' : ''}>${esc(m)}</option>`).join('')}
-    </select>
+    <label class="modelPick" title="Which Claude model grades written work">Claude
+      <select class="modelSel" id="selModel">
+        ${models.map(m => `<option value="${esc(m)}"${m === S.health.model ? ' selected' : ''}>${esc(m)}</option>`).join('')}
+      </select></label>
+    <label class="modelPick${visionModel() === S.health.model ? '' : ' differs'}"
+      title="Work with pictures in it is read by this one. Opus vision costs several
+times more without judging a render any better, so it is set to sonnet out of the box.
+Where every submission has images, this is the model that grades the whole class.">Images
+      <select class="modelSel" id="selVision">
+        ${models.map(m => `<option value="${esc(m)}"${m === visionModel() ? ' selected' : ''}>${esc(m)}</option>`).join('')}
+      </select></label>
     <button class="btn ai" id="btnGrade" ${(!synced || !canAI) ? 'disabled' : ''}
       title="${canAI ? 'Grade every student with Claude against this rubric' : 'Claude CLI is not logged in'}">Auto-grade all</button>
     <button class="btn" id="btnView"
@@ -2093,6 +2101,7 @@ function renderHeaderActions() {
   $('#btnRelease').onclick = () => openRelease(null);
   $('#btnGrade').onclick = () => doGrade(null);
   $('#selModel').onchange = ev => setModel(ev.target.value);
+  $('#selVision').onchange = ev => setModel(ev.target.value, 'vision_model');
   const bb = $('#btnBlend');
   if (bb) bb.onclick = () => runJob('Reading .blend files with Blender',
     () => api(`/a/${S.ids.courseId}/${S.ids.assignmentId}/blend`, { body: {} }),
@@ -2262,24 +2271,40 @@ function doSync(opts = {}) {
     },
     { autoClose: !!opts.auto });
 }
+/* Which model reads a submission that has pictures in it. Falls back to the
+   grading model, which is what the server does when the setting is empty. */
+function visionModel() {
+  return (S.health && (S.health.vision_model || S.health.model)) || '';
+}
+
 function doGrade(only) {
   const { courseId, assignmentId } = S.ids;
   const n = only ? only.length : Object.keys(S.ws.extracted || {}).length;
-  const label = only ? `Grading ${n} student${n === 1 ? '' : 's'}`
-    : `Auto-grading ${n} students with ${S.health.model}`;
+  // Naming one model here was a claim the run could not keep: work with images
+  // goes to the vision model, and in a course of renders that is every student.
+  // Say both, or say neither, rather than the one that may never run.
+  const pair = visionModel() === S.health.model ? S.health.model
+    : `${S.health.model}, ${visionModel()} for work with images`;
+  const label = only ? `Grading ${n} student${n === 1 ? '' : 's'} with ${pair}`
+    : `Auto-grading ${n} students with ${pair}`;
   runJob(label, () => api(`/a/${courseId}/${assignmentId}/grade`, { body: { only } }),
     () => openAssignment(courseId, assignmentId));
 }
-async function setModel(model) {
-  const previous = S.health.model;
+async function setModel(model, key = 'model') {
+  const previous = S.health[key];
+  const sel = $(key === 'model' ? '#selModel' : '#selVision');
   try {
-    const r = await api('/settings', { body: { model } });
+    const r = await api('/settings', { body: { [key]: model } });
     S.health.model = r.model;
-    setStatus('grading model: ' + r.model, 'ok');
+    S.health.vision_model = r.vision_model || r.model;
+    renderHeaderActions();
+    setStatus(key === 'model'
+      ? 'written work is graded by ' + r.model
+      : 'work with images is read by ' + (r.vision_model || r.model), 'ok');
   } catch (err) {
-    S.health.model = previous;
-    const sel = $('#selModel'); if (sel) sel.value = previous;
-    setStatus('could not switch model: ' + err.message, 'err');
+    S.health[key] = previous;
+    if (sel) sel.value = previous;
+    setStatus('could not switch model: ' + firstLine(err.message), 'err');
   }
 }
 

@@ -3,6 +3,16 @@
    shared shell paints; nothing here adds a fourth place. Tokens fall back to
    plain values so the area renders even before the shell defines them. */
 
+.a11ySweeps{margin:0 0 14px;padding:12px 14px;border:1px solid var(--line,#dfe3e9);
+  border-radius:var(--radius,8px);background:var(--panel,#fff)}
+.a11ySweepHead{margin:0 0 10px;font-size:12.5px;line-height:1.6;color:var(--muted,#4b5563)}
+.a11ySweep{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:12px;
+  align-items:start;padding:9px 0;border-top:1px solid var(--line,#dfe3e9)}
+.a11ySweep p{margin:0;font-size:12.5px;line-height:1.6;color:var(--muted,#4b5563)}
+.a11ySweep p b{color:var(--ink,#16191d);font-weight:600}
+.a11ySweep .btn{width:100%}
+@media (max-width:700px){.a11ySweep{grid-template-columns:minmax(0,1fr)}}
+
 .a11yVerbs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
 .a11yVerbs .hint{font-size:12.5px;color:var(--muted,#4b5563)}
 

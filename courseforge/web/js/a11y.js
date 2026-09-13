@@ -122,7 +122,9 @@
     body.innerHTML = '<p class="docsBlurb">Restyles the course text Canvas stores as HTML: '
       + 'pages, assignments, discussions, quiz descriptions and the syllabus. A gate proves '
       + 'the visible words did not change, so this never edits your writing.</p>'
+      + '<div class="a11ySweeps" id="a11ySweeps"></div>'
       + '<div class="a11yVerbs" id="a11yVerbs"></div><div id="a11yGateway"></div>';
+    renderSweeps(cid);
     renderVerbs(cid);
     const host = $('#a11yGateway');
     if (!has('renderGateway')) {
@@ -175,16 +177,45 @@
     });
   }
 
+  /* Two things Ally flags that a restyle does not touch, because both are
+     judgement calls about what the author meant rather than a change of look.
+     Each one reads the course and reports; the fixes are behind the report. */
+  const SWEEPS = [
+    { id: 'a11yBold', label: 'Bold used as structure',
+      what: 'Paragraphs that are entirely bold or italic, standing in for a heading.',
+      why: 'A screen reader announces nothing for bold, so the structure you can '
+        + 'see on the page is not there for everyone. The report sorts them into '
+        + 'short labels, instruction sentences and code, because the right fix '
+        + 'differs for each, and every fix is a separate tick box.' },
+    { id: 'a11yBoxes', label: 'Bordered boxes',
+      what: 'Sentences wrapped in a bordered span, usually pasted in from Word or '
+        + 'an older course.',
+      why: 'The border splits into ragged halves when the line wraps, and it marks '
+        + 'something as important using decoration alone, which a screen reader '
+        + 'cannot pass on. Cards and headings keep their borders.' },
+  ];
+
+  function renderSweeps(cid) {
+    const host = $('#a11ySweeps');
+    if (!host) return;
+    host.innerHTML = '<p class="a11ySweepHead">Two more things Ally flags. Each one '
+      + 'reads every page, assignment, discussion and quiz description in this course '
+      + 'from Canvas and tells you what it found. Neither changes anything until you '
+      + 'pick a fix in the report and confirm it.</p>'
+      + SWEEPS.map(s => '<div class="a11ySweep">'
+        + '<button class="btn" id="' + s.id + '">' + esc(s.label) + '</button>'
+        + '<p><b>' + esc(s.what) + '</b> ' + esc(s.why) + '</p>'
+        + '</div>').join('');
+    $('#a11yBold').onclick = () => runBold(cid, {}, false);
+    $('#a11yBoxes').onclick = () => runBoxes(cid, false);
+  }
+
   function renderVerbs(cid) {
     const host = $('#a11yVerbs');
     if (!host) return;
     host.innerHTML = ''
-      + '<button class="btn" id="a11yBold" title="Report wholly-bold paragraphs by class; remedies are opt-in">Bold used as structure</button>'
-      + '<button class="btn" id="a11yBoxes" title="Find inline bordered-box spans; dry run first">Bordered boxes</button>'
       + '<span class="spacer"></span>'
       + '<button class="btn danger" id="a11yRestore" title="Put back the bodies the last push replaced">Restore previous bodies</button>';
-    $('#a11yBold').onclick = () => runBold(cid, {}, false);
-    $('#a11yBoxes').onclick = () => runBoxes(cid, false);
     $('#a11yRestore').onclick = () => runRestore(cid);
   }
 
@@ -385,7 +416,10 @@
     const start = token => api(base(cid) + '/bold-structure', { body: { apply: !!apply, options: options || {}, confirm: token } });
     const done = res => showBoldReport(cid, res, options || {});
     if (apply) runJobConfirmed('Bold used as structure: apply', start, done, { title: 'Change this markup in Canvas?' });
-    else runJob('Bold used as structure: ' + (hasRemedy(options) ? 'dry run' : 'report'), () => start(null), done);
+    else runJob(hasRemedy(options)
+      ? 'Bold used as structure: working out the changes'
+      : 'Reading every body in the course to find bold used as structure',
+      () => start(null), done);
   }
   const hasRemedy = o => !!(o && (o.promote_labels || o.unbold_sentences || o.convert_code_runs));
 
@@ -437,7 +471,8 @@
     const start = token => api(base(cid) + '/bordered-boxes', { body: { apply: !!apply, confirm: token } });
     const done = res => showBoxesPlan(cid, res);
     if (apply) runJobConfirmed('Bordered boxes: apply', start, done, { title: 'Remove these bordered boxes in Canvas?' });
-    else runJob('Bordered boxes: dry run', () => start(null), done);
+    else runJob('Reading every body in the course to find bordered boxes',
+      () => start(null), done);
   }
 
   function showBoxesPlan(cid, res) {

@@ -170,3 +170,32 @@ class GatewayColumns(unittest.TestCase):
             with self.subTest(server=field):
                 self.assertIn('"%s":' % field, routes,
                               "the server stopped sending a field a column reads")
+
+
+class ButtonsThatStartWorkExplainThemselves(unittest.TestCase):
+    """The two Pages sweeps carried their explanation in a title attribute.
+
+    A title needs a hover and does not exist on a touchscreen, so on the page
+    they were two bare verbs beside a red destructive one, and pressing either
+    started a read of every body in the course with nothing on screen saying
+    what had begun. Both now say what they look for and that they only report.
+    """
+
+    def test_each_sweep_says_what_it_looks_for_on_the_page(self):
+        src = (WEB / "js" / "a11y.js").read_text(encoding="utf-8")
+        self.assertIn("const SWEEPS = [", src)
+        for button in ("a11yBold", "a11yBoxes"):
+            with self.subTest(button=button):
+                start = src.index("const SWEEPS = [")
+                block = src[start:src.index("];", start)]
+                self.assertIn("id: '%s'" % button, block)
+        block = src[src.index("const SWEEPS = ["):src.index("];", src.index("const SWEEPS = ["))]
+        self.assertEqual(block.count("what:"), 2, "both sweeps need a what")
+        self.assertEqual(block.count("why:"), 2, "both sweeps need a why")
+
+    def test_the_progress_dialog_names_the_reading_it_does(self):
+        """Neither sweep reads the local copy; both pull every body from Canvas,
+        which takes the better part of a minute on a real course."""
+        src = (WEB / "js" / "a11y.js").read_text(encoding="utf-8")
+        self.assertIn("Reading every body in the course to find bordered boxes", src)
+        self.assertIn("Reading every body in the course to find bold used as structure", src)

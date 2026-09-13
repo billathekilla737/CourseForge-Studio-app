@@ -56,16 +56,24 @@
         <div class="asstFoot">
           <span id="asstState">Not started.</span>
           <span class="spacer"></span>
+          <span class="hint" id="asstNames"></span>
           <span class="hint">Nothing reaches Canvas without an Allow.</span>
         </div>
       </div>
       <aside class="asstRail" aria-label="This conversation">
+        <div class="card"><div class="t">Student names</div>
+          <p class="muted" id="asstNamesNote">Checking the roster…</p>
+          <p class="muted" id="asstNamesHint"></p>
+          <button class="btn sm" type="button" id="asstNamesRefresh"
+            title="Reads the class list from Canvas. A read; nothing is written.">Re-read the roster</button>
+        </div>
         <div class="card"><div class="t">This conversation</div><dl class="asstFacts" id="asstFacts"></dl></div>
         <div class="card"><div class="t">What it changed</div><div id="asstLedger"></div></div>
       </aside>
     </div>`;
 
     $('#asstSend').onclick = () => asstSend(courseId);
+    $('#asstNamesRefresh').onclick = () => asstNamesRefresh(courseId);
     $('#asstStop').onclick = () => asstStop(courseId);
     $('#asstNew').onclick = () => asstNew(courseId);
     const text = $('#asstText');
@@ -86,6 +94,7 @@
     if (String(mem.courseId) !== String(courseId)) return;
     mem.headlines = state.headlines || {};
     asstChips($('#asstChips'), state);
+    asstNames(state);
     asstFacts(state);
     asstBoot(state);
     asstLedger(courseId);
@@ -120,6 +129,37 @@
         setStatus('put in the box, not sent', 'ok');
       };
     });
+  }
+
+  /* What the name swap is doing, said where it is being relied on. A person
+     will only type a student's name here if they can see that it is handled,
+     so this is not decoration. */
+  function asstNames(state) {
+    const info = state.names || {};
+    const note = $('#asstNamesNote');
+    const foot = $('#asstNames');
+    if (note) note.textContent = info.note || '';
+    if (foot) {
+      foot.textContent = info.enabled
+        ? `${info.students} names swapped for tags`
+        : 'Names are not being swapped';
+      foot.className = 'hint' + (info.enabled ? '' : ' warn');
+    }
+  }
+
+  function asstNamesRefresh(courseId) {
+    const btn = $('#asstNamesRefresh');
+    if (btn) { btn.disabled = true; btn.textContent = 'Reading…'; }
+    api(asstBase(courseId) + '/names/refresh', { body: {} })
+      .then(info => {
+        asstNames({ names: info });
+        setStatus(info.students
+          ? info.students + ' students on the roster' : 'no roster came back', 'ok');
+      })
+      .catch(err => setStatus('could not read the roster: ' + firstLine(err.message), 'err'))
+      .finally(() => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Re-read the roster'; }
+      });
   }
 
   function asstFacts(state) {
@@ -337,6 +377,9 @@
       <p class="what"><b>What:</b> ${esc(want.what || want.summary || 'it did not say')}</p>
       ${want.description ? `<p class="says">Claude describes it as: ${esc(want.description)}</p>` : ''}
       ${want.why ? `<p class="why">Why it asks: ${esc(want.why)}</p>` : ''}
+      ${want.leaks_names ? `<p class="why warn">Real names: the swap covers what you type
+        and what comes back, not what Claude reads. Anything in this file goes to
+        Anthropic exactly as it is written.</p>` : ''}
       <pre class="cmd">${esc(want.command || '')}</pre>
       <div class="row">
         <button class="btn" type="button" data-deny="1">Deny</button>
@@ -386,7 +429,20 @@
         box.focus();
         const mem = asstMem();
         if (res && res.seq != null && mem.seq > res.seq) mem.seq = 0;
-        setStatus('sent', 'ok');
+        /* Say when a name was swapped, and which. Silence would leave the
+           person guessing whether it happened, and guessing is exactly why
+           someone stops typing names at all. */
+        const swaps = (res && res.swapped) || [];
+        const byTag = [...new Map(swaps.map(s => [s.tag, s])).values()];
+        setStatus(byTag.length
+          ? `sent, ${byTag.length === 1 ? '1 name' : byTag.length + ' names'} swapped for tags`
+          : 'sent', 'ok');
+        const hint = $('#asstNamesHint');
+        if (hint) {
+          hint.textContent = byTag.length
+            ? 'Last message: ' + byTag.map(s => `${s.name} went as ${s.tag}`).join(', ') + '.'
+            : '';
+        }
       })
       .catch(err => {
         send.disabled = false;

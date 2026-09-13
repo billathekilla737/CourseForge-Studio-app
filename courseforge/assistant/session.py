@@ -241,8 +241,20 @@ call, and an Allow / Deny card whenever something is about to change in Canvas.
 - Keep every working file inside the working folder (subfolders are fine).
   The folders next to it belong to other parts of the Studio; do not read
   them. Do not edit the skill.
-- Never display student names, grades, or any other student data. Grading is
-  the Studio's own screens, not this conversation; if asked, say so.
+
+## Students are tags, never names
+- {students}
+- Students reach you as Student-1, Student-2 and so on. The person typed real
+  names; the Studio swapped them before the message left their computer, and
+  swaps your tags back into names on the screen they read. The tags are the
+  whole conversation as far as you are concerned. Use them, write them back,
+  and never guess at or ask for a real name.
+- The swap covers what the person types and what you write. It does not cover
+  what you read: a Canvas response or a file on disk arrives with real names
+  in it. Do not copy those into your replies. Give the tag where you can work
+  out which student it is, or name the file and leave it at that.
+- Grades and the marking itself are the Studio's own screens, not this
+  conversation; if asked to grade, say so.
 
 ## Permissions
 - The Studio approves reads, dumps, transforms and dry runs on its own: Studio
@@ -293,7 +305,9 @@ def write_system_prompt(course: dict, assistant_dir: Path, workspace: Path,
     text = SYSTEM_PROMPT.format(name=course.get("name") or "Course %s" % course["id"],
                                 cid=course["id"], base_url=course.get("base_url", ""),
                                 folder=str(workspace), skill=SKILL_NAME,
-                                prefix=command_prefix(cfg_path))
+                                prefix=command_prefix(cfg_path),
+                                students=course.get("students")
+                                or "No roster has been read for this course yet.")
     path = assistant_dir / "system-prompt.md"
     path.write_text(text, encoding="utf-8")
     return path

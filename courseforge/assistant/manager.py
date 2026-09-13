@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
 
-from .. import claude_cli, ledger
+from .. import claude_cli, identity, ledger
 from . import gate, session as S
 
 RING = 4000                 # transcript events kept in memory per course
@@ -65,7 +65,11 @@ class Pending:
                 "description": (ti.get("description") or "").strip(),
                 "why": self.req.get("why") or "", "command": str(command)[:4000],
                 "created": self.created, "expires_at": self.expires_at,
-                "tool_use_id": self.req.get("tool_use_id")}
+                "tool_use_id": self.req.get("tool_use_id"),
+                # The name swap covers what is typed and what comes back. It
+                # cannot cover a file: whatever this reads goes to Anthropic as
+                # it is. Say so on the card that decides it, not in a document.
+                "leaks_names": self.req.get("kind") in ("student-data", "read")}
 
 
 class Course:
@@ -83,6 +87,9 @@ class Course:
         self.lock = threading.RLock()
         self.changed = threading.Condition(self.lock)
         self._text_buf: list[str] = []
+        # What is held back out of a streamed chunk because it might still turn
+        # into a Student-N tag. See NameMap.hold_len.
+        self.mask_tail = ""
         self.model = ""
         self.last_error = ""
 
@@ -211,6 +218,18 @@ class Manager:
                 self.courses[cid] = c
             return c
 
+    def names(self, course_id, refresh: bool = False):
+        """This course's real-name-to-tag map.
+
+        Never raises: a map with nobody in it swaps nothing, and the rail says
+        so rather than letting the composer look broken because Canvas was
+        slow.
+        """
+        try:
+            return identity.for_course(self.app, course_id, refresh=refresh)
+        except Exception:  # noqa: BLE001
+            return identity.NameMap(course_id, [], enabled=False)
+
     def course_name(self, course_id) -> str:
         """From the picker's cache only; never a Canvas call on this path."""
         cid = str(course_id)
@@ -254,14 +273,22 @@ class Manager:
                 "claude": bool(shutil.which("claude")),
                 "last_error": c.last_error,
             }
+            names = self.names(c.id)
+            out["names"] = {"enabled": bool(names.enabled and len(names)),
+                            "students": len(names), "note": names.roster_note()}
             # After a server restart the ring is empty; the page shows the log
             # tail as "earlier" so the conversation does not look lost.
-            out["history"] = c.history_tail() if not c.ring else ""
+            out["history"] = names.unmask(c.history_tail()) if not c.ring else ""
         return out
 
     def events(self, course_id, since: int) -> dict:
         c = self.course(course_id)
         evs, gap = c.since(int(since or 0))
+        # Tags become names on the way to the page and nowhere else. What is in
+        # the ring, in conversation.txt and in events.jsonl stays as it was
+        # sent, so the record says what actually left this machine.
+        names = self.names(c.id)
+        evs = [names.unmask_event(e) for e in evs]
         with c.lock:
             alive = bool(c.session and c.session.alive())
             return {"events": evs, "seq": c.seq, "gap": gap,
@@ -281,6 +308,18 @@ class Manager:
         if not self.enabled:
             raise PermissionError("The Assistant is turned off in config.json (assistant_enabled).")
         c = self.course(course_id)
+
+        # Real names are swapped for this course's tags before anything is
+        # sent, and this is the only place a message enters the session, so
+        # there is no second path that skips it. A name two students share is
+        # refused rather than guessed: sending it would leak a real surname,
+        # and picking one would answer about the wrong person.
+        names = self.names(course_id)
+        masked = names.mask(text)
+        if masked.ambiguous:
+            raise ValueError(masked.sentence())
+        outgoing = masked.text
+
         with c.lock:
             if c.busy and c.session and c.session.alive():
                 raise ValueError("Claude is still working on the last message. "
@@ -288,15 +327,17 @@ class Manager:
             if not (c.session and c.session.alive()):
                 self._start(c, model)
             c.busy = True
-            c.push({"kind": "user", "text": text})
+            # The ring and the log keep what was sent, not what was typed.
+            c.push({"kind": "user", "text": outgoing})
             try:
-                c.session.send(text)
+                c.session.send(outgoing)
             except Exception as exc:  # noqa: BLE001
                 c.busy = False
                 raise RuntimeError("Could not hand the message to Claude Code: %s" % exc)
             S.save_session_state(c.assistant_dir, c.session.session_id,
                                  started=(S.load_session_state(c.assistant_dir) or {}).get("started"))
-        return {"ok": True, "seq": c.seq, "session_id": c.session.session_id}
+        return {"ok": True, "seq": c.seq, "session_id": c.session.session_id,
+                **masked.view()}
 
     def _start(self, c: Course, model: str | None = None) -> None:
         """Start (or resume) the course's session. Refuses when the gate does
@@ -311,8 +352,15 @@ class Manager:
         for n in notes:
             c.push({"kind": "notice", "text": n})
         st = S.load_session_state(c.assistant_dir)
+        names = self.names(c.id)
         course = {"id": c.id, "name": self.course_name(c.id),
-                  "base_url": self.cfg.base_url, "dir": c.dir}
+                  "base_url": self.cfg.base_url, "dir": c.dir,
+                  "students": (f"This course has {len(names)} students, and they "
+                               f"are numbered Student-1 to Student-{len(names)}."
+                               if len(names) else
+                               "No roster has been read for this course yet, so "
+                               "any name in a message is one the Studio could "
+                               "not swap. Treat every name you see as sensitive.")}
         sess = S.Session(course, self.port, self.secret,
                          sink=lambda ev, cc=c: self._on_event(cc, ev),
                          session_id=st["session_id"] if st else None, resume=bool(st),
@@ -326,6 +374,17 @@ class Manager:
 
     def _on_event(self, c: Course, ev: dict) -> None:
         kind = ev.get("kind")
+        # A tag that arrives split across two streamed chunks would be turned
+        # back into a name by neither of them, and the person would read the
+        # tag. Re-cut the stream so no chunk ends part way through one.
+        if kind == "text":
+            ev = self._restream(c, ev)
+            if ev is None:
+                return
+        elif c.mask_tail:
+            with c.lock:
+                held, c.mask_tail = c.mask_tail, ""
+            c.push({"kind": "text", "text": held})
         with c.lock:
             if kind == "init":
                 c.model = ev.get("model") or c.model
@@ -357,6 +416,22 @@ class Manager:
                         self._settle(p, "deny", "The Claude session ended before anyone answered.", auto=True)
             c.push(ev)
 
+    def _restream(self, c: Course, ev: dict):
+        """Hold back the end of a chunk while it could still become a tag.
+
+        Returns the event to push, or None when the whole chunk is being held
+        (which happens exactly when Claude has just written "Stud"). What is
+        held always comes out: the next chunk carries it, and any other event
+        flushes it first.
+        """
+        names = self.names(c.id)
+        with c.lock:
+            text = c.mask_tail + (ev.get("text") or "")
+            keep = names.hold_len(text)
+            c.mask_tail = text[len(text) - keep:] if keep else ""
+            out = text[:len(text) - keep] if keep else text
+        return dict(ev, text=out) if out else None
+
     def stop(self, course_id) -> dict:
         c = self.course(course_id)
         with c.lock:
@@ -382,6 +457,7 @@ class Manager:
             S.clear_session_state(c.assistant_dir)
             c.rotate_conversation()
             c.ring.clear()
+            c.mask_tail = ""
             c.model = ""
             c.last_error = ""
             c.push({"kind": "notice", "text": "New conversation. Claude does not remember the last one."})

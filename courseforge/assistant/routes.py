@@ -4,6 +4,7 @@
     POST /api/assistant/{cid}/send   {text}      start or resume the session, send one message
     GET  /api/assistant/{cid}/events?since=N     events after N, plus pending permissions
     POST /api/assistant/{cid}/answer {request_id, decision}
+    POST /api/assistant/{cid}/names/refresh      re-read the roster for tagging
     POST /api/assistant/{cid}/stop
     POST /api/assistant/{cid}/new
     POST /api/assistant/permission               the hook's long poll (secret-checked)
@@ -71,6 +72,19 @@ def answer(req):
         return _mgr(req).answer(request_id, decision)
     except KeyError as exc:
         raise HTTPError(404, str(exc).strip("'\""))
+
+
+@route("POST", "/api/assistant/{cid}/names/refresh", area="assistant")
+def names_refresh(req):
+    """Re-read the class list from Canvas so a new student gets a tag.
+
+    A read, so no confirm token. Anyone already tagged keeps their tag: a tag
+    that changed meaning between two sessions would make a saved conversation
+    say something that is not true.
+    """
+    names = _mgr(req).names(req.params["cid"], refresh=True)
+    return {"enabled": bool(names.enabled and len(names)),
+            "students": len(names), "note": names.roster_note()}
 
 
 @route("POST", "/api/assistant/{cid}/stop", area="assistant")

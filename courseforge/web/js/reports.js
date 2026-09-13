@@ -103,9 +103,30 @@
       return;
     }
     host.innerHTML = mem().tab === 'score' ? scoreHtml(out) : policyHtml(out);
+    const scan = $('#rpScan');
+    if (scan) scan.onclick = () => scanMissing(out);
   }
 
   /* ------------------------------------------------------------- the score */
+
+  /* "Not scanned" was doing the work of three different sentences: nobody has
+     asked Canvas what is in this course, the files are listed and nobody has
+     opened them, and there are no files of that kind at all. Only the first
+     two are work waiting, and you cannot act on the word without knowing which
+     one you are looking at. */
+  function phrase(w) {
+    return w.state === 'unlisted' ? w.kind + ' never looked at' : w.note;
+  }
+
+  function waitCell(c) {
+    const bits = (c.waiting || []).map(w =>
+      `<span class="pill warn">${esc(phrase(w))}</span>`);
+    if (!bits.length && (c.none_here || []).length && c.before != null) {
+      return `<span class="muted">no ${esc(c.none_here.join(' or '))} in this course</span>`;
+    }
+    return bits.join(' ');
+  }
+
   function scoreHtml(out) {
     const band = out.before == null ? '' : `<div class="rpBand">
       <div class="rpBig"><span class="was">${esc(out.before)}</span>
@@ -115,21 +136,56 @@
     const rows = (out.courses || []).map(c => `
       <tr>
         <th scope="row">${esc(c.course || c.course_id)}</th>
-        <td class="num">${c.before == null ? '<span class="muted">not scanned</span>' : esc(c.before)}</td>
+        <td class="num">${c.before == null
+          ? `<span class="muted">${esc((c.waiting || []).some(w => w.listed)
+              ? 'not scanned yet' : 'never looked at')}</span>`
+          : esc(c.before)}</td>
         <td class="num">${c.after == null ? '' : esc(c.after)}</td>
         <td class="num">${c.gain == null ? '' : (c.gain > 0 ? '+' + esc(c.gain) : esc(c.gain))}</td>
         <td class="num">${esc(c.files)}</td>
-        <td>${c.not_checked && c.not_checked.length
-          ? `<span class="pill warn">${esc(c.not_checked.join(', '))} not scanned</span>` : ''}</td>
+        <td>${waitCell(c)}</td>
       </tr>`).join('');
-    return band + `<div class="gwTableWrap"><table class="gwTable">
+    return band + todoHtml(out) + `<div class="gwTableWrap"><table class="gwTable">
       <caption class="srOnly">Accessibility score per course</caption>
       <thead><tr><th scope="col">Course</th><th scope="col">Before</th>
         <th scope="col">Now</th><th scope="col">Change</th>
-        <th scope="col">Files</th><th scope="col">Not counted</th></tr></thead>
+        <th scope="col">Files</th><th scope="col">Still to look at</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
       <div class="callout rpMethod"><b>How this is worked out.</b>
-        ${esc(out.method || '')}</div>`;
+        ${esc(out.method || '')} ${esc(out.method_note || '')}</div>`;
+  }
+
+  /* The way out of a blank row. The report reads what is already on this
+     computer and never calls Canvas, so a course nobody has scanned has no
+     number and re-running the report will never give it one. This says that,
+     and runs the scan that would. */
+  function todoHtml(out) {
+    const todo = out.unscanned || [];
+    if (!todo.length) return '';
+    const n = todo.length;
+    return `<div class="callout rpTodo">
+      <b>${esc(n)} course${n === 1 ? ' has' : 's have'} no score, because
+        ${n === 1 ? 'its' : 'their'} files have not been looked at.</b>
+      <p>The report only reads what is already on this computer, so running it
+        again will not change these. Scanning downloads a copy of each file and
+        looks at it. It uploads nothing and changes nothing in Canvas.</p>
+      <ul class="rpTodoList">${todo.map(t => `<li><b>${esc(t.course || t.course_id)}</b>
+        — ${esc((t.waiting || []).map(phrase).join('; '))}</li>`).join('')}</ul>
+      <button class="btn primary" type="button" id="rpScan">Scan
+        ${esc(n)} course${n === 1 ? '' : 's'} now</button>
+    </div>`;
+  }
+
+  /* Scan exactly the courses that need it, then re-run the score so the table
+     you are looking at fills itself in. */
+  function scanMissing(out) {
+    const ids = (out.unscanned || []).map(t => String(t.course_id));
+    if (!ids.length) return;
+    const kinds = (out.scan_kinds && out.scan_kinds.length)
+      ? out.scan_kinds : ['pdf', 'pptx', 'docx'];
+    runJob('Scanning ' + ids.length + ' course' + (ids.length === 1 ? '' : 's'),
+      () => api('/batch/files/scan', { body: { course_ids: ids, kinds: kinds } }),
+      () => run());
   }
 
   /* ---------------------------------------------------------- the policies */

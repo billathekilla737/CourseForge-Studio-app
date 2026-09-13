@@ -25,6 +25,15 @@ it. That is the part of this worth trusting most.
 the PDF pass has no PDF score, and the report says so rather than averaging
 over an assumption. This is the difference between "94 out of what we checked"
 and "94", and only the first one is true.
+
+**"Not scanned" is three different sentences and the report must say which.**
+A course can be unscored because nothing has ever asked Canvas what is in it,
+because the files are listed and nobody has opened them, or because there are
+genuinely no files of that kind in the course. The first two are work waiting;
+the third is a course with nothing to fix, and printing it as a gap sends
+somebody hunting for PDFs that do not exist. `state` on each part carries the
+difference, and `needs_scan` on the whole says which courses a scan would
+actually change.
 """
 from __future__ import annotations
 
@@ -59,8 +68,40 @@ WEIGHTS = {
 REPEAT_CAP = 3
 
 
+# The four states a kind of file can be in for one course. Only two of them
+# are work waiting; the difference is the whole point of printing them.
+SCORED = "scored"        # we looked, here is a number
+WAITING = "waiting"      # listed from Canvas, nobody has opened them
+UNLISTED = "unlisted"    # nothing has ever asked Canvas what is in this course
+EMPTY = "empty"          # asked, and the course has none of this kind
+
+
 def _clamp(n: float) -> float:
     return max(0.0, min(100.0, round(float(n), 1)))
+
+
+def _noun(kind: str, n: int) -> str:
+    """'10 PowerPoint files', not '10 PowerPoint'."""
+    if kind in ("PDFs", "Pages"):
+        return "%d %s" % (n, kind[:-1] if n == 1 else kind)
+    return "%d %s file%s" % (n, kind, "" if n == 1 else "s")
+
+
+def _part(kind, rows, listed, has_listing) -> dict:
+    """One kind of file in one course, with an honest word for its state."""
+    if rows:
+        state, note = SCORED, ""
+    elif not has_listing:
+        state = UNLISTED
+        note = "never looked at"
+    elif not listed:
+        state = EMPTY
+        note = "none in this course"
+    else:
+        state = WAITING
+        note = "%s, not scanned yet" % _noun(kind, listed)
+    return {"kind": kind, "rows": rows, "checked": len(rows), "listed": listed,
+            "state": state, "note": note}
 
 
 def score_defects(defects: list[str]) -> float:
@@ -115,6 +156,7 @@ def pdfs(app, course_id) -> dict:
     """Before and after for every PDF the Studio has actually looked at."""
     from .pdf import course_pdfs as core
     wd = core.workdir(app, course_id)
+    has_listing = (wd / "files.json").is_file()
     state_files = core.read_json(wd / "files.json", {}) or {}
     listed = state_files.get("files") or []
     validation = core.read_json(wd / "validation.json", {}) or {}
@@ -154,8 +196,60 @@ def pdfs(app, course_id) -> dict:
             "ua_counted": comparable,
             "figures_waiting": waiting,
         })
-    return {"kind": "PDFs", "rows": rows, "checked": len(rows),
-            "listed": len(listed)}
+    return _part("PDFs", rows, len(listed), has_listing)
+
+
+# ---------------------------------------------------- PowerPoint and Word
+def _office_defects(undescribed: int, untitled: int, headerless: int) -> list[str]:
+    return (["office_no_alt"] * max(0, undescribed)
+            + ["office_no_title"] * max(0, untitled)
+            + ["office_table_no_header"] * max(0, headerless))
+
+
+def office(app, course_id, kind_id: str) -> dict:
+    """Before and after for the course's PowerPoints or Word documents.
+
+    These were missing from the score, and their absence was not a rounding
+    error. A course of eleven tidy PDFs and twenty-five decks holding six
+    hundred undescribed pictures scored 97.8, because only the PDFs were
+    counted -- a number that would survive exactly as long as it took a dean to
+    open one of the decks.
+    """
+    from .docs import gateway
+    kind = gateway.KINDS[kind_id]
+    listed = gateway.listed_files(app, course_id, kind) or {}
+    has_listing = (gateway.kind_dir(app, course_id, kind) / "files.json").is_file()
+    names = listed.get("files") or []
+
+    rows = []
+    for item in gateway.items(app, course_id, kind):
+        if not item.report:
+            continue                       # never scanned: not scored, not assumed
+        summary = kind.adapter.summary(item.report, item.fixes) or {}
+        fixes = item.fixes or {}
+        # Before is the file as it arrived: every picture that needed a
+        # description needed one, whether or not somebody has since written it.
+        undescribed = int(summary.get("alt_todo") or 0) + int(summary.get("alt_done") or 0)
+        untitled = int(summary.get("untitled") or 0)
+        headerless = int(summary.get("tables_without_header") or 0)
+        before = score_defects(_office_defects(undescribed, untitled, headerless))
+
+        fixed = item.fixed.is_file()
+        after = before
+        if fixed:
+            titled = sum(1 for v in (fixes.get("titles") or {}).values() if (v or "").strip())
+            after = score_defects(_office_defects(
+                int(summary.get("alt_todo") or 0),
+                max(0, untitled - titled),
+                0 if fixes.get("table_headers", True) else headerless))
+        rows.append({
+            "id": item.id, "name": item.meta.get("display_name") or item.id,
+            "was": "%d picture%s without a description"
+                   % (undescribed, "" if undescribed == 1 else "s"),
+            "before": before, "after": after, "fixed": fixed,
+            "figures_waiting": int(summary.get("alt_todo") or 0),
+        })
+    return _part(kind.label, rows, len(names), has_listing)
 
 
 # -------------------------------------------------------------------- HTML
@@ -187,6 +281,7 @@ def html(app, course_id) -> dict:
     """Before and after for the course's pages, from the a11y scan on disk."""
     from .a11y import workdir as wdmod
     wd = wdmod.workdir(app.course_dir(course_id))
+    has_listing = (wd / "manifest.json").is_file()
     manifest = _load(wd / "manifest.json")
     report = _load(wd / "verify-report.json")
     verified = {str(r.get("key")): r for r in (report.get("items") or [])} if report else {}
@@ -209,8 +304,7 @@ def html(app, course_id) -> dict:
             "kind": item.get("kind") or "page",
             "before": before, "after": after, "fixed": bool(done),
         })
-    return {"kind": "Pages", "rows": rows, "checked": len(rows),
-            "listed": len(manifest.get("items") or [])}
+    return _part("Pages", rows, len(manifest.get("items") or []), has_listing)
 
 
 def _load(path: Path):
@@ -222,28 +316,48 @@ def _load(path: Path):
 
 
 # ---------------------------------------------------------------- the whole
+# Which kind on the report maps to which kind the file scan understands, so
+# the page can offer to run exactly the passes that are missing.
+_KIND_ID = {"PDFs": "pdf", "PowerPoint": "pptx", "Word": "docx"}
+
+
+
 def forecast(app, course_id) -> dict:
     """Every kind the Studio has looked at, before and after, plus what it has
     not looked at -- which is the half of this report that keeps it honest."""
+    jobs = [("PDFs", pdfs), ("PowerPoint", lambda a, c: office(a, c, "pptx")),
+            ("Word", lambda a, c: office(a, c, "docx")), ("Pages", html)]
     parts = []
-    for fn in (pdfs, html):
+    for label, fn in jobs:
         try:
             parts.append(fn(app, course_id))
         except Exception as exc:  # noqa: BLE001
-            parts.append({"kind": getattr(fn, "__name__", "?"), "rows": [],
-                          "checked": 0, "listed": 0,
+            parts.append({"kind": label, "rows": [], "checked": 0, "listed": 0,
+                          "state": UNLISTED, "note": "could not be read",
                           "error": "%s: %s" % (type(exc).__name__, exc)})
 
     every = [r for p in parts for r in p["rows"]]
     before = round(sum(r["before"] for r in every) / len(every), 1) if every else None
     after = round(sum(r["after"] for r in every) / len(every), 1) if every else None
 
-    not_looked = [p["kind"] for p in parts if not p["checked"]]
+    # A kind with nothing of it in the course is not a gap, and listing it as
+    # one sends somebody looking for PDFs that were never there.
+    waiting = [p for p in parts if p.get("state") in (WAITING, UNLISTED)]
+    not_looked = [p["kind"] for p in waiting]
+    none_here = [p["kind"] for p in parts if p.get("state") == EMPTY]
+    # Pages come from a different pass, so the file scan would not touch them.
+    scannable = [p for p in waiting if p["kind"] != "Pages"]
     worst = sorted(every, key=lambda r: r["after"])[:8]
 
-    if before is None:
-        headline = ("Nothing in this course has been scanned yet, so there is no "
-                    "score to give. Run the PDF or page pass and come back.")
+    if before is None and not any(p.get("listed") for p in parts):
+        headline = ("Nothing in this course has been looked at yet -- not even its "
+                    "file list has been read, so there is nothing here to score.")
+    elif before is None:
+        headline = ("%s are listed in this course and none of them has been "
+                    "scanned yet, so there is no score to give. Scan them and "
+                    "come back."
+                    % ", ".join(_noun(p["kind"], p["listed"])
+                                for p in scannable if p["listed"]))
     elif after > before:
         headline = ("By the measures Ally uses, this course scores %.0f where it "
                     "scored %.0f before the Studio touched it, across %d file%s."
@@ -261,6 +375,14 @@ def forecast(app, course_id) -> dict:
         "parts": parts,
         "worst": worst,
         "not_checked": not_looked,
+        "none_here": none_here,
+        # What a scan would actually change here. A course with nothing waiting
+        # is finished, not neglected, and the page must not offer to rescan it.
+        "needs_scan": bool(scannable),
+        "scan_kinds": sorted({_KIND_ID[p["kind"]] for p in scannable
+                              if p["kind"] in _KIND_ID}),
+        "waiting": [{"kind": p["kind"], "listed": p["listed"],
+                     "state": p["state"], "note": p["note"]} for p in waiting],
         "headline": headline,
         "method": ("The Studio's own score, not Anthology's. It counts the same "
                    "defects Ally penalises -- a scanned PDF with no text layer, a "
@@ -273,4 +395,7 @@ def forecast(app, course_id) -> dict:
                     "The score is out of what was checked."
                     % (", ".join(not_looked), "them" if len(not_looked) > 1 else "it"))
                    if not_looked else ""),
+        "method_note": ("It counts PDFs, PowerPoint decks, Word documents and "
+                        "pages -- whichever of those this computer has "
+                        "actually looked at."),
     }

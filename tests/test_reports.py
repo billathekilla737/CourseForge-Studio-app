@@ -63,7 +63,7 @@ class WhatTheScoreRefusesToClaim(unittest.TestCase):
         out = score.forecast(self.app, 101)
         self.assertIsNone(out["before"])
         self.assertIsNone(out["after"])
-        self.assertIn("Nothing in this course has been scanned", out["headline"])
+        self.assertIn("Nothing in this course has been looked at", out["headline"])
 
     def test_it_names_what_it_did_not_count(self):
         out = score.forecast(self.app, 101)
@@ -75,6 +75,95 @@ class WhatTheScoreRefusesToClaim(unittest.TestCase):
         """The one claim that would get somebody caught out in front of a dean."""
         out = score.forecast(self.app, 101)
         self.assertIn("not Anthology's", out["method"])
+
+
+class NotScannedIsThreeDifferentSentences(unittest.TestCase):
+    """The bug this class exists for: a term's report showed "not scanned"
+    against three courses and gave no way to tell whether that meant nobody had
+    looked, the files were sitting there waiting, or the course had no files of
+    that kind at all. Only the first two are work, and re-running the report --
+    which reads this computer and never calls Canvas -- could never have
+    changed any of them."""
+
+    App = WhatTheScoreRefusesToClaim.App
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.app = self.App(self.tmp)
+
+    def _listing(self, cid, rel, files):
+        path = self.tmp / str(cid) / rel / "files.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"at": "now", "files": files, "folders": {}}),
+                        encoding="utf-8")
+
+    def test_nobody_asked_canvas_reads_as_never_looked_at(self):
+        out = score.forecast(self.app, 101)
+        pdf = next(p for p in out["parts"] if p["kind"] == "PDFs")
+        self.assertEqual(pdf["state"], score.UNLISTED)
+        self.assertIn("never looked at", pdf["note"])
+
+    def test_listed_but_unopened_says_how_many_are_waiting(self):
+        """The actionable case, and the one the old word hid: seventeen PDFs
+        are on this machine's list and nobody has opened one of them."""
+        self._listing(102, "pdf", [{"id": i} for i in range(17)])
+        out = score.forecast(self.app, 102)
+        pdf = next(p for p in out["parts"] if p["kind"] == "PDFs")
+        self.assertEqual(pdf["state"], score.WAITING)
+        self.assertIn("17 PDFs", pdf["note"])
+        self.assertTrue(out["needs_scan"])
+        self.assertIn("pdf", out["scan_kinds"])
+        self.assertIn("17 PDFs", out["headline"])
+
+    def test_a_course_with_no_powerpoints_is_not_a_gap(self):
+        """Asked, and there are none. Printing that as "not scanned" sends
+        somebody hunting for decks that do not exist."""
+        self._listing(103, "docs/pptx", [])
+        out = score.forecast(self.app, 103)
+        pptx = next(p for p in out["parts"] if p["kind"] == "PowerPoint")
+        self.assertEqual(pptx["state"], score.EMPTY)
+        self.assertIn("PowerPoint", out["none_here"])
+        self.assertNotIn("PowerPoint", out["not_checked"])
+
+    def test_pages_are_never_offered_to_the_file_scan(self):
+        """Pages come from the page pass, not the file scan, so offering to
+        scan a course for them would be a button that changes nothing."""
+        self._listing(104, "pdf", [{"id": 1}])
+        out = score.forecast(self.app, 104)
+        self.assertIn("Pages", out["not_checked"])
+        self.assertNotIn("pages", out["scan_kinds"])
+
+    def test_a_finished_course_is_not_offered_a_rescan(self):
+        self._listing(105, "pdf", [])
+        self._listing(105, "docs/pptx", [])
+        self._listing(105, "docs/docx", [])
+        out = score.forecast(self.app, 105)
+        self.assertFalse(out["needs_scan"])
+        self.assertEqual(out["scan_kinds"], [])
+
+
+class PowerPointAndWordAreCountedToo(unittest.TestCase):
+    """The bug this class exists for: a course of eleven tidy PDFs and
+    twenty-five decks holding six hundred undescribed pictures scored 97.8,
+    because only the PDFs were counted. The office weights had been written
+    down and never wired to anything, and that number would have survived
+    exactly as long as it took a dean to open one of the decks."""
+
+    def test_the_office_weights_are_actually_used(self):
+        self.assertLess(score.score_defects(["office_no_alt"] * 5),
+                        score.score_defects([]))
+
+    def test_a_deck_of_undescribed_pictures_does_not_score_full_marks(self):
+        self.assertLess(score.score_defects(score._office_defects(26, 0, 0)), 80)
+
+    def test_powerpoint_and_word_are_both_on_the_report(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        app = WhatTheScoreRefusesToClaim.App(tmp)
+        kinds = [p["kind"] for p in score.forecast(app, 101)["parts"]]
+        self.assertIn("PowerPoint", kinds)
+        self.assertIn("Word", kinds)
 
 
 class FixingSomethingNeverLowersItsScore(unittest.TestCase):

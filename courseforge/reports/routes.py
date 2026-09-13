@@ -48,14 +48,23 @@ def score_many(req):
         scored = [r for r in rows if r["before"] is not None]
         before = round(sum(r["before"] for r in scored) / len(scored), 1) if scored else None
         after = round(sum(r["after"] for r in scored) / len(scored), 1) if scored else None
+        # The courses a scan would actually change, and the passes it would
+        # have to run. Without this the report can only say "not scanned" and
+        # leave you to work out where to go next, which is what it did.
+        pending = [r for r in rows if r.get("needs_scan")]
+        first = rows[0] if rows else {}
         return {
             "courses": rows, "before": before, "after": after,
             "files": sum(r["files"] for r in rows),
+            "unscanned": [{"course_id": r["course_id"], "course": r.get("course"),
+                           "waiting": r.get("waiting") or []} for r in pending],
+            "scan_kinds": sorted({k for r in pending for k in (r.get("scan_kinds") or [])}),
             "sentence_done": (
                 "Across %d course%s: %.0f now, %.0f before."
                 % (len(scored), "" if len(scored) == 1 else "s", after, before)
                 if scored else "Nothing in these courses has been scanned yet."),
-            "method": score.forecast(req.app, ids[0])["method"],
+            "method": first.get("method", ""),
+            "method_note": first.get("method_note", ""),
         }
 
     return req.job("reports.score", job)

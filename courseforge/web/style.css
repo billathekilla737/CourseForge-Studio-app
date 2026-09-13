@@ -1612,6 +1612,11 @@ a.acrossItem,a.acrossItem:visited{color:var(--ink)}
 .rpBig .arrow{font-size:18px;color:var(--muted)}
 .rpBig .now{font-size:38px;font-weight:700;color:var(--record)}
 .rpMethod{margin-top:16px;font-size:12px;line-height:1.65}
+.rpTodo{margin:0 0 16px;font-size:13px;line-height:1.6}
+.rpTodo p{margin:6px 0 0;color:var(--muted);font-size:12.5px}
+.rpTodoList{margin:10px 0 0;padding-left:18px;font-size:12.5px;line-height:1.7}
+.rpTodo .btn{margin-top:12px}
+.gwTable td .pill.warn + .pill.warn{margin-left:4px}
 .rpMatrix th[scope=col]{white-space:normal;min-width:92px}
 .rpCell{text-align:center;font-weight:700;font-size:15px}
 .rpCell.ok{color:var(--accent)}

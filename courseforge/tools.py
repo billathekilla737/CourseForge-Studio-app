@@ -93,22 +93,17 @@ def detect(cfg=None) -> dict:
                    else "brew install tesseract  (or apt install tesseract-ocr)",
     }
 
+    from . import verapdf_setup
     vera = (getattr(cfg, "verapdf_path", "") or os.environ.get("VERAPDF_BAT")
-            or shutil.which("verapdf") or shutil.which("verapdf.bat"))
-    if not vera:
-        for cand in (r"C:\Program Files\veraPDF\verapdf.bat",
-                     Path.home() / "verapdf" / "verapdf.bat",
-                     Path.home() / "tools" / "verapdf" / "verapdf.bat"):
-            if Path(cand).is_file():
-                vera = str(cand)
-                break
+            or shutil.which("verapdf") or shutil.which("verapdf.bat")
+            or verapdf_setup.find())
     out["verapdf"] = {
         "label": "veraPDF",
         "ok": bool(vera and Path(vera).exists()), "path": vera or "",
         "version": "",
         "enables": "Prove PDF/UA-1 compliance (the census by rule)",
-        "install": "Download the veraPDF greenfield installer from https://verapdf.org/ "
-                   "and install to C:\\Program Files\\veraPDF (needs Java).",
+        "install": "The Studio fetches and installs it for you: "
+                   "python -m courseforge tools --install --yes",
     }
 
     java = (getattr(cfg, "java_path", "") or os.environ.get("JAVACMD")
@@ -148,6 +143,19 @@ def detect(cfg=None) -> dict:
         "enables": "The whole PDF fixer",
         "install": "python -m pip install pymupdf pikepdf fonttools",
     }
+
+    # Whether the Studio can get this one itself, which is what decides if the
+    # "Install X to enable" card carries a button or only a command to copy.
+    # The Claude CLI is deliberately not on the list: it is a login as much as
+    # an install, and doing that behind someone's back would be wrong.
+    winget_ok = sys.platform == "win32" and bool(shutil.which("winget"))
+    for name, info in out.items():
+        info["can_install"] = (
+            winget_ok if name in ("tesseract", "java")
+            else True if name in ("verapdf", "pymupdf", "pikepdf", "fonttools",
+                                  "pypdf", "python_pptx", "python_docx",
+                                  "pillow", "pdf_engine")
+            else False)
     return out
 
 
@@ -165,24 +173,21 @@ def wire_env(cfg=None) -> None:
 # ---------------------------------------------------------------- installing
 # What each missing tool needs, and whether a package manager can fetch it.
 # winget is on every Windows 11 and checks the publisher's signature, so it is
-# a better answer than this tool downloading executables on its own. veraPDF
-# publishes no winget package, so that one stays a guided manual step.
+# a better answer than this tool downloading executables on its own.
 WINGET = {
     "tesseract": ("UB-Mannheim.TesseractOCR", "Tesseract OCR"),
     "java": ("EclipseAdoptium.Temurin.21.JRE", "Eclipse Temurin JRE 21"),
 }
 # Why a tool is not automated, shown next to it rather than buried in a log.
-MANUAL_WHY = {
-    "verapdf": "No package manager carries it, and it ships as a Java installer. "
-               "Install Java first.",
-}
+# Empty now that veraPDF installs itself; kept because the moment a tool cannot
+# be automated, saying so beside its name is the right place for it.
+MANUAL_WHY: dict[str, str] = {}
 VERAPDF_STEPS = (
-    "veraPDF has no winget package, so it is two steps by hand:\n"
-    "  1. Download the greenfield installer from https://verapdf.org/software/\n"
-    "  2. Run it and accept the default location, or unpack it to\n"
-    "     %USERPROFILE%\\verapdf\n"
-    "It needs Java, so install that first. Set VERAPDF_BAT, or verapdf_path in\n"
-    "config.json, if you put it anywhere else."
+    "veraPDF has no winget package, so the Studio fetches the project's own\n"
+    "installer, checks it against a known hash and runs it unattended into\n"
+    "%LOCALAPPDATA%\\Programs\\veraPDF. It needs Java, which installs alongside.\n"
+    "To do it by hand instead: https://verapdf.org/software/ , then set\n"
+    "VERAPDF_BAT, or verapdf_path in config.json, if you put it elsewhere."
 )
 
 
@@ -196,8 +201,13 @@ def install_plan(cfg=None) -> dict:
             rows.append({"tool": name, "label": label, "how": "winget",
                          "package": pkg, "command": f"winget install --id {pkg} --exact"})
     if not found.get("verapdf", {}).get("ok"):
-        rows.append({"tool": "verapdf", "label": "veraPDF", "how": "manual",
-                     "package": "", "command": "", "steps": VERAPDF_STEPS})
+        # Last, and deliberately so: it runs on Java, and the Java row above
+        # may be what is about to provide it.
+        from . import verapdf_setup
+        rows.append({"tool": "verapdf", "label": "veraPDF", "how": "download",
+                     "package": verapdf_setup.RELEASE, "command": "",
+                     "steps": VERAPDF_STEPS,
+                     "into": str(verapdf_setup.default_dir())})
     missing_py = [k for k in ("pymupdf", "pikepdf", "fonttools", "python_pptx", "python_docx")
                   if not found.get(k, {}).get("ok")]
     if missing_py:
@@ -225,6 +235,20 @@ def install(cfg=None, yes: bool = False, say=print) -> int:
         say(f"{row['label']}: {plan['found'].get(row['tool'], {}).get('enables', '')}")
         if row["how"] == "manual":
             say(row["steps"])
+            continue
+        if row["how"] == "download":
+            say(f"  the Studio fetches veraPDF {row['package']} and installs it "
+                f"to {row['into']}")
+            if not yes:
+                say("  (re-run this with --yes to do it now)")
+                continue
+            from . import verapdf_setup
+            out = verapdf_setup.install(cfg, on_line=lambda t: say("  " + t))
+            if out["ok"]:
+                done += 1
+            else:
+                failed += 1
+                say(f"  that did not work: {out['detail']}")
             continue
         if row["how"] == "winget" and not plan["winget"]:
             say("  winget is not on this machine. Install it from the Microsoft Store "
@@ -325,6 +349,15 @@ def install_stream(cfg=None, on_line=None, only=None) -> dict:
         if row["how"] == "manual":
             manual.append(row["tool"])
             say(f"{row['label']}: has to be done by hand, see the notes afterwards.")
+            continue
+        if row["how"] == "download":
+            from . import verapdf_setup
+            out = verapdf_setup.install(cfg, on_line=say)
+            if out["ok"]:
+                done.append(row["tool"])
+            else:
+                failed.append(row["tool"])
+                say(f"{row['label']}: {out['detail']}")
             continue
         if row["how"] == "winget" and not plan["winget"]:
             failed.append(row["tool"])

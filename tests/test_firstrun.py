@@ -71,14 +71,36 @@ class FirstRun(unittest.TestCase):
     def test_manual_only_tool_is_never_run(self):
         ran = []
         plan = {"winget": True, "found": {},
-                "rows": [{"tool": "verapdf", "label": "veraPDF", "how": "manual",
+                "rows": [{"tool": "somebody-elses", "label": "Something", "how": "manual",
                           "package": "", "command": "", "steps": tools.VERAPDF_STEPS}]}
         with mock.patch.object(tools, "install_plan", lambda c=None: plan), \
              mock.patch.object(tools.subprocess, "Popen", lambda *a, **k: ran.append(a)):
             out = tools.install_stream(self.cfg, on_line=lambda t: None)
         self.assertEqual(ran, [], "it tried to run a manual step")
-        self.assertEqual(out["manual"], ["verapdf"])
+        self.assertEqual(out["manual"], ["somebody-elses"])
         self.assertIn("verapdf.org", out["steps"])
+
+    def test_verapdf_goes_through_its_own_installer_not_a_package_manager(self):
+        """The one tool no package manager carries. It must not reach winget,
+        and it must not be silently skipped as a manual step either -- that is
+        what it was, and what made clicking Install leave it uninstalled."""
+        from courseforge import verapdf_setup
+        ran, called = [], []
+        plan = {"winget": True, "found": {},
+                "rows": [{"tool": "verapdf", "label": "veraPDF", "how": "download",
+                          "package": verapdf_setup.RELEASE, "command": "",
+                          "steps": tools.VERAPDF_STEPS, "into": "somewhere"}]}
+        with mock.patch.object(tools, "install_plan", lambda c=None: plan), \
+             mock.patch.object(tools.subprocess, "Popen", lambda *a, **k: ran.append(a)), \
+             mock.patch.object(verapdf_setup, "install",
+                               lambda cfg=None, on_line=None, dest=None:
+                                   (called.append(True),
+                                    {"ok": True, "path": "v", "dir": "d", "detail": ""})[1]):
+            out = tools.install_stream(self.cfg, on_line=lambda t: None)
+        self.assertEqual(ran, [], "veraPDF was handed to a package manager")
+        self.assertEqual(called, [True], "the veraPDF installer was never called")
+        self.assertEqual(out["installed"], ["verapdf"])
+        self.assertEqual(out["manual"], [])
 
 
 

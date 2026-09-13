@@ -106,7 +106,9 @@ class SetupWindow:
         found = tools.detect(self.cfg)
         for row_ in self.plan["rows"]:
             how = ("installs itself" if row_["how"] == "winget"
-                   else "by hand" if row_["how"] == "manual" else "pip")
+                   else "by hand" if row_["how"] == "manual"
+                   else "downloaded and installed for you" if row_["how"] == "download"
+                   else "pip")
             tk.Label(card, text=f"{row_['label']}  ({how})", font=self.f_body,
                      bg=CARD, fg=INK, anchor="w").pack(anchor="w", padx=12, pady=(8, 0))
             note = found.get(row_["tool"], {}).get("enables", "")

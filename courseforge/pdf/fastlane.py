@@ -3893,6 +3893,14 @@ def find_verapdf():
                   os.path.expanduser(r"~\tools\verapdf\verapdf.bat")):
         if os.path.isfile(guess):
             return guess
+    # Where the Studio puts it when it installs veraPDF itself: per-user, so no
+    # administrator rights are needed. Asked last, and only as a fallback --
+    # VERAPDF_BAT above is how the server normally says where it is.
+    try:
+        from ..verapdf_setup import find as _find
+        return _find() or None
+    except Exception:  # noqa: BLE001
+        pass
     return None
 
 
@@ -3908,6 +3916,17 @@ def _java_env():
                     reverse=True):
         env["JAVACMD"] = j
         break
+    if not env.get("JAVACMD"):
+        # An ordinary system install that simply declined "add to PATH", which
+        # is the common case rather than the odd one. Same list the rest of the
+        # Studio searches; wrapped because this file also runs as a script.
+        try:
+            from ..tools import _first_match, java_dirs
+            found = _first_match(java_dirs())
+            if found:
+                env["JAVACMD"] = found
+        except Exception:  # noqa: BLE001
+            pass
     return env
 
 

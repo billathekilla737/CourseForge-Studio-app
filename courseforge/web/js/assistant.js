@@ -44,9 +44,16 @@
       <div class="asstMain">
         <div class="asstChips" id="asstChips"></div>
         <div class="asstLog" id="asstLog" role="log" aria-live="polite" aria-label="The conversation"></div>
+        <div id="asstNameFix"></div>
         <div class="asstCompose">
           <label class="srOnly" for="asstText">What do you want done?</label>
-          <textarea id="asstText" placeholder="Tell it what to do. Enter sends; Shift and Enter make a new line."></textarea>
+          <div class="asstBox">
+            <textarea id="asstText" autocomplete="off" role="combobox" aria-expanded="false"
+              aria-autocomplete="list" aria-controls="asstMention"
+              placeholder="Tell it what to do. Type @ for a student. Enter sends; Shift and Enter make a new line."></textarea>
+            <ul class="asstMention" id="asstMention" role="listbox" hidden
+              aria-label="Students on this roster"></ul>
+          </div>
           <div class="col">
             <button class="btn ai" type="button" id="asstSend">Send</button>
             <button class="btn" type="button" id="asstStop" disabled title="Nothing is running">Stop</button>
@@ -77,7 +84,11 @@
     $('#asstStop').onclick = () => asstStop(courseId);
     $('#asstNew').onclick = () => asstNew(courseId);
     const text = $('#asstText');
+    text.oninput = () => mentionSync();
+    text.onclick = () => mentionSync();
+    text.onblur = () => setTimeout(mentionClose, 120);   // let a click land first
     text.onkeydown = ev => {
+      if (mentionKey(ev)) return;
       if (ev.key === 'Enter' && !ev.shiftKey && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
         ev.preventDefault();
         asstSend(courseId);
@@ -95,6 +106,7 @@
     mem.headlines = state.headlines || {};
     asstChips($('#asstChips'), state);
     asstNames(state);
+    asstRoster(courseId);
     asstFacts(state);
     asstBoot(state);
     asstLedger(courseId);
@@ -129,6 +141,141 @@
         setStatus('put in the box, not sent', 'ok');
       };
     });
+  }
+
+  /* ----------------------------------------------------------- @ a student */
+  /* The swap only fires on a spelling the roster knows, so the surest way to
+     get it right is not to type the name at all. `@` offers the roster and
+     inserts the name exactly as Canvas spells it; from there the ordinary
+     exact match does the work, and there is no second protocol to keep honest.
+
+     The list lives above the box rather than at the caret: a textarea has no
+     caret coordinates without measuring the text in a mirror element, and a
+     fixed position that always works beats a clever one that sometimes does. */
+  const MENTION = /@([\p{L}][\p{L}'\-. ]{0,28}|)$/u;
+
+  function mentionState() {
+    const mem = asstMem();
+    mem.mention = mem.mention || { open: false, hits: [], pick: 0, from: 0, to: 0 };
+    return mem.mention;
+  }
+
+  function mentionClose() {
+    const list = $('#asstMention');
+    const box = $('#asstText');
+    mentionState().open = false;
+    if (list) { list.hidden = true; list.innerHTML = ''; }
+    if (box) box.setAttribute('aria-expanded', 'false');
+  }
+
+  /* Scores the roster against what has been typed after the @. A name that
+     starts with it comes first, then one where a word starts with it, then
+     anything that merely contains it. */
+  function mentionRank(people, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return people.slice(0, 8);
+    const scored = [];
+    for (const p of people) {
+      const name = (p.name || '').toLowerCase();
+      const words = name.split(/\s+/);
+      let rank = null;
+      if (name.startsWith(q)) rank = 0;
+      else if (words.some(w => w.startsWith(q))) rank = 1;
+      else if (name.includes(q)) rank = 2;
+      if (rank != null) scored.push([rank, name, p]);
+    }
+    scored.sort((a, b) => (a[0] - b[0]) || a[1].localeCompare(b[1]));
+    return scored.slice(0, 8).map(s => s[2]);
+  }
+
+  function mentionSync() {
+    const box = $('#asstText');
+    const list = $('#asstMention');
+    const mem = asstMem();
+    const st = mentionState();
+    if (!box || !list) return;
+    const people = mem.roster || [];
+    const caret = box.selectionStart;
+    const before = box.value.slice(0, caret);
+    const m = people.length ? MENTION.exec(before) : null;
+    if (!m) { mentionClose(); return; }
+
+    const hits = mentionRank(people, m[1] || '');
+    st.from = caret - m[0].length;
+    st.to = caret;
+    st.hits = hits;
+    st.pick = 0;
+    if (!hits.length) {
+      list.hidden = false;
+      list.innerHTML = `<li class="asstMentionNone" role="option" aria-disabled="true">
+        Nobody on this roster matches "${esc(m[1] || '')}".</li>`;
+      st.open = true;
+      box.setAttribute('aria-expanded', 'true');
+      return;
+    }
+    list.hidden = false;
+    list.innerHTML = hits.map((p, i) => `<li role="option" data-i="${i}"
+      id="asstMention-${i}" aria-selected="${i === 0}">${esc(p.name)}</li>`).join('');
+    list.querySelectorAll('[data-i]').forEach(li => {
+      li.onmousedown = ev => { ev.preventDefault(); mentionTake(+li.dataset.i); };
+    });
+    st.open = true;
+    box.setAttribute('aria-expanded', 'true');
+    box.setAttribute('aria-activedescendant', 'asstMention-0');
+  }
+
+  function mentionMove(step) {
+    const st = mentionState();
+    const list = $('#asstMention');
+    if (!st.hits.length) return;
+    st.pick = (st.pick + step + st.hits.length) % st.hits.length;
+    list.querySelectorAll('[data-i]').forEach(li => {
+      li.setAttribute('aria-selected', String(+li.dataset.i === st.pick));
+    });
+    const box = $('#asstText');
+    if (box) box.setAttribute('aria-activedescendant', 'asstMention-' + st.pick);
+  }
+
+  /* Puts the roster's own spelling into the box, in place of the @ and
+     whatever was typed after it. */
+  function mentionTake(index) {
+    const st = mentionState();
+    const box = $('#asstText');
+    const person = st.hits[index == null ? st.pick : index];
+    if (!person || !box) { mentionClose(); return; }
+    const head = box.value.slice(0, st.from);
+    const tail = box.value.slice(st.to);
+    const insert = person.name + (tail.startsWith(' ') ? '' : ' ');
+    box.value = head + insert + tail;
+    const caret = head.length + insert.length;
+    box.setSelectionRange(caret, caret);
+    mentionClose();
+    box.focus();
+    setStatus(person.name + ' goes out as ' + (person.tag || 'a tag'), 'ok');
+  }
+
+  /* True when the key belonged to the menu, so the composer leaves it alone.
+     Enter has to be claimed here or picking a name would send the message. */
+  function mentionKey(ev) {
+    const st = mentionState();
+    if (!st.open) return false;
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); mentionMove(1); return true; }
+    if (ev.key === 'ArrowUp') { ev.preventDefault(); mentionMove(-1); return true; }
+    if (ev.key === 'Escape') { ev.preventDefault(); mentionClose(); return true; }
+    if ((ev.key === 'Enter' || ev.key === 'Tab') && st.hits.length) {
+      ev.preventDefault();
+      mentionTake();
+      return true;
+    }
+    return false;
+  }
+
+  async function asstRoster(courseId) {
+    try {
+      const out = await api(asstBase(courseId) + '/roster');
+      const mem = asstMem();
+      if (String(mem.courseId) === String(courseId)) mem.roster = out.students || [];
+    } catch (_) { /* the picker is a convenience; typing the name still works */ }
   }
 
   /* What the name swap is doing, said where it is being relied on. A person
@@ -415,18 +562,101 @@
       .finally(() => { mem.answering = null; });
   }
 
+  /* ------------------------------------------------- a name spelled wrong */
+  /* The server stops a message whose name is a keystroke away from somebody on
+     the roster, because a name spelled almost right matches nothing and would
+     go out as typed while the person believed it was swapped. Telling them off
+     is not enough: the fix belongs one click away, and so does the way past it
+     when the checker is the one that is wrong. */
+  /* Put `suggestion` in, over whichever words around `wrote` the suggestion
+     already accounts for.
+
+     Only one word of a name is usually wrong, and the check reports that word
+     on its own. Swapping just it for the whole name duplicates the half that
+     was right: "Jordan Vancc" became "Jordan Jordan Vance". So the neighbours
+     are offered up too, longest run first, and the widest span that is really
+     there is the one replaced. When no neighbour fits, the single word is
+     replaced and nothing is duplicated because there was nothing to duplicate. */
+  function repairName(text, wrote, suggestion) {
+    const rx = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    const parts = String(suggestion).trim().split(/\s+/);
+    const tries = [];
+    for (let i = 0; i < parts.length; i++) {
+      tries.push({
+        words: parts.length,
+        body: parts.map((p, j) => (j === i ? rx(wrote) : rx(p))).join('\\s+'),
+      });
+    }
+    tries.push({ words: 1, body: rx(wrote) });
+    tries.sort((a, b) => b.words - a.words);
+    for (const t of tries) {
+      const pattern = new RegExp('(^|[^\\p{L}\\p{N}])' + t.body + '(?![\\p{L}\\p{N}])', 'giu');
+      if (pattern.test(text)) {
+        pattern.lastIndex = 0;
+        return text.replace(pattern, (m, lead) => lead + suggestion);
+      }
+    }
+    return text;
+  }
+
+  function asstNameFix(courseId, body) {
+    const host = $('#asstNameFix');
+    const box = $('#asstText');
+    if (!host) return;
+    /* Both refusals end the same way -- one word in the box is not the name of
+       exactly one student -- so they offer the same repair. A misspelling has
+       one candidate; a shared surname has two, and picking either is what the
+       server asked for. */
+    const near = []
+      .concat((body && body.near) || [])
+      .concat(((body && body.ambiguous) || []).flatMap(a =>
+        (a.candidates || []).map(c => ({ wrote: a.wrote, suggestion: c }))));
+    if (!near.length) { host.innerHTML = ''; return; }
+    host.innerHTML = `<div class="asstFix" role="group" aria-label="A name needs fixing">
+      <p>${esc(body.error || '')}</p>
+      <div class="row">
+        ${near.map((n, i) => `<button class="btn sm primary" type="button" data-fix="${i}"
+          >Use ${esc(n.suggestion)}</button>`).join('')}
+        ${body.can_send_anyway ? '<button class="btn sm" type="button" data-anyway="1" '
+          + 'title="Send the message exactly as you typed it. No name in it will be swapped.">'
+          + 'Send as typed</button>' : ''}
+        <button class="btn sm" type="button" data-drop="1">Let me edit it</button>
+      </div>
+    </div>`;
+    host.querySelectorAll('[data-fix]').forEach(b => {
+      b.onclick = () => {
+        const n = near[+b.dataset.fix];
+        if (box && n) box.value = repairName(box.value, n.wrote, n.suggestion);
+        host.innerHTML = '';
+        asstSend(courseId);
+      };
+    });
+    const anyway = host.querySelector('[data-anyway]');
+    if (anyway) {
+      anyway.onclick = () => { host.innerHTML = ''; asstSend(courseId, true); };
+    }
+    host.querySelector('[data-drop]').onclick = () => {
+      host.innerHTML = '';
+      if (box) box.focus();
+    };
+  }
+
   /* ------------------------------------------------------------- the verbs */
-  function asstSend(courseId) {
+  function asstSend(courseId, allowNear) {
     const box = $('#asstText');
     if (!box) return;
     const text = (box.value || '').trim();
     if (!text) { setStatus('type something to send first', 'err'); box.focus(); return; }
+    mentionClose();
     const send = $('#asstSend');
     send.disabled = true;
-    api(asstBase(courseId) + '/send', { body: { text } })
+    api(asstBase(courseId) + '/send',
+      { body: allowNear ? { text, allow_near: true } : { text } })
       .then(res => {
         box.value = '';
         box.focus();
+        const fix = $('#asstNameFix');
+        if (fix) fix.innerHTML = '';
         const mem = asstMem();
         if (res && res.seq != null && mem.seq > res.seq) mem.seq = 0;
         /* Say when a name was swapped, and which. Silence would leave the
@@ -446,6 +676,16 @@
       })
       .catch(err => {
         send.disabled = false;
+        const body = (err && err.body) || {};
+        /* A name the server would not guess at is not a failure, it is a
+           question, so it gets the inline card rather than the red banner
+           that means something broke. */
+        if ((body.near || []).length || (body.ambiguous || []).length) {
+          setStatus(firstLine(err.message), 'err');
+          asstNameFix(courseId, body);
+          if (box) box.focus();
+          return;
+        }
         setStatus(firstLine(err.message), 'err');
         banner('err', '<b>That message did not go.</b> ' + esc(err.message));
       });

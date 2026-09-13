@@ -33,6 +33,27 @@ CONVERSATION_TAIL = 12_000  # bytes of conversation.txt shown after a restart
 GRACE_S = 10.0
 
 
+class NameProblem(ValueError):
+    """A message stopped because of a student's name, with what to do about it.
+
+    A ValueError so every existing caller still turns it into a 409, and a
+    class of its own so the route can hand the page the choices rather than
+    only a sentence.
+    """
+
+    def __init__(self, masked):
+        super().__init__(masked.sentence())
+        self.masked = masked
+
+    def view(self) -> dict:
+        out = self.masked.view()
+        out["error"] = str(self)
+        # Only a near miss may be overridden. An ambiguous surname has no safe
+        # answer here, so the page is not offered one.
+        out["can_send_anyway"] = bool(self.masked.near and not self.masked.ambiguous)
+        return out
+
+
 class Pending:
     def __init__(self, request_id: str, course_id: str, req: dict, timeout_s: float):
         self.id = request_id
@@ -301,7 +322,8 @@ class Manager:
             return [p.view() for p in self.pending.values() if p.course_id == cid]
 
     # ---- the conversation
-    def send(self, course_id, text: str, model: str | None = None) -> dict:
+    def send(self, course_id, text: str, model: str | None = None,
+             allow_near: bool = False) -> dict:
         text = (text or "").strip()
         if not text:
             raise ValueError("Type something to send first.")
@@ -311,13 +333,19 @@ class Manager:
 
         # Real names are swapped for this course's tags before anything is
         # sent, and this is the only place a message enters the session, so
-        # there is no second path that skips it. A name two students share is
-        # refused rather than guessed: sending it would leak a real surname,
-        # and picking one would answer about the wrong person.
+        # there is no second path that skips it.
+        #
+        # Two things stop the message rather than guessing. A name two students
+        # share: sending it leaks a real surname, and picking one answers about
+        # the wrong person. And a name spelled almost right: it matches nothing,
+        # so it would go out as typed while the person believed it was swapped.
+        # The second one can be overridden, because it is the one that can be
+        # wrong about an ordinary word; the first cannot, because there is no
+        # safe way to resolve it here.
         names = self.names(course_id)
-        masked = names.mask(text)
-        if masked.ambiguous:
-            raise ValueError(masked.sentence())
+        masked = names.mask(text, allow_near=allow_near)
+        if masked.ambiguous or masked.near:
+            raise NameProblem(masked)
         outgoing = masked.text
 
         with c.lock:

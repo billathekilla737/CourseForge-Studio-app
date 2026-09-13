@@ -75,6 +75,33 @@ class Outbound(Base):
         self.assertIn("Email Dana Wu today.",
                       [e.get("text") for e in shown if e["kind"] == "user"])
 
+    def test_a_misspelt_name_stops_the_message_and_offers_the_fix(self):
+        with self.assertRaises(M.NameProblem) as caught:
+            self.mgr.send("734975", "Is Jordam caught up?")
+        view = caught.exception.view()
+        self.assertEqual(self.session.sent, [], "it sent the typo anyway")
+        self.assertEqual([n["suggestion"] for n in view["near"]], ["Jordan Alvarez"])
+        self.assertTrue(view["can_send_anyway"],
+                        "the page has no way past a checker that is wrong")
+
+    def test_but_it_can_be_overridden(self):
+        """The near-miss check is the one that can be wrong about an ordinary
+        word, so there has to be a way past it."""
+        self.mgr.send("734975", "Is Jordam caught up?", allow_near=True)
+        self.assertEqual(self.session.sent, ["Is Jordam caught up?"])
+
+    def test_an_ambiguous_name_offers_no_override(self):
+        """There is no safe way to resolve it here: sending leaks a real
+        surname and picking one answers about the wrong student."""
+        with mock.patch.object(self.mgr.app.client, "students", staticmethod(lambda cid: [
+                {"id": 1, "name": "Chris Okafor", "sortable_name": "Okafor, Chris"},
+                {"id": 2, "name": "Robin Okafor", "sortable_name": "Okafor, Robin"}])):
+            identity.forget()
+            with self.assertRaises(M.NameProblem) as caught:
+                self.mgr.send("734975", "Did Okafor submit?", allow_near=True)
+        self.assertFalse(caught.exception.view()["can_send_anyway"])
+        self.assertEqual(self.session.sent, [])
+
     def test_an_ambiguous_name_stops_the_message(self):
         with mock.patch.object(self.mgr.app.client, "students", staticmethod(lambda cid: [
                 {"id": 1, "name": "Chris Okafor", "sortable_name": "Okafor, Chris"},

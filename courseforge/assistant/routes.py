@@ -4,6 +4,7 @@
     POST /api/assistant/{cid}/send   {text}      start or resume the session, send one message
     GET  /api/assistant/{cid}/events?since=N     events after N, plus pending permissions
     POST /api/assistant/{cid}/answer {request_id, decision}
+    GET  /api/assistant/{cid}/roster             the names the @ picker offers
     POST /api/assistant/{cid}/names/refresh      re-read the roster for tagging
     POST /api/assistant/{cid}/stop
     POST /api/assistant/{cid}/new
@@ -17,7 +18,7 @@ own session and not from another local process.
 from __future__ import annotations
 
 from ..routing import HTTPError, route
-from .manager import Manager
+from .manager import Manager, NameProblem
 
 
 def install(app) -> None:
@@ -42,10 +43,16 @@ def send(req):
     if not isinstance(text, str) or not text.strip():
         raise HTTPError(400, "Type something to send first.")
     model = (req.body or {}).get("model") or None
+    allow_near = bool((req.body or {}).get("allow_near"))
     try:
-        return _mgr(req).send(req.params["cid"], text, model=model)
+        return _mgr(req).send(req.params["cid"], text, model=model,
+                              allow_near=allow_near)
     except PermissionError as exc:
         raise HTTPError(403, str(exc))
+    except NameProblem as exc:
+        # The choices ride along, so the composer can offer the name it thinks
+        # was meant instead of only telling the person they got it wrong.
+        raise HTTPError(409, str(exc), **exc.view())
     except ValueError as exc:
         raise HTTPError(409, str(exc))
     except RuntimeError as exc:
@@ -72,6 +79,19 @@ def answer(req):
         return _mgr(req).answer(request_id, decision)
     except KeyError as exc:
         raise HTTPError(404, str(exc).strip("'\""))
+
+
+@route("GET", "/api/assistant/{cid}/roster", area="assistant")
+def roster(req):
+    """The names the @ picker offers. Local only: this never reaches a model.
+
+    It is the same list the grading screens already show on this machine, and
+    the reason it is worth having in the composer is that picking a name is
+    the one way to be certain it is spelled the way the roster spells it.
+    """
+    names = _mgr(req).names(req.params["cid"])
+    return {"enabled": bool(names.enabled and len(names)),
+            "students": names.roster()}
 
 
 @route("POST", "/api/assistant/{cid}/names/refresh", area="assistant")

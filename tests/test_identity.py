@@ -120,6 +120,94 @@ class Masking(unittest.TestCase):
         self.assertIn("No roster", empty.roster_note())
 
 
+class NearMisses(unittest.TestCase):
+    """A name typed slightly wrong matches nothing, so it goes out as typed.
+
+    That is the failure mode nobody notices: the person believes the swap
+    happened. It is not a roster leak in the strict sense -- the real name was
+    never written -- but it is close enough to identify somebody, so it stops
+    the message and asks.
+    """
+
+    def setUp(self):
+        self.nm = identity.NameMap(734975, ROSTER)
+
+    def near(self, text):
+        return [(r["wrote"], r["suggestion"]) for r in self.nm.mask(text).near]
+
+    def test_two_letters_swapped_is_one_mistake_not_two(self):
+        """The commonest typo there is. The given name matched exactly and was
+        already swapped, so what is left to notice is the surname."""
+        self.assertEqual(self.near("Why is Jordan Alvarze behind?"),
+                         [("Alvarze", "Jordan Alvarez")])
+
+    def test_a_typo_in_a_first_name_on_its_own(self):
+        self.assertEqual(self.near("Is Jordam caught up?"),
+                         [("Jordam", "Jordan Alvarez")])
+
+    def test_the_message_does_not_go(self):
+        m = self.nm.mask("Chase up Jordam about the essay")
+        self.assertFalse(m.clean)
+        self.assertIn("Nothing was sent", m.sentence())
+        self.assertIn("Jordan Alvarez", m.sentence())
+
+    def test_a_name_spelled_right_is_not_a_near_miss(self):
+        self.assertEqual(self.near("Why is Jordan Alvarez behind?"), [])
+
+    def test_ordinary_capitalised_words_are_left_alone(self):
+        """The check has to survive normal course prose, or it becomes a thing
+        people learn to type around."""
+        for text in ("Is the Monday deadline still right?",
+                     "Move the Unit 3 Exam to Friday.",
+                     "Canvas will not let me publish the Syllabus.",
+                     "Does Blender export to Unity cleanly?",
+                     "Check the Week 8 Discussion and the Midterm."):
+            self.assertEqual(self.near(text), [], text)
+
+    def test_short_words_are_not_guessed_at(self):
+        """At four letters one edit reaches half the dictionary, so "Chem"
+        would start asking about a student called Chen."""
+        nm = identity.NameMap(1, [{"id": 1, "name": "Ana Chen",
+                                   "sortable_name": "Chen, Ana"}])
+        self.assertEqual(nm.mask("Chem 101 meets Tuesday").near, [])
+
+    def test_an_ambiguous_surname_wins_over_a_near_miss(self):
+        """Two things can be wrong at once; the one with no safe answer is
+        the one worth saying."""
+        m = self.nm.mask("Did Okafor and Jordam both submit?")
+        self.assertTrue(m.ambiguous)
+        self.assertEqual(m.near, [], "it raised both at once")
+        self.assertIn("Okafor", m.sentence())
+
+    def test_it_can_be_overridden_for_the_word_it_got_wrong(self):
+        self.assertEqual(self.nm.mask("Ask Jordam.", allow_near=True).near, [])
+
+    def test_the_same_typo_twice_is_reported_once(self):
+        self.assertEqual(len(self.near("Jordam said so, and Jordam is right")), 1)
+
+
+class ClosestName(unittest.TestCase):
+    """What the composer offers when somebody types into the @ picker."""
+
+    def setUp(self):
+        self.nm = identity.NameMap(734975, ROSTER)
+
+    def test_a_prefix_finds_the_student(self):
+        self.assertEqual(self.nm.closest("Jord")[0]["name"], "Jordan Alvarez")
+
+    def test_a_typo_still_finds_the_student(self):
+        self.assertEqual(self.nm.closest("Alvarze")[0]["name"], "Jordan Alvarez")
+
+    def test_nothing_typed_offers_nothing(self):
+        self.assertEqual(self.nm.closest(""), [])
+
+    def test_the_roster_is_offered_in_reading_order(self):
+        names = [r["name"] for r in self.nm.roster()]
+        self.assertEqual(names[0], "Jordan Alvarez", names)   # Alvarez, Jordan
+        self.assertEqual(names[-1], "Dana Wu", names)         # Wu, Dana
+        self.assertEqual(len(names), len(ROSTER))
+
+
 class Unmasking(unittest.TestCase):
     def setUp(self):
         self.nm = identity.NameMap(734975, ROSTER)

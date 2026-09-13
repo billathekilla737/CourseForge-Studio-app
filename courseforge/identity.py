@@ -50,6 +50,43 @@ ALSO_WORDS = {
 # Too short to be safely matched on their own.
 MIN_TOKEN = 3
 
+# A misspelt name is not the student's name, so it is not a roster leak in the
+# strict sense. It is still close enough to identify somebody, and worse, the
+# person typing it believes it was swapped. So a near miss stops the message
+# and asks, exactly as an ambiguous surname does.
+#
+# The threshold is edit distance rather than a similarity ratio because the
+# question being asked is "is this the same name typed badly", and a typo is
+# one or two keystrokes. Short words are excluded outright: at four letters a
+# single edit reaches too many ordinary words, and "Chem" would start asking
+# about a student called Chen.
+NEAR_MIN = 5
+
+
+def _near_budget(n: int) -> int:
+    return 1 if n < 8 else 2
+
+
+# Capitalised words that turn up in course prose and are nobody's name. Without
+# these the check spends its time asking whether "Monday" was meant to be a
+# student. Roster names are matched before this list is consulted, so a student
+# really called May is still swapped by the exact match.
+NOT_NAMES = {
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+    "canvas", "studio", "claude", "ally", "word", "excel", "powerpoint",
+    "outlook", "teams", "zoom", "blender", "unity", "maya", "photoshop",
+    "google", "microsoft", "adobe", "youtube", "python", "windows",
+    "unit", "module", "week", "quiz", "exam", "test", "midterm", "final",
+    "assignment", "syllabus", "discussion", "page", "course", "section",
+    "rubric", "chapter", "lesson", "lecture", "project", "essay", "paper",
+    "spring", "summer", "fall", "autumn", "winter", "term", "semester",
+    # The tag prefix itself, so "Student" out of a swapped tag is never
+    # offered back as somebody's misspelt name.
+    "student", "students",
+}
+
 
 class Swap:
     """One substitution that happened, for the "3 names swapped" chip."""
@@ -62,29 +99,36 @@ class Swap:
 
 
 class Masked:
-    def __init__(self, text: str, swaps: list[Swap], ambiguous: list[dict]):
+    def __init__(self, text: str, swaps: list[Swap], ambiguous: list[dict],
+                 near: list[dict] | None = None):
         self.text = text
         self.swaps = swaps
         self.ambiguous = ambiguous
+        self.near = near or []
 
     @property
     def clean(self) -> bool:
-        return not self.ambiguous
+        return not self.ambiguous and not self.near
 
     def sentence(self) -> str:
-        """What the ambiguity is, and what to write instead."""
-        if not self.ambiguous:
-            return ""
-        parts = []
-        for row in self.ambiguous:
-            who = " and ".join(row["candidates"])
-            parts.append(f'"{row["wrote"]}" is {who}')
-        return ("Two students match what you wrote, so nothing was sent: "
-                + "; ".join(parts) + ". Write the full name and send it again.")
+        """What stopped it, and what to do about it."""
+        if self.ambiguous:
+            parts = []
+            for row in self.ambiguous:
+                who = " and ".join(row["candidates"])
+                parts.append(f'"{row["wrote"]}" is {who}')
+            return ("Two students match what you wrote, so nothing was sent: "
+                    + "; ".join(parts) + ". Write the full name and send it again.")
+        if self.near:
+            parts = [f'"{r["wrote"]}" looks like {r["suggestion"]}' for r in self.near]
+            return ("Nothing was sent: " + "; ".join(parts)
+                    + ". A name spelled even slightly wrong is not swapped, so it "
+                      "would have gone out as you typed it.")
+        return ""
 
     def view(self) -> dict:
         return {"swapped": [s.view() for s in self.swaps],
-                "ambiguous": self.ambiguous}
+                "ambiguous": self.ambiguous, "near": self.near}
 
 
 class NameMap:
@@ -99,6 +143,7 @@ class NameMap:
         self.by_user: dict[str, str] = {}
         self._needles: list[tuple[re.Pattern, str]] = []
         self._shared: dict[str, list[str]] = {}
+        self._spellings: list[tuple[str, str]] = []
         if students is not None:
             self.absorb(students)
 
@@ -183,8 +228,15 @@ class NameMap:
                 continue
             needles.append((re.compile(_bound(token)), next(iter(tags))))
         self._needles = needles
+        # Everything a near miss is measured against, longest first so a full
+        # name wins over one of its halves.
+        self._spellings = sorted(
+            {v.lower(): (v, t) for v, t in whole}.values(),
+            key=lambda p: -len(p[0]))
+        self._spellings += [(tok, next(iter(tags)))
+                            for tok, tags in single.items() if len(tags) == 1]
 
-    def mask(self, text: str) -> Masked:
+    def mask(self, text: str, allow_near: bool = False) -> Masked:
         """Real names out, tags in. Nothing is guessed."""
         if not text or not self.enabled or not self.by_tag:
             return Masked(text or "", [], [])
@@ -205,7 +257,85 @@ class NameMap:
             if re.search(_bound(token), out):
                 ambiguous.append({"wrote": token,
                                   "candidates": [self.name_for(t) for t in tags]})
-        return Masked(out, swaps, ambiguous)
+        near = [] if (ambiguous or allow_near) else self.near_misses(out)
+        return Masked(out, swaps, ambiguous, near)
+
+    def near_misses(self, text: str) -> list[dict]:
+        """Capitalised words left in the text that look like a name typed badly.
+
+        Run on the masked text, so anything that matched exactly is already
+        gone and cannot be reported against itself. Tags are blanked first, or
+        the word "Student" out of `Student-1` becomes a candidate.
+
+        Both a pair of words and each word alone are tried, longest first. A
+        sentence beginning "Is Jordam caught up" offers "Is Jordam" before
+        "Jordam", and taking only the greedy match meant the typo went
+        unnoticed.
+        """
+        if not self.by_tag:
+            return []
+        scan = TAG.sub(lambda m: " " * len(m.group(0)), text)
+        words = [(m.group(0), m.start(), m.end())
+                 for m in re.finditer(r"\b[A-Z][a-z]+\b", scan)]
+        cands: list[tuple[str, int, int]] = []
+        for i, (word, start, end) in enumerate(words):
+            if i + 1 < len(words) and 0 < words[i + 1][1] - end <= 2:
+                cands.append((word + " " + words[i + 1][0], start, words[i + 1][2]))
+        cands += words
+        cands.sort(key=lambda c: (-len(c[0]), c[1]))
+
+        found: dict[str, dict] = {}
+        answered: list[tuple[int, int]] = []
+        for word, start, end in cands:
+            if any(start < b and end > a for a, b in answered):
+                continue                      # already covered by a longer hit
+            if len(word) < NEAR_MIN:
+                continue
+            if all(part.lower() in NOT_NAMES for part in word.split()):
+                continue
+            hit = self._closest(word)
+            if hit:
+                answered.append((start, end))
+                found.setdefault(word.lower(), {"wrote": word,
+                                                "suggestion": hit[0], "tag": hit[1]})
+        return list(found.values())
+
+    def closest(self, written: str, limit: int = 3) -> list[dict]:
+        """Roster names nearest to something typed, best first. For the UI."""
+        written = (written or "").strip().lower()
+        if not written:
+            return []
+        scored = []
+        for tag, row in self.by_tag.items():
+            name = row.get("name") or ""
+            if not name:
+                continue
+            best = min((_distance(written, s.lower(), 6)
+                        for s, t in self._spellings if t == tag), default=99)
+            scored.append((best, name, tag))
+        scored.sort()
+        return [{"name": n, "tag": t} for d, n, t in scored[:limit] if d <= 6]
+
+    def _closest(self, cand: str) -> tuple[str, str] | None:
+        low = cand.lower()
+        for spelling, tag in self._spellings:
+            n = max(len(low), len(spelling))
+            if n < NEAR_MIN:
+                continue
+            budget = _near_budget(n)
+            d = _distance(low, spelling.lower(), budget + 1)
+            if 0 < d <= budget:
+                return self.name_for(tag) or spelling, tag
+        return None
+
+    def roster(self) -> list[dict]:
+        """Tag, name and the parts worth matching on, for the @ picker."""
+        return [{"tag": tag,
+                 "name": row.get("name") or tag,
+                 "sortable": row.get("sortable_name") or ""}
+                for tag, row in sorted(self.by_tag.items(),
+                                       key=lambda kv: (kv[1].get("sortable_name")
+                                                       or kv[1].get("name") or "").lower())]
 
     def unmask(self, text: str) -> str:
         """Tags back into names, for the page only. Never for anything stored,
@@ -365,6 +495,35 @@ def _flip(sortable: str) -> str:
     family, _, given = sortable.partition(",")
     given, family = given.strip(), family.strip()
     return f"{given} {family}" if given and family else ""
+
+
+def _distance(a: str, b: str, cap: int) -> int:
+    """Edit distance counting a swap of two neighbours as one mistake.
+
+    Plain Levenshtein calls "Alvarze" two edits away from "Alvarez", which
+    puts the single commonest typo there is outside a one-edit budget. Counting
+    the transposition once is the difference between catching that and not.
+
+    Abandoned as soon as it passes `cap`: the only question being asked is "is
+    this within a keystroke or two", and giving up early keeps a long message
+    from walking the whole roster at full cost.
+    """
+    if abs(len(a) - len(b)) > cap:
+        return cap + 1
+    before = None                          # row i-2, for the transposition
+    previous = list(range(len(b) + 1))     # row i-1
+    for i, ca in enumerate(a, start=1):
+        current = [i]
+        for j, cb in enumerate(b, start=1):
+            best = min(previous[j] + 1, current[j - 1] + 1,
+                       previous[j - 1] + (ca != cb))
+            if (i > 1 and j > 1 and ca == b[j - 2] and a[i - 2] == cb):
+                best = min(best, before[j - 2] + 1)
+            current.append(best)
+        if min(current) > cap:
+            return cap + 1
+        before, previous = previous, current
+    return previous[-1]
 
 
 def _tokens(name: str) -> set[str]:

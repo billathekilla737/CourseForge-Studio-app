@@ -33,6 +33,35 @@ It recognises the full name, the name written last-name-first, the short name,
 the login id, the SIS id and the email. It recognises a first or last name on
 its own when exactly one student on the roster has it.
 
+## Typing a name you cannot get wrong
+
+Type `@` in the composer and the roster appears. Arrow keys move, Enter or Tab
+picks, Escape closes. What goes into the box is the name exactly as Canvas
+spells it, so the ordinary exact match does the rest. There is no second
+protocol behind it: the picker is a spelling aid, not a separate code path,
+which is why it cannot drift out of step with the swap.
+
+The list is filtered as you type, preferring names that start with what you
+typed over names that merely contain it.
+
+## A name spelled almost right
+
+This is the failure nobody notices. "Jordn Alvarez" matches no roster entry,
+so it is not swapped, so it goes to Anthropic as typed while the person who
+wrote it believes it was handled.
+
+So a word that is one or two keystrokes from somebody on the roster stops the
+message, names who it thinks you meant, and offers to fix it. Two neighbouring
+letters swapped counts as one keystroke, not two, because that is the single
+commonest typo there is.
+
+It only considers words of five letters or more, skips a list of capitalised
+words that turn up in course prose (days, months, Canvas, Blender, Midterm and
+so on), and never fires on a name that matched exactly. It can still be wrong
+about an unusual word, so **Send as typed** goes past it in one click. An
+ambiguous surname gets no such button: there is no safe way to resolve that
+one here.
+
 Three deliberate refusals:
 
 **A name two students share is not guessed.** "Has Okafor turned anything in?"
@@ -45,7 +74,7 @@ Casey Long is `Student-5` when you write "Casey Long", and "how long is the
 essay" is left exactly as typed. The list is in `ALSO_WORDS`.
 
 **A name that is not on the roster is not a name.** Somebody from another
-section, or a typo, goes out as written. The rail on the Assistant screen says
+section goes out as written. The rail on the Assistant screen says
 how many students are covered, and **Re-read the roster** picks up anyone who
 enrolled since.
 

@@ -80,6 +80,14 @@
 .asstCompose textarea:focus-visible{outline:2px solid var(--ai);outline-offset:1px}
 .asstCompose .col{display:flex;flex-direction:column;gap:6px;min-width:150px}
 .asstCompose .col .btn{width:100%}
+/* Below this the box and its three buttons cannot both have room, and the box
+   is the part being typed into. It was already tight; the @ picker sits over
+   the box, so a box squeezed to a few characters made the picker useless. */
+@media (max-width:620px){
+  .asstCompose{grid-template-columns:minmax(0,1fr)}
+  .asstCompose .col{flex-direction:row;flex-wrap:wrap;min-width:0}
+  .asstCompose .col .btn{width:auto;flex:1 1 auto}
+}
 .asstFoot{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
 .asstFoot .spacer{flex:1}
 .asstFoot .working{color:var(--ai);font-weight:600}
@@ -97,3 +105,28 @@
 .asstRail .ledgerEmpty{font-size:12px;color:var(--muted)}
 .asstRail ul.ledger{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:12px}
 .asstRail ul.ledger li .when{color:var(--muted);font-size:11px}
+
+/* ------------------------------------------------- @ a student, and typos */
+/* The picker sits above the box rather than at the caret: a textarea has no
+   caret coordinates without measuring the text in a mirror element, and a
+   position that always works beats one that usually does. */
+.asstBox{position:relative;min-width:0}
+.asstBox textarea{width:100%}
+.asstMention{position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:30;
+  margin:0;padding:4px;list-style:none;max-height:240px;overflow-y:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:0 10px 28px rgba(0,0,0,.28)}
+.asstMention li{padding:6px 10px;border-radius:calc(var(--radius) - 3px);
+  font-size:13px;color:var(--ink);cursor:pointer}
+.asstMention li[aria-selected="true"]{background:var(--zone-soft);font-weight:600}
+.asstMention li:hover{background:var(--zone-soft)}
+.asstMentionNone{color:var(--muted);cursor:default}
+.asstMention li.asstMentionNone:hover{background:none}
+
+/* A name a keystroke away from somebody real. Not an error: a question, with
+   the repair beside it. */
+.asstFix{margin:0 0 10px;padding:11px 13px;border-radius:var(--radius);
+  background:var(--warn-soft);border:1px solid var(--warn);font-size:12.5px;
+  line-height:1.6}
+.asstFix p{margin:0 0 9px;color:var(--warn)}
+.asstFix .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}

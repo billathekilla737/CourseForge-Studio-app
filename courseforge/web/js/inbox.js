@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  S.inbox = S.inbox || { scope: '', threads: [], open: null, read: {}, drafts: {} };
+  S.inbox = S.inbox || { scope: '', threads: [], open: null, read: {}, drafts: {}, told: {} };
   const mem = () => S.inbox;
   const CHIP_MS = 120000;
 
@@ -155,11 +155,21 @@
           <div class="ibBody">${esc(m.body)}</div>
         </div>`).join('')}</div>
       <div class="ibVerbs">
-        <button class="btn ai" type="button" id="ibRead">Read it with Claude</button>
+        <button class="btn ai" type="button" id="ibRead">Draft a reply with Claude</button>
+        <button class="btn" type="button" id="ibManual">Write it myself</button>
         <a class="btn" href="${esc(canvasLink(t))}" target="_blank" rel="noopener">Open in Canvas</a>
       </div>
+      <div id="ibAsk"></div>
       <div id="ibDraft"></div>`;
-    $('#ibRead').onclick = () => readThread(t);
+    $('#ibRead').onclick = () => askFirst(t);
+    $('#ibManual').onclick = () => {
+      /* No model call at all. An empty box and the cursor in it. */
+      $('#ibAsk').innerHTML = '';
+      if (mem().drafts[t.id] == null) mem().drafts[t.id] = '';
+      drawDraft(t, mem().drafts[t.id]);
+      const box = $('#ibReply');
+      if (box) box.focus();
+    };
     if (read) drawInsight(t, read);
     if (mem().drafts[t.id] != null) drawDraft(t, mem().drafts[t.id]);
   }
@@ -176,9 +186,50 @@
     return base ? base + '/conversations/' + encodeURIComponent(t.id) : '#';
   }
 
-  function readThread(t) {
-    runJob('Reading the thread', () => api('/inbox/' + encodeURIComponent(t.id) + '/read',
-      { body: {} }), out => {
+  /* Say how to answer, or say nothing. The box is the point of this step: most
+     of the time the message decides the reply, but the times it does not are
+     the times a draft is useless without being told "no extensions this week"
+     or "we have been through this twice". Empty is a real answer and the
+     button says so, rather than making somebody delete a placeholder. */
+  function askFirst(t) {
+    const host = $('#ibAsk');
+    if (!host) return;
+    if (host.dataset.open === '1') { host.innerHTML = ''; host.dataset.open = '0'; return; }
+    host.dataset.open = '1';
+    host.innerHTML = `<div class="ibAskBox">
+      <label for="ibTell">How should this be answered? <span class="muted">Optional.
+        Leave it empty and the draft comes from the student's message alone.</span></label>
+      <textarea id="ibTell" rows="2"
+        placeholder="No extensions this week. Point them at the rubric on the module page."
+        >${esc(mem().told[t.id] || '')}</textarea>
+      <div class="row">
+        <button class="btn ai" type="button" id="ibGo">Draft it</button>
+        <button class="btn" type="button" id="ibAskNo">Cancel</button>
+        <span class="spacer"></span>
+        <span class="hint">A student's name typed here is swapped before it is sent,
+          the same as anywhere else.</span>
+      </div>
+    </div>`;
+    const tell = $('#ibTell');
+    tell.focus();
+    tell.oninput = () => { mem().told[t.id] = tell.value; };
+    tell.onkeydown = ev => {
+      if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); go(); }
+    };
+    const go = () => {
+      host.innerHTML = '';
+      host.dataset.open = '0';
+      readThread(t, (tell.value || '').trim());
+    };
+    $('#ibGo').onclick = go;
+    $('#ibAskNo').onclick = () => { host.innerHTML = ''; host.dataset.open = '0'; };
+  }
+
+  function readThread(t, instructions) {
+    mem().told[t.id] = instructions || '';
+    runJob(instructions ? 'Drafting to your instruction' : 'Drafting a reply',
+      () => api('/inbox/' + encodeURIComponent(t.id) + '/read',
+        { body: { instructions: instructions || '' } }), out => {
       if (!out) return;
       mem().read[t.id] = out;
       mem().drafts[t.id] = out.draft || '';
@@ -212,7 +263,7 @@
         placeholder="Nothing is sent until you press Send.">${esc(text || '')}</textarea>
       <div class="row">
         <button class="btn primary" type="button" id="ibSend">Send this reply</button>
-        <button class="btn" type="button" id="ibRedo">Draft it again</button>
+        <button class="btn" type="button" id="ibRedo">Draft it again…</button>
         <button class="btn" type="button" id="ibClear">Discard</button>
         <span class="spacer"></span>
         <span class="hint">Goes to ${esc((t.with || []).map(p => p.name || p.tag).join(', '))}
@@ -221,7 +272,7 @@
     </div>`;
     const box = $('#ibReply');
     box.oninput = () => { mem().drafts[t.id] = box.value; };
-    $('#ibRedo').onclick = () => readThread(t);
+    $('#ibRedo').onclick = () => askFirst(t);
     $('#ibClear').onclick = () => {
       delete mem().drafts[t.id];
       host.innerHTML = '';

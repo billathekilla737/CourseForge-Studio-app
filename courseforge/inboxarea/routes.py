@@ -3,7 +3,7 @@
     GET  /api/inbox/unread                  the header chip's count
     GET  /api/inbox?scope=&course=          the thread list
     GET  /api/inbox/{cid}                   one thread, with its messages
-    POST /api/inbox/{cid}/read              what it is asking, and a draft (a job)
+    POST /api/inbox/{cid}/read {instructions}   what it asks, and a draft (a job)
     POST /api/inbox/{cid}/reply {body}      send one reply (gated twice)
 
 Reading the inbox is student data, so every call here goes through the
@@ -47,11 +47,15 @@ def one(req):
 def read(req):
     """A job: it calls a model, which takes long enough to need progress."""
     cid = req.params["cid"]
-    model = (req.body or {}).get("model") if isinstance(req.body, dict) else None
+    body = req.body if isinstance(req.body, dict) else {}
+    model = body.get("model") or None
+    told = body.get("instructions")
+    told = told.strip() if isinstance(told, str) else ""
 
     def job(log):
-        log("Reading the thread. The student's name is not in what goes out.", 0, 2)
-        out = inbox.read_thread(req.app, cid, model=model)
+        log("Reading the thread. No name is in what goes out"
+            + (", including the one in your instructions." if told else "."), 0, 2)
+        out = inbox.read_thread(req.app, cid, model=model, instructions=told)
         log("Drafted a reply. Nothing has been sent.", 2, 2)
         out["sentence_done"] = "Drafted a reply. Nothing has been sent."
         return out

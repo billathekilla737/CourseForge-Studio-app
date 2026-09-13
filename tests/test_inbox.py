@@ -165,6 +165,83 @@ class TheScreenShowsWhatWasWritten(Base):
             self.assertNotIn(secret, seen["prompt"], secret)
 
 
+class TellingItHowToAnswer(Base):
+    """The instruction box. Empty is the ordinary case; when it is not empty,
+    what the instructor said outranks what the model made of the message."""
+
+    def _run(self, instructions=""):
+        seen = {}
+
+        def fake_run(prompt, **kw):
+            seen["prompt"] = prompt
+            seen["system"] = kw.get("system") or ""
+            return type("R", (), {"text": '{"asking":"x","reply":"ok"}'})()
+
+        with mock.patch.object(inbox.llm, "run", fake_run):
+            out = inbox.read_thread(self.app, 77, instructions=instructions)
+        return seen, out
+
+    def test_nothing_typed_means_work_it_out_from_the_message(self):
+        seen, out = self._run("")
+        self.assertNotIn("The instructor says", seen["prompt"])
+        self.assertEqual(out["instructions"], "")
+
+    def test_what_was_typed_is_carried_into_the_prompt(self):
+        seen, _out = self._run("No extensions this week. Point them at the rubric.")
+        self.assertIn("The instructor says to answer like this:", seen["prompt"])
+        self.assertIn("No extensions this week", seen["prompt"])
+
+    def test_a_name_typed_into_the_box_is_swapped_like_any_other(self):
+        """The box being the instructor's rather than the student's makes no
+        difference to where the name would end up."""
+        seen, _out = self._run("Tell Jordan Alvarez he has until Friday. "
+                               "Copy dana@example.edu.")
+        self.assertNotIn("Jordan", seen["prompt"])
+        self.assertNotIn("Alvarez", seen["prompt"])
+        self.assertNotIn("dana@example.edu", seen["prompt"])
+        self.assertIn("Student-1", seen["prompt"])
+
+    def test_the_system_prompt_says_the_instruction_wins(self):
+        seen, _out = self._run("say no")
+        self.assertIn("that instruction is the answer", seen["system"])
+
+
+class OneTagPerPerson(Base):
+    """Canvas Inbox threads are usually account-level rather than course-level,
+    so the tag cannot come from the thread's course -- there is not one. A
+    student already numbered in a course on this machine keeps that number, or
+    "Student-2 means the same person everywhere" is not true."""
+
+    def _cached_map(self, course, tag, uid, name):
+        d = self.tmp / course
+        d.mkdir(parents=True, exist_ok=True)
+        (d / identity.FILE).write_text(json.dumps({
+            "students": {tag: {"user_id": str(uid), "name": name,
+                               "sortable_name": name}}}), encoding="utf-8")
+
+    def test_a_student_keeps_the_tag_they_have_in_a_course(self):
+        self._cached_map("734975", "Student-24", 101, "Jordan Alvarez")
+        identity.forget()
+        row = dict(THREAD, context_code="account_11")
+        t = inbox.Thread(self.app, row, me_id=9)
+        self.assertEqual(t.tag(101), "Student-24")
+
+    def test_somebody_new_to_this_machine_still_gets_one(self):
+        identity.forget()
+        row = dict(THREAD, context_code="account_11")
+        t = inbox.Thread(self.app, row, me_id=9)
+        self.assertTrue(t.tag(101).startswith("Student-"))
+
+    def test_and_the_name_still_does_not_reach_the_model(self):
+        self._cached_map("734975", "Student-24", 101, "Jordan Alvarez")
+        identity.forget()
+        row = dict(THREAD, context_code="account_11")
+        t = inbox.Thread(self.app, row, me_id=9)
+        body = t.mask(THREAD["messages"][1]["body"])
+        self.assertNotIn("Jordan", body)
+        self.assertIn("Student-24", body)
+
+
 class ReadingChangesNothing(Base):
     def test_opening_a_thread_does_not_mark_it_read(self):
         """Skimming is not answering, and Canvas clearing the unread flag would

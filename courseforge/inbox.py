@@ -82,7 +82,17 @@ class Thread:
                       if self.course_id else identity.NameMap("inbox", []))
         people = [p for p in (row.get("participants") or [])
                   if str(p.get("id")) != self.me_id]
-        # Anyone Canvas named who is not on the cached roster still needs a tag.
+        # Canvas Inbox threads are usually account-level rather than
+        # course-level, so the first question is whether this person is already
+        # tagged in some course on this machine. If they are, they keep that
+        # number: Student-2 has to mean the same person here as in the
+        # Assistant, or the tag is just a different name for them.
+        for p in people:
+            if self.names.tag_for(p.get("id")):
+                continue
+            hit = identity.known(app, p.get("id"))
+            if hit:
+                self.names.adopt(hit[0], hit[1])
         missing = [p for p in people if not self.names.tag_for(p.get("id"))]
         if missing:
             self.names.absorb(missing)
@@ -196,14 +206,30 @@ Answer with JSON and nothing else:
   promises about grades or extensions, and no invented facts about the course.
   If you do not know something, say what you would need rather than filling it
   in. When needs_you is true, draft the part you can and leave the decision to
-  them in plain words."""
+  them in plain words.
+
+When the instructor has told you how to answer, that instruction is the answer
+and your reading of the message is not. Write what they asked for, in their
+voice, even where you would have said something else; if what they want is
+already decided, "needs_you" is false. If their instruction cannot be squared
+with what the student actually asked, follow the instruction and say what the
+mismatch is in "why" rather than quietly splitting the difference."""
 
 
-def read_thread(app, conversation_id, model: str | None = None) -> dict:
+def read_thread(app, conversation_id, model: str | None = None,
+                instructions: str = "") -> dict:
     """What the student is asking, and a reply for the instructor to consider.
 
-    The model never sees a name. It sees the thread with tags in it, and what
-    comes back is turned into names only on the way to the screen.
+    `instructions` is the instructor saying how to answer -- "no extensions
+    this time", "point them at the rubric", "warm, we have been through this".
+    Empty is the ordinary case and means: work it out from the message.
+
+    It is masked like everything else. Somebody typing "tell Jordan he can have
+    until Friday" has put a real name in a prompt, and the box being theirs
+    rather than the student's makes no difference to where it would end up.
+
+    The model never sees a name either way. It sees the thread with tags in it,
+    and what comes back is turned into names only on the way to the screen.
     """
     row = app.client.conversation(conversation_id, mark_read=False)
     t = Thread(app, row, app.me_id)
@@ -221,6 +247,9 @@ def read_thread(app, conversation_id, model: str | None = None) -> dict:
              "Subject: %s" % t.mask(t.row.get("subject") or "(no subject)"), ""]
     for m in msgs:
         lines.append("%s wrote:\n%s\n" % (m["from"], m["body"]))
+    told = t.mask(instructions or "")
+    if told:
+        lines.append("The instructor says to answer like this:\n%s\n" % told)
 
     result = llm.run("\n".join(lines), model=model or getattr(app.cfg, "describe_model", "sonnet"),
                      system=SYSTEM, expect_json=True, timeout_s=180)
@@ -241,6 +270,7 @@ def read_thread(app, conversation_id, model: str | None = None) -> dict:
         # box, so an edit is never lost to the tag round trip.
         "draft": t.unmask(draft),
         "draft_tagged": draft,
+        "instructions": instructions or "",
         "with": out_people(t),
         "note": "Nothing has been sent. This draft exists only on this computer.",
     }

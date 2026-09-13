@@ -176,6 +176,20 @@ class NameMap:
         self._build()
         return added
 
+    def adopt(self, tag: str, row: dict) -> bool:
+        """Take a tag a student already has somewhere else on this machine.
+
+        Used where a thread has no course of its own: the person keeps the
+        number they wear in the Assistant rather than being renumbered from one.
+        """
+        tag, uid = str(tag), str((row or {}).get("user_id") or "")
+        if not tag or not uid or tag in self.by_tag or uid in self.by_user:
+            return False
+        self.by_tag[tag] = dict(row)
+        self.by_user[uid] = tag
+        self._build()
+        return True
+
     def tag_for(self, user_id) -> str:
         return self.by_user.get(str(user_id), "")
 
@@ -470,6 +484,44 @@ def forget(course_id=None) -> None:
             _CACHE.clear()
         else:
             _CACHE.pop(str(course_id), None)
+        _KNOWN.clear()
+
+
+# A student who is already tagged somewhere on this machine keeps that tag
+# wherever they turn up next. Canvas Inbox threads are usually account-level
+# rather than course-level -- students write to you, not to a course -- so
+# without this the same person would be Student-2 in the Assistant and
+# Student-1 in the inbox, and "Student-2 means the same person everywhere"
+# would be a claim the tool did not honour.
+_KNOWN: dict = {}
+
+
+def known(app, user_id) -> tuple[str, dict] | None:
+    """(tag, row) for a student already tagged in any course on this machine."""
+    uid = str(user_id or "").strip()
+    if not uid:
+        return None
+    if not _KNOWN:
+        _build_known(app)
+    hit = _KNOWN.get(uid)
+    return (hit["tag"], hit["row"]) if hit else None
+
+
+def _build_known(app) -> None:
+    """One pass over the maps already on disk. Rebuilt when a map changes."""
+    try:
+        root = Path(app.cfg.data)
+        for path in sorted(root.glob("*/" + FILE)):
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            for tag, row in (raw.get("students") or {}).items():
+                uid = str((row or {}).get("user_id") or "")
+                if uid and uid not in _KNOWN:
+                    _KNOWN[uid] = {"tag": str(tag), "row": dict(row)}
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # -------------------------------------------------------------------- bits

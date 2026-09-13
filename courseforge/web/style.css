@@ -1581,3 +1581,12 @@ a.acrossItem,a.acrossItem:visited{color:var(--ink)}
   border-radius:7px;background:var(--bg);color:var(--ink)}
 .ibDraftBox .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .ibDraftBox .spacer{flex:1}
+.ibAskBox{display:flex;flex-direction:column;gap:8px;padding:12px 14px;
+  border-radius:var(--radius);background:var(--ai-soft);border:1px solid var(--ai)}
+.ibAskBox label{font-size:12.5px;font-weight:600}
+.ibAskBox label .muted{font-weight:400;color:var(--muted)}
+.ibAskBox textarea{width:100%;resize:vertical;font:13px/1.55 var(--sans);
+  padding:9px 11px;border:1px solid var(--line);border-radius:7px;
+  background:var(--panel);color:var(--ink)}
+.ibAskBox .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ibAskBox .spacer{flex:1}

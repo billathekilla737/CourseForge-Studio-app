@@ -1590,3 +1590,32 @@ a.acrossItem,a.acrossItem:visited{color:var(--ink)}
   background:var(--panel);color:var(--ink)}
 .ibAskBox .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .ibAskBox .spacer{flex:1}
+
+/* ------------------------------------------------------------- reports */
+.acrossItem .ic.record{background:var(--record)}
+.rpTabs{margin:0 0 14px}
+.rpPick{margin:0 0 18px;padding:13px 15px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel)}
+.rpPickHead{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.rpPickHead .spacer{flex:1}
+.rpCourses{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px}
+.rpCourse{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;
+  padding:5px 7px;border-radius:6px;cursor:pointer}
+.rpCourse:hover{background:var(--zone-soft)}
+.rpBand{padding:16px 18px;margin:0 0 16px;border-radius:var(--radius);
+  background:var(--record-soft);border:1px solid var(--record);
+  display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.rpBand.plain{background:var(--panel);border-color:var(--line)}
+.rpBand p{margin:0;font-size:13px;line-height:1.6;flex:1;min-width:240px}
+.rpBig{display:flex;gap:12px;align-items:baseline;font-variant-numeric:tabular-nums}
+.rpBig .was{font-size:26px;font-weight:650;color:var(--muted)}
+.rpBig .arrow{font-size:18px;color:var(--muted)}
+.rpBig .now{font-size:38px;font-weight:700;color:var(--record)}
+.rpMethod{margin-top:16px;font-size:12px;line-height:1.65}
+.rpMatrix th[scope=col]{white-space:normal;min-width:92px}
+.rpCell{text-align:center;font-weight:700;font-size:15px}
+.rpCell.ok{color:var(--accent)}
+.rpCell.no{color:var(--danger);background:var(--danger-soft)}
+.rpGaps{margin-top:18px}
+.rpGaps h3{margin:0 0 8px;font-size:14px;font-weight:650}
+.rpGaps ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.7}

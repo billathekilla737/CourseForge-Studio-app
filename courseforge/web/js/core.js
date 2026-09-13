@@ -298,6 +298,8 @@ function route() {
   if (parts[0] === 'schedule') opened = openSchedule();
   else if (parts[0] === 'batch') {
     opened = typeof openBatch === 'function' ? openBatch() : missingOpener('Batch Course Restyle');
+  } else if (parts[0] === 'reports') {
+    opened = typeof openReports === 'function' ? openReports(parts[1]) : missingOpener('Reports');
   } else if (parts[0] === 'inbox') {
     opened = typeof openInbox === 'function' ? openInbox(parts[1]) : missingOpener('the Inbox');
   } else if (parts[0] === 'files') {

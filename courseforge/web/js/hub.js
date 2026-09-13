@@ -221,6 +221,10 @@
              <span class="m">Restyle and verify pages across several courses at
                once. Dry run first.</span></span></a>`
         : off('Batch Course Restyle', 'Not installed in this build.')}
+      <a class="acrossItem" href="#/reports"><span class="ic record"></span>
+        <span><span class="t">Reports</span>
+        <span class="m">An accessibility score with a before and an after, and every
+          syllabus checked against the statements your college requires.</span></span></a>
       ${batchOn
         ? `<a class="acrossItem" href="#/files"><span class="ic a11y"></span>
              <span><span class="t">ADA file compliance</span>

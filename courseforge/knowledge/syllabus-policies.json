@@ -1,0 +1,77 @@
+{
+  "_note": "The statements a syllabus is required to carry. Every college has its own list and its own wording, so this is data rather than code: edit it, or point syllabus_policies_path in config.json at your own copy. `any` is a list of regular expressions, matched case-insensitively against the syllabus text with the markup stripped. One match is enough.",
+  "_source": "Defaults drawn from what is commonly required at a US community college: ADA/504, academic integrity, attendance, Title IX. Check them against your own catalogue before relying on this for a report.",
+  "policies": [
+    {
+      "id": "ada",
+      "label": "Disability services (ADA / Section 504)",
+      "why": "Students cannot request an accommodation they are never told exists. This is the statement most often audited.",
+      "any": [
+        "disability (services|support|resource)",
+        "office of disability",
+        "americans with disabilities",
+        "section 504",
+        "reasonable accommodation",
+        "accommodations?, ?(please )?contact"
+      ]
+    },
+    {
+      "id": "integrity",
+      "label": "Academic integrity",
+      "why": "A penalty for cheating is hard to sustain if the syllabus never set the expectation.",
+      "any": [
+        "academic (integrity|honesty|dishonesty|misconduct)",
+        "plagiarism",
+        "cheating"
+      ]
+    },
+    {
+      "id": "attendance",
+      "label": "Attendance",
+      "why": "Attendance drives financial aid reporting and last-date-of-attendance calculations.",
+      "any": [
+        "attendance",
+        "absences?",
+        "class participation is required"
+      ]
+    },
+    {
+      "id": "titleix",
+      "label": "Title IX / sexual harassment",
+      "why": "Instructors are usually mandatory reporters, and the syllabus is where students are told that.",
+      "any": [
+        "title ix",
+        "sexual (harassment|misconduct|violence)",
+        "mandatory reporter",
+        "responsible employee"
+      ]
+    },
+    {
+      "id": "grading",
+      "label": "Grading scale",
+      "why": "A grade appeal starts with what the syllabus said the scale was. Matched on a scale, a weighting or a grading section, not on the word 'grade' alone -- which appears in every syllabus ever written and would make this check always pass.",
+      "any": [
+        "\\d+\\s*-?\\s*point\\s+scale",
+        "grading (scale|policy|breakdown|criteria|procedure)",
+        "course evaluation and grading",
+        "\\bA\\s*[=:]\\s*\\d{2}",
+        "\\b\\d{2}\\s*[-\u2013\u2014]\\s*\\d{2,3}\\s*%",
+        "grades?\\s+(is|are|will be)\\s+(based|calculated|determined|weighted|rounded)",
+        "final grade will be (based|calculated|determined)",
+        "worth\\s+\\d+\\s*%",
+        "\\d+\\s*%\\s*of\\s+(your|the|their|final|course)\\s+grade"
+      ]
+    },
+    {
+      "id": "contact",
+      "label": "Instructor contact and office hours",
+      "why": "Required almost everywhere, and the first thing a student looks for.",
+      "any": [
+        "office hours",
+        "student hours",
+        "contact me",
+        "@[a-z0-9.-]+\\.(edu|org)"
+      ]
+    }
+  ]
+}

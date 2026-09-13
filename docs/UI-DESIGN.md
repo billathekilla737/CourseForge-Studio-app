@@ -254,6 +254,8 @@ writes use full-size buttons.
 
 | Area | Endpoints |
 |---|---|
+| Reports | `GET /api/reports/score/{cid}`, `POST /api/reports/score {course_ids}`; `GET /api/reports/policies/{cid}`, `POST /api/reports/policies {course_ids}` |
+| Inbox | `GET /api/inbox/unread`, `GET /api/inbox?scope=`, `GET /api/inbox/{cid}`, `POST /api/inbox/{cid}/read {instructions}`, `POST /api/inbox/{cid}/reply {body, confirm}` |
 | Picker | `GET /api/picker?refresh=` (courses with local state, terms, and what to carry on with) |
 | Hub | `GET /api/courses/{cid}/hub`, `GET /api/courses/{cid}/ledger`, `POST /api/courses/{cid}/hub/refresh`; `/api/health` gains `tools` |
 | Gateway | `GET /api/a11y/{cid}/{kind}/state`; `POST .../list`, `.../fetch`, `.../describe`, `.../fixes`, `.../push {apply, confirm}` |

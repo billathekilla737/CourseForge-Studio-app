@@ -155,7 +155,7 @@
     const areas = [...new Set((d.rows || []).map(r => r.area).filter(Boolean))];
     host.innerHTML = `
       <label>Student
-        <select id="recStudent">
+        <select class="termSel" id="recStudent">
           <option value="">everyone</option>
           ${people.map(p => `<option value="${esc(p.id || p.name)}"${
             String(f.student) === String(p.id || p.name) ? ' selected' : ''
@@ -163,14 +163,14 @@
         </select>
       </label>
       <label>Part of the Studio
-        <select id="recArea">
+        <select class="termSel" id="recArea">
           <option value="">all of it</option>
           ${areas.map(a => `<option value="${esc(a)}"${f.area === a ? ' selected' : ''}>${
             esc(AREA_WORDS[a] || a)}</option>`).join('')}
         </select>
       </label>
       <label>Month
-        <select id="recMonth">
+        <select class="termSel" id="recMonth">
           <option value="">every month</option>
           ${(d.months || []).map(m => `<option value="${esc(m)}"${
             f.month === m ? ' selected' : ''}>${esc(m)}</option>`).join('')}
@@ -194,10 +194,13 @@
         : `nothing matches, of ${d.entries} recorded`;
     }
     if (!rows.length) {
-      host.innerHTML = emptyState(d.entries
+      /* emptyState hands back an element, not a string. Assigned to innerHTML
+         it stringifies to "[object HTMLDivElement]", which is what the page
+         was showing where the empty state should have been. */
+      host.replaceChildren(emptyState(d.entries
         ? 'Nothing in the record matches those filters.'
         : 'Nothing has been recorded in this course yet. Every change the Studio '
-          + 'pushes to Canvas is written here as it happens.');
+          + 'pushes to Canvas is written here as it happens.'));
       return;
     }
     host.innerHTML = `<div class="gwTableWrap"><table class="gwTable recTbl">

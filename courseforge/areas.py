@@ -13,7 +13,7 @@ import traceback
 # Order matters only for the course hub's card order.
 AREAS = ("a11y", "docs", "pdf", "content", "courseops", "assistant")
 # Core modules that register routes but are not areas with a hub card.
-CORE = ("hub", "record")
+CORE = ("hub", "record", "inboxarea")
 
 
 def install_all(app) -> dict:

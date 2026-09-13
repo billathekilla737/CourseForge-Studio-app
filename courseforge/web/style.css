@@ -1520,3 +1520,64 @@ a.card,a.card:visited{color:var(--ink);text-decoration:none}
 .acrossItem.off{opacity:.55;cursor:not-allowed}
 .acrossItem.off:hover{border-color:var(--line)}
 a.acrossItem,a.acrossItem:visited{color:var(--ink)}
+
+/* ==================================================== the Canvas Inbox
+   Mail waiting is true wherever you are standing, so the count sits in the
+   header rather than on one screen. It lights only when something is unread:
+   a permanently gold button stops meaning anything within a day. */
+.inboxBtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+  background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.22);
+  color:#fff;padding:4px 9px;border-radius:7px;font-size:12px}
+.inboxBtn:hover{background:rgba(255,255,255,.16)}
+.inboxBtn.lit{background:var(--gold);border-color:var(--gold);color:#231a04;font-weight:650}
+.inboxBtn .n{padding:0 6px;border-radius:999px;background:rgba(255,255,255,.22);
+  font-size:11px;font-weight:700}
+.inboxBtn.lit .n{background:rgba(0,0,0,.18)}
+#viewInbox{flex:1 1 auto;min-height:0;overflow-y:auto}
+.ibNote{margin:0 0 16px;max-width:78ch}
+.ibCols{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:18px;
+  align-items:start}
+@media (max-width:900px){.ibCols{grid-template-columns:minmax(0,1fr)}}
+
+.ibList{display:flex;flex-direction:column;border:1px solid var(--line);
+  border-radius:var(--radius);overflow:hidden;background:var(--panel)}
+.ibRow{display:flex;flex-direction:column;gap:3px;width:100%;text-align:left;
+  padding:11px 13px;border:0;border-top:1px solid var(--line);background:var(--panel);
+  color:var(--ink);font:inherit;cursor:pointer}
+.ibRow:first-child{border-top:0}
+.ibRow:hover{background:var(--zone-soft)}
+.ibRow.picked{background:var(--zone-soft);box-shadow:inset 3px 0 0 var(--zone)}
+.ibRow.unread{box-shadow:inset 3px 0 0 var(--gold)}
+.ibRow.unread.picked{box-shadow:inset 3px 0 0 var(--zone)}
+.ibTop{display:flex;gap:8px;align-items:baseline}
+.ibWho{font-size:12.5px;font-weight:650;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ibAgo{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
+.ibSubj{font-size:12.5px}
+.ibRow.unread .ibSubj{font-weight:600}
+.ibPrev{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+
+.ibThread{display:flex;flex-direction:column;gap:14px}
+.ibHead h3{margin:0 0 3px;font-size:17px;font-weight:650;text-wrap:balance}
+.ibHead p{margin:0}
+.ibInsight{padding:12px 14px;border-radius:var(--radius);background:var(--ai-soft);
+  border:1px solid var(--ai);display:flex;flex-direction:column;gap:7px}
+.ibInsight.needsYou{background:var(--warn-soft);border-color:var(--warn)}
+.ibAsk{font-size:13px;line-height:1.55}
+.ibTags{display:flex;gap:6px;flex-wrap:wrap}
+.ibWhy{margin:0;font-size:12px;color:var(--muted);line-height:1.55}
+.ibMsgs{display:flex;flex-direction:column;gap:9px}
+.ibMsg{padding:10px 13px;border-radius:var(--radius);background:var(--panel);
+  border:1px solid var(--line)}
+.ibMsg.mine{background:var(--zone-soft)}
+.ibFrom{font-size:11px;font-weight:650;color:var(--muted);margin-bottom:4px}
+.ibBody{font-size:13px;line-height:1.6;white-space:pre-wrap}
+.ibVerbs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ibDraftBox{display:flex;flex-direction:column;gap:9px;padding:13px 14px;
+  border-radius:var(--radius);background:var(--panel);border:1px solid var(--edit)}
+.ibDraftBox textarea{width:100%;min-height:120px;resize:vertical;
+  font:13px/1.6 var(--sans);padding:10px 12px;border:1px solid var(--line);
+  border-radius:7px;background:var(--bg);color:var(--ink)}
+.ibDraftBox .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ibDraftBox .spacer{flex:1}

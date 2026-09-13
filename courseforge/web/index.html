@@ -22,6 +22,9 @@
   <div class="brand">CourseForge Studio <small id="hostLine">local · not connected</small></div>
   <div class="crumbs" id="crumbs" aria-label="Where you are"></div>
   <div class="spacer"></div>
+  <!-- The inbox count. Its own slot rather than #headerActions, which every
+       view clears: mail waiting is true wherever you are standing. -->
+  <div id="inboxChip"></div>
   <div id="headerActions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
   <!-- Jobs whose dialog has been closed. Every view clears #headerActions, so
        running work needs a home of its own that survives navigation. -->
@@ -52,6 +55,9 @@
   <div id="pickerStrip"></div>
   <div id="storageBar"></div>
 </section>
+
+<!-- the Canvas Inbox: messages from students across every course -->
+<section id="viewInbox" class="wrap hidden"></section>
 
 <!-- term schedule: every dated assignment across the term's courses -->
 <section id="viewSchedule" class="hidden">
@@ -149,6 +155,7 @@
 <script src="js/courseops.js"></script>
 <script src="js/assistant.js"></script>
 <script src="js/record.js"></script>
+<script src="js/inbox.js"></script>
 <script src="js/boot.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>

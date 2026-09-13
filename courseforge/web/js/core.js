@@ -204,6 +204,9 @@ async function boot() {
   if (skip) skip.onclick = skipToContent;
   route();
   api('/claude-check').then(info => { S.health.claude = info; renderBanners(); }).catch(() => {});
+  // The inbox count lives in the header, so it starts once and outlives every
+  // view change rather than being painted by whichever screen is up.
+  document.dispatchEvent(new CustomEvent('studio:booted'));
 }
 
 /* Notices the instructor has read once and does not need again. Only the
@@ -295,6 +298,8 @@ function route() {
   if (parts[0] === 'schedule') opened = openSchedule();
   else if (parts[0] === 'batch') {
     opened = typeof openBatch === 'function' ? openBatch() : missingOpener('Batch Course Restyle');
+  } else if (parts[0] === 'inbox') {
+    opened = typeof openInbox === 'function' ? openInbox(parts[1]) : missingOpener('the Inbox');
   } else if (parts[0] === 'files') {
     opened = typeof openFileCompliance === 'function'
       ? openFileCompliance() : missingOpener('ADA file compliance');
@@ -320,7 +325,7 @@ window.addEventListener('hashchange', route);
    wherever a course is open and the work pane is not. */
 const VIEWS = {
   picker: '#viewPicker', work: '#viewWork', schedule: '#viewSchedule',
-  hub: '#viewHub', area: '#viewArea',
+  hub: '#viewHub', area: '#viewArea', inbox: '#viewInbox',
 };
 function showView(which) {
   for (const [name, sel] of Object.entries(VIEWS)) {

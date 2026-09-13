@@ -421,6 +421,49 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
             fields.append(("delayed_post_at", delayed_post_at))
         return self._form("POST", f"/courses/{course_id}/discussion_topics", fields)
 
+    # ------------------------------------------------------------- the inbox
+    # Reads of /conversations are student data, so only the grading-scoped
+    # client reaches them; canvas_policy refuses the content scope outright.
+
+    def conversations(self, scope: str = "", course_id=None, limit: int = 50) -> list[dict]:
+        """The Canvas Inbox, newest first.
+
+        `scope` is Canvas's own: empty for the inbox, or "unread", "archived",
+        "sent". The list carries a one-line preview per thread, so counting
+        what is waiting costs one call rather than one per thread.
+        """
+        params: dict = {"per_page": min(int(limit), 100)}
+        if scope:
+            params["scope"] = scope
+        if course_id:
+            params["filter[]"] = f"course_{course_id}"
+        rows = []
+        for row in self.paged("/conversations", **params):
+            rows.append(row)
+            if len(rows) >= limit:
+                break
+        return rows
+
+    def conversation(self, conversation_id: int | str, mark_read: bool = False) -> dict:
+        """One thread with its messages.
+
+        Reading does not mark it read unless asked. Somebody skimming this
+        screen has not answered the student, and Canvas quietly clearing the
+        unread flag would take away the only mark they had.
+        """
+        return self.get(f"/conversations/{conversation_id}",
+                        auto_mark_as_read=("true" if mark_read else "false"))
+
+    def reply_to_conversation(self, conversation_id: int | str, body: str,
+                              recipients: list | None = None) -> dict:
+        """Add one message to a thread that already exists."""
+        if not (body or "").strip():
+            raise ValueError("a reply needs a body")
+        fields = [("body", body)]
+        for who in (recipients or []):
+            fields.append(("recipients[]", str(who)))
+        return self._form("POST", f"/conversations/{conversation_id}/add_message", fields)
+
     def create_conversation(self, recipients: list, subject: str, body: str,
                             course_id: int | str | None = None) -> list:
         """Send one Canvas Inbox message to a list of students.

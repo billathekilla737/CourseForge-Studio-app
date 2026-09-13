@@ -259,8 +259,9 @@ function renderBanners() {
   // every time the app opens, so it can be put away. It comes back on its own
   // if pseudonymize is ever turned off and on again in config.json.
   if (h.pseudonymize && !hiddenBanners().has('pseudonymize')) {
-    banner('warn', 'Student names are replaced with pseudonyms (S-001…) before anything is sent to Claude. ' +
-      'The identity map stays on this machine. Turn this off in <code>config.json</code> if you need names in the prompt.' +
+    banner('warn', 'Student names are swapped for tags before anything is sent to Claude: ' +
+      'S-001 while grading, Student-1 in the Assistant. Type the real name either place — ' +
+      'the swap happens here, and the list of who is who never leaves this machine.' +
       '<span class="spacer"></span>' +
       '<button class="btn sm" id="bnHidePseudo" title="Hide this notice on this machine">Hide</button>');
     const hide = $('#bnHidePseudo');
@@ -456,6 +457,7 @@ const AREA_TABS = [
   { id: 'build', label: 'Build', zone: 'build', alias: ['content'] },
   { id: 'tools', label: 'Tools', zone: 'tools', alias: ['courseops'] },
   { id: 'assistant', label: 'Assistant', zone: 'ai', alias: [] },
+  { id: 'record', label: 'Record', zone: 'record', alias: [] },
 ];
 
 function areaForTab(tab) {

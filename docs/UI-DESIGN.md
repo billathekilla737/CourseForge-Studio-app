@@ -23,6 +23,7 @@ server with a confirm token and shown as a plain sentence (`askConfirm`).
 | `#/c/<cid>/build`, `/build/new/<kind>`, `/build/manifest`, `/build/rubrics` | Build content | build.js |
 | `#/c/<cid>/tools/<sub>` | `dates` `export` `import` `clone` `nav` `quiz-backup` `slo` | tools.js |
 | `#/c/<cid>/assistant` | Assistant panel | assistant.js |
+| `#/c/<cid>/record` | Record of actions: the chain, where it is kept, filters by student | record.js |
 
 Router (core.js), in this order:
 
@@ -46,8 +47,10 @@ Grading edits required by the route change: the crumbs in `openCourse` become
 2. Course hub: five area cards with live status from local state only
    (`GET /api/courses/<cid>/hub`), a `stale` flag triggering a background refresh.
 3. Area bar (`<nav id="areaBar">`, second row under the header): Grade,
-   Accessibility, Build, Tools, Assistant. `aria-current="page"` on the active
-   tab; a small count badge for queued PDFs or a pending Allow/Deny.
+   Accessibility, Build, Tools, Assistant, Record. `aria-current="page"` on the
+   active tab; a small count badge for queued PDFs or a pending Allow/Deny.
+   Record carries its own `--record` zone rather than borrowing Tools', or the
+   bar lights the wrong tab.
 4. The area bar is hidden inside the grading workspace, on the picker and on
    the schedule (the work pane is position fixed under the header).
 
@@ -118,9 +121,15 @@ transcript (`role=log aria-live=polite`) with collapsed tool rows, an inline
 Allow/Deny card, a composer (Enter sends, Shift+Enter newline, Send `.btn.ai`,
 Stop, New conversation); a rail with session facts and the "What it changed" ledger.
 
+The rail's first card is Student names: how many of the roster are swapped for
+tags, what the last message swapped, and Re-read the roster. A send that names
+two students at once comes back 409 with a sentence naming both, and the
+composer keeps the text.
+
 Allow/Deny card: headline by kind; **What:** the gate's own sentence (never the
-model's description); "Claude describes it as" muted; "Why it asks"; the exact
-command in mono; Deny (focused by default) and Allow (`.btn.danger`, because it
+model's description); "Claude describes it as" muted; "Why it asks"; on a call
+that reads student data, one line saying the name swap does not cover what
+Claude reads; the exact command in mono; Deny (focused by default) and Allow (`.btn.danger`, because it
 writes); a countdown that resolves to Deny. Escape does nothing. Leaving the
 view registers a dock pseudo-job so a pending card flips the chip to "needs you".
 
@@ -164,7 +173,8 @@ white text; gold is a rule, never a fill or text on light surfaces. Fix the
 dark-mode `.btn.primary` / `.btn.ai` text (`color: var(--bg)`).
 
 Pills carry words, never colour alone. `.needCard` says what is missing, what
-it enables, how to install, and has Check again. Disabled verbs keep a title.
+it enables, how to install, and has Check again -- plus Install it when the
+tool reports `can_install`, which asks in the browser before running anything. Disabled verbs keep a title.
 
 ## 10. Files and load order
 
@@ -200,6 +210,9 @@ writes use full-size buttons.
 | Tools | `GET /api/tools/{cid}/dates/plan`, `POST .../dates/apply`; `POST /api/tools/{cid}/export`; `POST /api/tools/{cid}/import`; `GET/POST /api/tools/{cid}/nav`; `POST /api/tools/{cid}/quiz-backup` |
 | Assistant | `POST /api/assistant/{cid}/send`, `GET /api/assistant/{cid}/events?since=`, `POST /api/assistant/{cid}/answer`, `POST .../stop`, `POST .../new` |
 | Batch | `POST /api/batch/a11y {course_ids, look, apply, confirm}` |
+| Record | `GET /api/record/{cid}`, `GET .../file?month=`, `POST .../verify`, `POST .../sync`, `POST .../setting {to_canvas}` |
+| Tools | `POST /api/tools/install {tools: [...]}` (a job; installs the optional binaries) |
+| Assistant | `POST /api/assistant/{cid}/names/refresh` (re-read the roster for tagging) |
 
 Long operations return `{job}`; confirm refusals keep the 409 shape
 (`needs_confirm, summary, detail, confirm`) so `postConfirmed` and

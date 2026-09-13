@@ -8,6 +8,9 @@
      under the area head, and the single primary button. */
   --a11y:#0f766e; --a11y-soft:#e2f3f0; --build:#8a4b2a; --build-soft:#f6ece5;
   --tools:#4a5568; --tools-soft:#eceff3;
+  /* Record: the account of what was done. Its own colour so the area
+     bar does not light Tools up when the Record tab is open. */
+  --record:#6b5e2f; --record-soft:#f4efdd;
   /* The neutral default, for the picker, the schedule and the hub: no area is
      open there, so nothing should be wearing an area's colour. */
   --zone:#4a5568; --zone-soft:#eceff3;
@@ -23,6 +26,7 @@
     --ai:#b79ae0; --ai-soft:#241d31; --gold:#E9A821; --navy:#061E3F; --paper:#191d22;
     --a11y:#6fd3c7; --a11y-soft:#14302c; --build:#e0a37e; --build-soft:#2f2119;
     --tools:#a7b3c4; --tools-soft:#23282f;
+    --record:#cfbb72; --record-soft:#2b2718;
     --zone:#a7b3c4; --zone-soft:#23282f;
   }
 }
@@ -1124,6 +1128,7 @@ body[data-area="tools"],
 body[data-area="courseops"]{--zone:var(--tools);--zone-soft:var(--tools-soft)}
 body[data-area="ai"],
 body[data-area="assistant"]{--zone:var(--ai);--zone-soft:var(--ai-soft)}
+body[data-area="record"]{--zone:var(--record);--zone-soft:var(--record-soft)}
 body[data-area="grade"]{--zone:var(--accent);--zone-soft:var(--accent-soft)}
 
 /* Gold is a rule, never a fill and never text on a light surface. */
@@ -1381,3 +1386,27 @@ a.card,a.card:visited,a.acrossCard,a.acrossCard:visited{color:var(--ink);text-de
   .spin,.jiDot,.progFill.working{animation:none!important}
   *{scroll-behavior:auto!important}
 }
+
+/* ------------------------------------------------------- record of actions */
+/* The verdict first, and in words. If this screen is ever opened in anger, the
+   only question that matters is whether the file is still the one that was
+   written, so it gets the top of the page and a border you cannot miss. */
+.recChain{padding:12px 14px;border-radius:var(--radius);border:1px solid var(--line);
+  background:var(--panel);font-size:13px;line-height:1.6;margin:0 0 14px;
+  display:flex;flex-direction:column;gap:3px}
+.recChain.ok{border-color:var(--ok, var(--accent));background:var(--accent-soft)}
+.recChain.bad{border-color:var(--danger);background:var(--danger-soft);color:var(--danger)}
+.recChain .muted{color:var(--muted)}
+.recChain.bad .muted{color:inherit;opacity:.85}
+.recWhere{margin:0 0 14px}
+.recWhere .card{cursor:default}
+.recWhere .card:hover{border-color:var(--line)}
+.recWhere p{margin:6px 0;font-size:12.5px;line-height:1.6;color:var(--ink)}
+.recWhere .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+.recFilters{display:flex;flex-wrap:wrap;gap:14px;align-items:end;margin:0 0 12px;
+  font-size:12px;color:var(--muted)}
+.recFilters label{display:flex;flex-direction:column;gap:3px}
+.recFilters select{min-width:150px}
+.recTbl td .pill{margin:0 4px 3px 0}
+.recTbl tr.warnRow td{background:var(--warn-soft)}
+.recTbl .nowrap{white-space:nowrap}

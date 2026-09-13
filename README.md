@@ -13,7 +13,7 @@ repository. See [docs/MIGRATION.md](docs/MIGRATION.md) for what moved where.
 
 ## What it does
 
-Open a course and you get five areas. Use any of them alone.
+Open a course and you get six areas. Use any of them alone.
 
 | Area | What it is for |
 |---|---|
@@ -22,6 +22,7 @@ Open a course and you get five areas. Use any of them alone.
 | **Build** | Drafts a page, syllabus, assignment, graded discussion, quiz or study guide in the school's Canvas-safe template, checks it against the style rules, and places it in the module you choose, unpublished by default. Project manifests for whole modules. Rubrics. |
 | **Tools** | Export a course to `.imscc`, import a cartridge, copy a course into a sandbox. Roll due dates to a new term from the academic calendar with a week-by-week table to approve. Trim the left navigation. Back up a quiz before rewriting it. Cross-reference the course against the state learning outcomes for its program. |
 | **Assistant** | A Claude Code session for the course, in the browser. Say what you want in plain English. It drives the same verbs as the buttons, and every time it wants to change Canvas a card appears asking you to Allow or Deny. No answer means no. |
+| **Record** | Every change the Studio made in the course, written down as it happened: what, when, on whose account, and for which student where a student is the point. Each entry carries the fingerprint of the one before it, so an edit after the fact shows up. Kept in your own Canvas files as well as on the PC. The manual is [docs/RECORD.md](docs/RECORD.md). |
 
 Three rules hold everywhere:
 
@@ -32,10 +33,16 @@ Three rules hold everywhere:
   comparison; fixed PDFs must survive an independent text and render check or
   they are deleted and queued for a person; documents that fail verification
   are never uploaded.
-- **Student data stays on this machine.** Grading pseudonymises students before
-  anything is sent to Claude, and the identity map never leaves your computer.
-  Every other area works through a Canvas client that cannot reach submissions,
-  grades or rosters at all.
+- **Student data stays on this machine.** Type a real name anywhere a model
+  is involved and it is swapped for a tag first -- `S-001` while grading,
+  `Student-1` in the Assistant -- and swapped back on the way to your screen.
+  The list of who is who never leaves your computer. Every area except grading
+  works through a Canvas client that cannot reach submissions, grades or
+  rosters at all. The details, and the one thing this does not cover, are in
+  [docs/NAMES.md](docs/NAMES.md).
+- **What it did is written down.** Every Canvas write goes into a chained,
+  tamper-evident record kept in your own Canvas files, with accommodations and
+  grades named by student. See [docs/RECORD.md](docs/RECORD.md).
 
 ---
 
@@ -45,9 +52,12 @@ Three rules hold everywhere:
 - **Claude Code CLI**, installed and signed in: <https://claude.com/claude-code>
 - A **Canvas API token** for your own account (the setup screen walks you through it)
 - Optional, for the PDF fixer's OCR and compliance proof: **Tesseract**, **veraPDF** and a **Java** runtime.
-  The first launch offers to install the two that have official packages, and
-  tells you the two steps for veraPDF. You can decline: everything else works
-  without them, and the accessibility area says what is missing where it matters.
+  The first launch offers to install all three. Tesseract and Java come from
+  winget; veraPDF has no package anywhere, so the Studio fetches the project's
+  own installer, checks it against a known hash and runs it unattended into
+  your user folder, where no administrator rights are needed. You can decline:
+  everything else works without them, and the accessibility area says what is
+  missing where it matters, with an Install button on the card.
   Later, `python -m courseforge tools` reports the same thing,
   `python -m courseforge tools --install --yes` does the install, and
   `python -m courseforge tools --ask-again` brings the first-run offer back.
@@ -108,6 +118,7 @@ python -m courseforge a11y push --course 734391            # dry run
 python -m courseforge a11y push --course 734391 --apply    # asks for a typed yes
 python -m courseforge pdf fix --course 734391
 python -m courseforge course due-dates --course 734391
+python -m courseforge record --course 734391 --verify
 python -m courseforge --help
 ```
 
@@ -129,6 +140,8 @@ A verb that writes to Canvas does nothing without `--apply`, and prints the plan
 | `pdf_jobs` | `0` | PDF engine worker processes; 0 = CPU count minus 2 |
 | `assistant_ask_timeout_s` | `1200` | An unanswered Allow/Deny is a Deny after this long |
 | `allow_canvas_writes` | `true` | Hard read-only lock when `false` |
+| `pseudonymize` | `true` | Swap student names for tags before anything reaches a model |
+| `audit_to_canvas` | `true` | Keep the record of actions in your own Canvas user files |
 | `llm_backend` | `cli` | `api` switches to an API key (hosted build; see below) |
 
 `CANVAS_TOKEN`, `CANVAS_BASE_URL` and `CANVAS_GRADER_PORT` override the file.
@@ -146,7 +159,10 @@ courseforge/             the app
   canvas*.py             Canvas client; canvas_policy.py decides what each area may touch
   llm.py                 one seam for every model call (claude_cli.py locally, claude_api.py hosted)
   secrets.py             encrypted token storage
+  identity.py            real names in, Student-N out, for the Assistant
+  audit.py               the chained record of what was done, and its Canvas copy
   a11y/ docs/ pdf/ content/ courseops/ assistant/   the areas
+  record/                the record of actions
   hub/                   the course hub
   knowledge/             the remediation, style and Canvas-API knowledge the tool and the Assistant follow
   web/                   the UI (vanilla JS, no build step)
@@ -167,6 +183,8 @@ and a phased rollout are in [docs/DEPLOYMENT-SCHOOL.md](docs/DEPLOYMENT-SCHOOL.m
 ## Documentation
 
 - [docs/GRADING.md](docs/GRADING.md): the grading manual
+- [docs/RECORD.md](docs/RECORD.md): the record of actions, and how to check it
+- [docs/NAMES.md](docs/NAMES.md): what is swapped before anything reaches a model
 - [docs/UI-DESIGN.md](docs/UI-DESIGN.md): how the UI is organised
 - [docs/AREA-CONTRACT.md](docs/AREA-CONTRACT.md) and [docs/FRONTEND-CONTRACT.md](docs/FRONTEND-CONTRACT.md): how to add an area
 - [docs/MIGRATION.md](docs/MIGRATION.md): from canvas-grader and CourseForge

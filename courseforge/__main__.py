@@ -3,6 +3,8 @@
     python -m courseforge serve       start the local web UI (default)
     python -m courseforge doctor      check Canvas token and Claude login
     python -m courseforge courses     list your courses
+    python -m courseforge tools       the optional tools, and install them
+    python -m courseforge record      what the Studio did, and whether it adds up
 """
 from __future__ import annotations
 
@@ -152,6 +154,63 @@ def cmd_tools(cfg: Config, install: bool = False, yes: bool = False,
     return 0
 
 
+def cmd_record(cfg: Config, course: str, verify: bool, sync: bool,
+               student: str = "", limit: int = 30) -> int:
+    """The account of what the Studio did, from a terminal.
+
+    Deliberately usable without the web UI: the person who needs this a year
+    from now may be an administrator with the data folder and no Studio.
+    """
+    from pathlib import Path
+    from . import audit
+    root = (Path(cfg.data) if course in ("", "account")
+            else Path(cfg.data) / str(course))
+    where = "the account-wide record" if course in ("", "account") else f"course {course}"
+    print(f"CourseForge Studio record -- {where}\n")
+    info = audit.summary(root)
+    if not info["entries"]:
+        print(f"Nothing recorded yet. Looked in {audit.folder(root)}")
+        return 0
+    print(f"Entries        : {info['entries']}")
+    print(f"Months         : {', '.join(info['months'])}")
+    print(f"On this PC     : {audit.folder(root)}")
+    saved = [k for k in (info["uploaded"] or {}) if k != "readme"]
+    print(f"In Canvas      : {', '.join(saved) if saved else 'not saved yet'}"
+          f"  (Files / {audit.FOLDER})")
+
+    if verify:
+        out = audit.verify(root)
+        print(f"\nChain          : {'UNBROKEN' if out['ok'] else 'BROKEN'} over "
+              f"{out['entries']} entries")
+        print(_indent(out["why"]))
+        if not out["ok"]:
+            broke = out["broke_at"] or {}
+            print(_indent(f"at entry {broke.get('seq')} in {broke.get('file')}: "
+                          f"{broke.get('sentence', '')}"))
+            return 2
+
+    if sync:
+        from .canvas import CanvasClient
+        client = CanvasClient(cfg.base_url, cfg.token())
+        out = audit.sync(client, root, None if course in ("", "account") else course,
+                         force=True, say=lambda t: print(_indent(t)))
+        print(f"\nSaved to Canvas: {out['detail']}")
+        for bad in out["failed"]:
+            print(_indent(f"{bad['name']}: {bad['error']}"))
+
+    rows = audit.read(root, limit=limit, student=student)
+    print(f"\nLast {len(rows)}:\n")
+    for row in rows:
+        people = ", ".join(p.get("name") or p.get("id", "")
+                           for p in (row.get("students") or []))
+        mark = " " if row.get("result") == "ok" else "!"
+        print(f"{mark} {row.get('at', '')[:16].replace('T', ' ')}  "
+              f"{row.get('area', ''):15s} {row.get('sentence', '')}")
+        if people:
+            print(f"{'':21s}{'':15s} for {people}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from . import cli as area_cli
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -175,6 +234,16 @@ def main(argv: list[str] | None = None) -> int:
                          help="with --install, run the installers rather than printing them")
     p_tools.add_argument("--ask-again", action="store_true",
                          help="forget the saved answer so the first-run offer returns")
+    p_record = sub.add_parser("record", help="the account of what the Studio did")
+    p_record.add_argument("--course", default="account",
+                          help="Canvas course id, or 'account' for what belongs to no course")
+    p_record.add_argument("--verify", action="store_true",
+                          help="walk the chain and say whether it has been changed")
+    p_record.add_argument("--sync", action="store_true",
+                          help="save every month to your Canvas user files now")
+    p_record.add_argument("--student", default="",
+                          help="only entries naming this Canvas user id or name")
+    p_record.add_argument("--limit", type=int, default=30, help="how many entries to print")
     area_cli.register_all(sub)
     args = parser.parse_args(argv)
 
@@ -190,6 +259,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "tools":
         return cmd_tools(cfg, install=args.install, yes=args.yes,
                          ask_again=args.ask_again)
+    if args.command == "record":
+        return cmd_record(cfg, args.course, args.verify, args.sync,
+                          args.student, args.limit)
     if args.command == "gui":
         from .launcher import main as gui_main
         return gui_main()

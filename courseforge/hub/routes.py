@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .. import ledger
 from ..areas import AREAS
-from ..routing import route
+from ..routing import HTTPError, route
 
 # Which hub card each area package reports into. Accessibility is three
 # packages (HTML restyling, Office documents, PDFs) and one card.
@@ -50,6 +50,53 @@ def ledger_rows(req):
     return {"course_id": cid, "rows": rows}
 
 
+# Which install_plan row gets a tool that an "Install X to enable" card names.
+# The Python libraries all arrive in one pip call, so several card names lead
+# to the same row.
+INSTALL_ROW = {
+    "tesseract": "tesseract", "java": "java", "verapdf": "verapdf",
+    "pymupdf": "python", "pikepdf": "python", "fonttools": "python",
+    "pypdf": "python", "python_pptx": "python", "python_docx": "python",
+    "pillow": "python", "pdf_engine": "python",
+}
+
+
+@route("POST", "/api/tools/install", area="hub")
+def tools_install(req):
+    """Install the optional tools named in `{"tools": [...]}`, or all missing.
+
+    A job rather than a plain request, because winget can sit for a minute and
+    veraPDF is a 33 MB download. Nothing here touches Canvas, so there is no
+    confirm token -- but it does install software on the machine, so the button
+    that calls it asks first.
+    """
+    from .. import tools as _tools
+    body = req.body if isinstance(req.body, dict) else {}
+    asked = [str(t) for t in (body.get("tools") or []) if str(t)]
+    unknown = [t for t in asked if t not in INSTALL_ROW]
+    if unknown:
+        raise HTTPError(400, "The Studio does not install " + ", ".join(unknown) + ".")
+    only = sorted({INSTALL_ROW[t] for t in asked}) or None
+
+    def job(log):
+        step = [0]
+
+        def say(line):
+            step[0] += 1
+            log(line, step[0], step[0] + 1)
+
+        out = _tools.install_stream(req.app.cfg, on_line=say, only=only)
+        _tools.wire_env(req.app.cfg)
+        found = _tools.detect(req.app.cfg)
+        out["tools"] = found
+        names = [found.get(t, {}).get("label", t) for t in out["installed"]]
+        out["sentence_done"] = ("Installed " + ", ".join(names) + "."
+                                if names else "Nothing new was installed.")
+        return out
+
+    return req.job("tools.install", job)
+
+
 @route("POST", "/api/courses/{cid}/hub/refresh", area="hub")
 def refresh(req):
     cid = req.params["cid"]
@@ -82,6 +129,14 @@ def build_hub(app, cid) -> dict:
     # its own name (the PDF tab asks for hub.pdf.badge).
     for name, status in modules.items():
         areas.setdefault(name, status)
+
+    # The record is not an area -- it has no verbs of its own -- but it gets a
+    # card, because a paper trail nobody can find is not a paper trail.
+    try:
+        from ..record.routes import hub_status as record_status
+        areas["record"] = _normalise(record_status(app, cid))
+    except Exception as exc:  # noqa: BLE001
+        areas["record"] = _not_installed(f"{type(exc).__name__}: {exc}")
 
     rows = ledger.read(cdir, limit=8)
     needs = sorted({n for a in areas.values() for n in (a.get("needs") or []) if n})

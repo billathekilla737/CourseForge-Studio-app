@@ -120,6 +120,11 @@ class Config:
     java_path: str = ""
     # Alt text and other image descriptions: sonnet sees well and costs less.
     describe_model: str = "sonnet"
+    # The account of what the Studio did (audit.py), kept in your own Canvas
+    # user files so it outlives this laptop. The chained local copy is written
+    # either way; this only decides whether Canvas gets one.
+    audit_to_canvas: bool = True
+    audit_sync_s: int = 180
     # The Assistant: a Claude Code session per course with an Allow/Deny gate.
     assistant_enabled: bool = True
     assistant_model: str = ""           # empty = Claude Code's default

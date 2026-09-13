@@ -21,8 +21,12 @@
   "grading_concurrency": 8,
   "claude_timeout_s": 600,
 
-  "_pseudonymize": "Replace student names with S-001, S-002 before any text is sent to Claude. The identity map stays in data/<course>/<assignment>/map.json and never leaves this machine.",
+  "_pseudonymize": "Swap student names for tags before any text is sent to Claude: S-001 while grading, Student-1 in the Assistant, where a name you type is swapped out and swapped back on your screen. The lists of who is who stay in data/<course>/ and never leave this machine. See docs/NAMES.md.",
   "pseudonymize": true,
+  "_audit_to_canvas": "Keep the record of what the Studio did in your own Canvas user files (Files / courseforge-studio/record), so it outlives this PC. The chained local copy under data/<course>/audit/ is written either way. See docs/RECORD.md.",
+  "audit_to_canvas": true,
+  "_audit_sync_s": "How often the background upload checks for a month that has changed.",
+  "audit_sync_s": 180,
 
   "_blender": "Blender for .blend submissions. blender_path empty means auto-detect (PATH, standard install dirs, Windows registry). blend_vision sends the rendered contact sheet to the model; vision_model is used for those calls since opus vision costs several times more for no better judgment of form.",
   "blender_path": "",

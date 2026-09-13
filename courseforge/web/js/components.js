@@ -181,12 +181,34 @@
         ${t.install ? `<code class="needHow">${esc(t.install)}</code>` : ''}
         ${t.detail ? `<span class="needDetail muted">${esc(clamp(t.detail, 140))}</span>` : ''}
         <span class="needActs">
+          ${t.can_install ? `<button class="btn sm primary" type="button" data-install="${esc(name)}">Install it</button>` : ''}
           <button class="btn sm" type="button" data-check="${esc(name)}">Check again</button>
         </span>
       </div>`).join('')}</div>`;
     host = el(host);
     if (host) {
       host.innerHTML = html;
+      /* Installing a tool is not a Canvas write, so the server does not refuse
+         it once the way it refuses those. It still changes this computer, so
+         the asking happens here instead of not at all. */
+      host.querySelectorAll('[data-install]').forEach(btn => {
+        btn.onclick = () => {
+          const name = btn.dataset.install;
+          const info = ((S.health && S.health.tools) || {})[name] || {};
+          const label = info.label || name;
+          if (!confirm(`Install ${label} on this computer now?\n\n`
+            + 'It is fetched from the publisher and installed for your account '
+            + 'only. Nothing is sent to Canvas.')) return;
+          runJob(`Installing ${label}`,
+            () => api('/tools/install', { method: 'POST', body: { tools: [name] } }),
+            out => {
+              if (out && out.tools) S.health = { ...(S.health || {}), tools: out.tools };
+              setStatus((out && out.sentence_done) || 'done',
+                (out && (out.installed || []).length) ? 'ok' : 'err');
+              needCards(names, host);
+            });
+        };
+      });
       host.querySelectorAll('[data-check]').forEach(btn => {
         btn.onclick = async () => {
           btn.disabled = true;

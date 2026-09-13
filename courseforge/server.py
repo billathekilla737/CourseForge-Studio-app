@@ -26,8 +26,8 @@ from pathlib import Path
 from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, urlparse
 
-from . import (accommodations, areas, blender, confirm, curve, grader, llm,
-               gradesync, handoff, htmlclean, instruct, overlap, quizedit,
+from . import (accommodations, areas, audit, blender, confirm, curve, grader,
+               llm, gradesync, handoff, htmlclean, instruct, overlap, quizedit,
                routing, schedule, teaching, terms)
 from .canvas import CanvasClient, CanvasError
 from . import config
@@ -220,6 +220,11 @@ class App:
         self._handoff_worker: threading.Thread | None = None
         # The model seam follows config.json ("cli" locally, "api" when hosted).
         llm.configure(cfg)
+        # The account of what was done. Whose account it was is one Canvas call,
+        # so it is handed over as something to call later rather than made now.
+        audit.set_actor_source(lambda: self.client.whoami() or {}, self.machine)
+        self.audit_sync = audit.Syncer(self, getattr(cfg, "audit_sync_s", 180))
+        self.audit_sync.start()
         # The other areas hang their state and routes off the App here.
         self.area_status: dict = {}
         areas.install_all(self)
@@ -1738,6 +1743,16 @@ class App:
         out = self.pull(course_id, assignment_id)
         out["hide"] = hide
         out["progress_state"] = state.get("workflow_state")
+        name = (self.store.assignment(course_id, assignment_id) or {}).get("name") \
+            or f"assignment {assignment_id}"
+        audit.record(self.course_dir(course_id), "grade",
+                     "hidden" if hide else "released",
+                     ("Hid the grades on \"%s\" from %s." if hide
+                      else "Made the grades on \"%s\" visible to %s.") % (name, who),
+                     count=len(only or []) or None, course_id=course_id,
+                     url=f"{self.cfg.base_url}/courses/{course_id}/gradebook",
+                     detail={"assignment_id": str(assignment_id),
+                             "user_ids": [str(u) for u in (only or [])]})
         return out
 
     def resolve(self, course_id, assignment_id, only: list[str], choice: str) -> dict:
@@ -1876,6 +1891,30 @@ class App:
                 log("they are still hidden; use Make live to try again")
         elif posted:
             log(f"{n_hidden} landed hidden from students, {n_visible} visible")
+
+        # Into the account of record: which students got which score, from this
+        # account, at this moment. Grades are the other half of what a dispute
+        # is usually about, and the ledger next door deliberately does not
+        # carry names.
+        if posted or failed:
+            name = (self.store.assignment(course_id, assignment_id) or {}).get("name") or \
+                f"assignment {assignment_id}"
+            audit.record(
+                self.course_dir(course_id), "grade", "posted",
+                f"Wrote {len(posted)} grade(s) to \"{name}\""
+                + (f", {len(failed)} refused by Canvas" if failed else "")
+                + (f", then made {shown} visible to students" if shown
+                   else ", left hidden from students" if posted else "") + ".",
+                students=[audit.person(i["user_id"], i.get("name", ""),
+                                       score=i.get("score")) for i in posted],
+                count=len(posted), course_id=course_id,
+                result="failed" if failed and not posted else "ok",
+                url=f"{self.cfg.base_url}/courses/{course_id}/gradebook",
+                detail={"assignment_id": str(assignment_id),
+                        "comments": bool(include_comments),
+                        "shown": shown, "hidden": n_hidden,
+                        "failed": [{"user_id": f.get("user_id"),
+                                    "error": str(f.get("error"))[:200]} for f in failed]})
 
         return {"dry_run": False, "posted": posted, "failed": failed, "skipped": skipped,
                 "landing": landing, "show": bool(show), "shown": shown,
@@ -2027,7 +2066,25 @@ class App:
                             "why": str(exc)})
         if bad and not parsed:
             raise ValueError("; ".join(b["why"] for b in bad))
+        before = {str(s.user_id): s.label() for s in self.roster.load()}
         self.roster.save(parsed)
+        # Who was added, dropped or changed, and to what. The list is the
+        # college's approvals as this tool understands them, so the moment it
+        # changes is worth a line: "it was never on the list" and "it was taken
+        # off the list in March" are different answers to the same complaint.
+        after = {str(s.user_id): s.label() for s in parsed}
+        moved = [audit.person(uid, next((s.name for s in parsed
+                                         if str(s.user_id) == uid), uid),
+                              was=before.get(uid, "not on the list"),
+                              now=after.get(uid, "removed"))
+                 for uid in sorted(set(before) | set(after))
+                 if before.get(uid) != after.get(uid)]
+        if moved:
+            audit.record(self.store.root, "accommodations", "roster",
+                         f"Changed the standing accommodation list: "
+                         f"{len(moved)} student(s) added, removed or altered. "
+                         f"{len(parsed)} on the list now.",
+                         students=moved, count=len(moved))
         return {**self.accommodation_roster(), "rejected": bad}
 
     def taught_students(self, refresh: bool = False) -> dict:
@@ -2222,6 +2279,18 @@ class App:
             line = (f"{batch['course_label']} - {batch['quiz_title']}: "
                     f"{len(batch['extensions'])} student(s)")
             log(f"{index}/{total} {line}", index - 1, total)
+            # Who this batch is for, named, because an accommodation that a
+            # student later says they never got is the case this record exists
+            # to answer. Both outcomes are written down: a refusal from Canvas
+            # is as much a fact about what happened as a success.
+            people = [audit.person(r["user_id"], r.get("name", ""),
+                                   extra_time=r.get("extra_time"),
+                                   extra_attempts=r.get("extra_attempts"),
+                                   approval=r.get("detail", ""))
+                      for r in plan["rows"]
+                      if r["course_id"] == batch["course_id"]
+                      and r["quiz_id"] == batch["quiz_id"]]
+            cdir = self.course_dir(batch["course_id"])
             try:
                 self.client.quiz_extensions(batch["course_id"], batch["quiz_id"],
                                             batch["extensions"])
@@ -2230,10 +2299,30 @@ class App:
                                     "quiz_title", "time_limit")},
                                 "students": batch["names"],
                                 "count": len(batch["extensions"])})
+                audit.record(
+                    cdir, "accommodations", "applied",
+                    f"Set testing accommodations on the quiz \"{batch['quiz_title']}\" "
+                    f"in {batch['course_label']} for {len(people)} student(s).",
+                    students=people, count=len(people),
+                    course_id=batch["course_id"],
+                    url=f"{self.cfg.base_url}/courses/{batch['course_id']}"
+                        f"/quizzes/{batch['quiz_id']}",
+                    detail={"quiz_id": batch["quiz_id"],
+                            "quiz_time_limit": batch["time_limit"],
+                            "scope": scope})
             except (CanvasError, ValueError) as exc:
                 failed.append({"course_label": batch["course_label"],
                                "quiz_title": batch["quiz_title"],
                                "error": f"{type(exc).__name__}: {exc}"[:220]})
+                audit.record(
+                    cdir, "accommodations", "failed",
+                    f"Tried to set testing accommodations on the quiz "
+                    f"\"{batch['quiz_title']}\" in {batch['course_label']} for "
+                    f"{len(people)} student(s); Canvas refused.",
+                    students=people, count=len(people), result="failed",
+                    course_id=batch["course_id"],
+                    detail={"quiz_id": batch["quiz_id"],
+                            "error": f"{type(exc).__name__}: {exc}"[:220]})
             log(f"{index}/{total} done", index, total)
 
         people = {r["user_id"] for r in plan["rows"]}

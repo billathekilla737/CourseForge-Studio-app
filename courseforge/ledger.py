@@ -4,6 +4,11 @@ Every area appends one line here after a Canvas write succeeds. The course hub
 shows the last few; the Assistant's rail shows them all. It is an append-only
 JSONL file under the course's data folder, so it survives restarts and never
 carries student data (sentences name pages, files and settings, not people).
+
+It is the recent-activity list, not the account of record: it lives on one
+machine and nothing about it says whether a line was added afterwards. Every
+entry is copied into `audit.py`, which is chained, names people where that is
+the point, and is kept in Canvas.
 """
 from __future__ import annotations
 
@@ -34,6 +39,12 @@ def record(course_dir: Path, area: str, sentence: str, url: str | None = None,
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    # And into the tamper-evident record, which is the copy that goes to Canvas
+    # and outlives this folder. Every area already calls this function after a
+    # successful write, so putting it here means no area has to remember to.
+    from . import audit
+    audit.record(course_dir, area, kind or "write", sentence, url=url,
+                 count=count, course_id=Path(course_dir).name)
     return entry
 
 

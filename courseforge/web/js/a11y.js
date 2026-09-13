@@ -41,6 +41,12 @@
       title: 'The same find and replace inside .docx, .pptx and .xlsx. '
         + 'Nothing to do with accessibility.' },
   ];
+  /* Canvas's nouns, as an instructor says them. */
+  const KIND_WORD = {
+    page: 'Page', assignment: 'Assignment', discussion: 'Discussion',
+    quiz: 'Quiz description', syllabus: 'Syllabus', announcement: 'Announcement',
+  };
+
   const LOOKS = [
     { id: 'clean', label: 'Clean', hint: 'No background fills. Navy headings and borders only. Scores 0 use-of-colour advisories in Ally.' },
     { id: 'hybrid', label: 'Hybrid', hint: 'Filled navy hero and footer. Adds advisory colour flags, about 2 per page.' },
@@ -137,12 +143,27 @@
         fixes: base(cid) + '/fixes',
         push: base(cid) + '/push',
       },
+      // {key, render(item)}, the shape the gateway reads. Written as
+      // {id, format(value)} these silently produced a table of empty cells.
       listColumns: [
-        { id: 'title', label: 'Name' },
-        { id: 'kind', label: 'Type' },
-        { id: 'size', label: 'Size', format: fmtSize },
-        { id: 'modified', label: 'Modified', format: v => (has('fmtDate') ? fmtDate(v) : (v || '')) },
-        { id: 'state', label: 'State' },
+        { label: 'Name', key: 'title',
+          render: it => `<b>${esc(it.title || it.key || '')}</b>`
+            + (it.published === false ? '<span class="muted"> · unpublished</span>' : '') },
+        { label: 'Type', key: 'kind', render: it => esc(KIND_WORD[it.kind] || it.kind || '') },
+        // The server counts characters of body, not bytes on a disk, which for
+        // HTML is close enough to read as a size and is what it is here for:
+        // telling a one-line page from a long one at a glance.
+        { label: 'Length', key: 'size',
+          // Canvas does not say how long a body is until it has been read, so
+          // before Fetch this is unknown rather than zero, and says which.
+          render: it => (it.size == null
+            ? '<span class="muted">not read yet</span>'
+            : `<span class="num">${esc(fmtSize(it.size))}</span>`) },
+        { label: 'Modified', key: 'modified',
+          render: it => `<span class="muted">${esc(
+            (has('fmtDate') && fmtDate(it.modified)) || it.modified || '')}</span>` },
+        { label: 'State', key: 'state',
+          render: it => (has('statePill') ? statePill(it.state) : esc(it.state || '')) },
       ],
       reviewRenderer: renderHtmlReview,
       confirmTitle: 'Replace these bodies in Canvas?',

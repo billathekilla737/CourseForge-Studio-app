@@ -450,7 +450,15 @@
            <th scope="col">Modified</th>${withIssues ? '<th scope="col">Issues</th>' : ''}<th scope="col">State</th>`;
       const body = rows.map((it, i) => {
         const k = gwKey(it, i);
-        const cells = cols ? cols.map(c => `<td>${c.render ? c.render(it) : esc(it[c.key])}</td>`).join('')
+        // `render(item)` returns markup the area built; `format(value)` returns
+        // text and is escaped here. `key` names the field, and `id` is read as
+        // a synonym: an area that spelled it the other way used to render a
+        // whole table of empty cells with no error anywhere to say why.
+        const cells = cols ? cols.map(c => {
+          const raw = it[c.key || c.id];
+          if (c.render) return `<td>${c.render(it)}</td>`;
+          return `<td>${c.format ? esc(c.format(raw)) : esc(raw)}</td>`;
+        }).join('')
           : `<td><b>${esc(gwTitle(it))}</b>${it.folder ? `<span class="muted"> · ${esc(it.folder)}</span>` : ''}</td>
              <td>${esc(it.kind || it.type || '')}</td>
              <td class="num">${esc(typeof it.size === 'number' ? fmtBytes(it.size) : (it.size || ''))}</td>

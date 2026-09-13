@@ -91,3 +91,82 @@ class TheShellNamesWhereYouAre(unittest.TestCase):
         src = (WEB / "js" / "core.js").read_text(encoding="utf-8")
         self.assertIn("inbox: '#viewInbox h2'", src)
         self.assertIn("'#viewInbox', '#viewWork'", src)
+
+
+class GatewayColumns(unittest.TestCase):
+    """A table column names the field it reads, and the component reads it.
+
+    `renderGateway` takes columns as `{label, key, render(item)}`. a11y.js
+    once wrote them as `{label, id, format(value)}`; every lookup came back
+    undefined, and the Pages list drew fifty-nine rows of tick boxes with
+    nothing beside them. No error, in the console or anywhere else.
+    """
+
+    def columns_blocks(self, src):
+        """Each `listColumns: [ ... ]` array in one file, by brace depth."""
+        out = []
+        for start in (i for i in range(len(src)) if src.startswith("listColumns:", i)):
+            open_at = src.find("[", start)
+            if open_at < 0:
+                continue
+            depth, i = 0, open_at
+            while i < len(src):
+                if src[i] in "[{":
+                    depth += 1
+                elif src[i] in "]}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                i += 1
+            out.append(src[open_at:i + 1])
+        return out
+
+    def entries(self, block):
+        """Each `{...}` column inside one array."""
+        out, depth, start = [], 0, None
+        for i, ch in enumerate(block[1:-1], start=1):
+            if ch == "{":
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0 and start is not None:
+                    out.append(block[start:i + 1])
+                    start = None
+        return out
+
+    def test_every_column_names_the_field_it_reads(self):
+        for path in web_files(".js"):
+            src = path.read_text(encoding="utf-8")
+            for block in self.columns_blocks(src):
+                for entry in self.entries(block):
+                    if "..." in entry:            # a spread, not a literal column
+                        continue
+                    with self.subTest(file=path.name, column=entry[:60]):
+                        self.assertTrue(
+                            "key:" in entry or "id:" in entry,
+                            "a column with no key reads it[undefined] and "
+                            "renders an empty cell")
+
+    def test_the_component_reads_both_spellings(self):
+        """Tolerance on purpose: a whole table rendering blank with no error is
+        too expensive a failure for a mismatch this easy to make."""
+        src = (WEB / "js" / "components.js").read_text(encoding="utf-8")
+        self.assertIn("it[c.key || c.id]", src)
+        self.assertIn("c.format ? esc(c.format(raw))", src,
+                      "format(value) returns text and has to be escaped here")
+
+    def test_the_pages_list_reads_fields_that_exist(self):
+        """The five columns on the Pages tab, against what a11y/routes.py
+        actually puts in each item."""
+        src = (WEB / "js" / "a11y.js").read_text(encoding="utf-8")
+        block = self.columns_blocks(src)[0]
+        for field in ("title", "kind", "size", "modified", "state"):
+            with self.subTest(field=field):
+                self.assertIn("key: '%s'" % field, block)
+        routes = (WEB.parent / "a11y" / "routes.py").read_text(encoding="utf-8")
+        for field in ("title", "kind", "size", "modified", "state"):
+            with self.subTest(server=field):
+                self.assertIn('"%s":' % field, routes,
+                              "the server stopped sending a field a column reads")

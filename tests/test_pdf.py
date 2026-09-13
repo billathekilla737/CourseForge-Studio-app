@@ -350,6 +350,72 @@ class PushTest(unittest.TestCase):
 
 # ----------------------------------------------------------------- alt text
 
+class AltEmptyStateTest(unittest.TestCase):
+    """A course of text-only PDFs has to be told apart from one nobody has
+    looked at yet.
+
+    Both leave the description list empty, and the screen said the same thing
+    about both: "Nothing is waiting for a description". Read straight after a
+    run that reported two files fixed, that is indistinguishable from a broken
+    button. The screen now says which of the two it is, and these are the facts
+    it works that out from, so they have to keep arriving.
+    """
+
+    def _fixed_course(self, td, alt_summary=None):
+        app = FakeApp(td)
+        wd = core.workdir(app, "101")
+        sub = wd / "100"
+        sub.mkdir(parents=True, exist_ok=True)
+        (sub / "original.pdf").write_bytes(b"%PDF-1.4\n")
+        (sub / "fixed.pdf").write_bytes(b"%PDF-1.4 fixed\n")
+        file_json(sub, "100", "transcript.pdf")
+        result_json(sub, status="ok", class_before="text-untagged", pages=2)
+        core.write_json(wd / "files.json", {
+            "at": core.now_iso(), "folders": {}, "total_files": 1,
+            "files": [{"id": "100", "display_name": "transcript.pdf", "folder_id": 7,
+                       "folder": "course files", "size": 9,
+                       "url": "https://files.example.edu/100"}]})
+        core.write_json(wd / "alt-todo.json", {})
+        if alt_summary is not None:
+            core.write_json(wd / "alt-summary.json", alt_summary)
+        return app, wd
+
+    def test_a_text_only_pdf_is_reported_as_having_no_pictures(self):
+        with tempfile.TemporaryDirectory() as td:
+            app, _wd = self._fixed_course(td, {"needs_alt": 0, "unique_images": 0,
+                                               "already_described": 0,
+                                               "no_picture_available": 0})
+            st = core.state(app, "101")
+        self.assertEqual(st["alt_items"], [])
+        self.assertEqual(st["counts"]["fixed"], 1, "the screen cannot tell it ran")
+        self.assertEqual(st["alt_summary"]["unique_images"], 0,
+                         "without this the screen cannot say why the list is empty")
+
+    def test_a_course_nobody_has_fixed_yet_looks_different(self):
+        with tempfile.TemporaryDirectory() as td:
+            app = FakeApp(td)
+            wd = core.workdir(app, "101")
+            sub = wd / "100"
+            sub.mkdir(parents=True, exist_ok=True)
+            (sub / "original.pdf").write_bytes(b"%PDF-1.4\n")
+            file_json(sub, "100", "transcript.pdf")
+            core.write_json(wd / "files.json", {
+                "at": core.now_iso(), "folders": {}, "total_files": 1,
+                "files": [{"id": "100", "display_name": "transcript.pdf", "folder_id": 7,
+                           "folder": "course files", "size": 9,
+                           "url": "https://files.example.edu/100"}]})
+            st = core.state(app, "101")
+        self.assertEqual(st["counts"]["fixed"], 0)
+        self.assertEqual(st["alt_summary"], {})
+
+    def test_a_file_with_no_figures_says_so_in_its_own_row(self):
+        with tempfile.TemporaryDirectory() as td:
+            app, _wd = self._fixed_course(td, {"unique_images": 0})
+            st = core.state(app, "101")
+        self.assertEqual(st["files"][0]["alt"],
+                         {"total": 0, "waiting": 0, "no_picture": 0, "described": 0})
+
+
 class AltTest(unittest.TestCase):
     def test_merge_never_clobbers_a_human_edit(self):
         with tempfile.TemporaryDirectory() as td:

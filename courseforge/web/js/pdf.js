@@ -159,6 +159,31 @@
     ];
   }
 
+  /* Why Describe images is greyed out, in the terms of what was actually
+     found. "Nothing is waiting for a description" was true in three quite
+     different situations -- nothing has been looked at, nothing has a picture
+     in it, everything is already described -- and reading the same sentence
+     after a run that reported two files fixed looks exactly like a bug. */
+  function whyNoDescribing(st, noEngine) {
+    if (st.engine_ok === false) return noEngine;
+    const c = st.counts || {};
+    const sum = st.alt_summary || {};
+    if (!(c.fixed || 0)) {
+      return 'Nothing has been looked at yet. Run Back up and fix first; it '
+        + 'finds the pictures on the way through.';
+    }
+    const pictures = sum.unique_images;
+    if (pictures === 0) {
+      return n1(c.fixed, 'PDF') + ' checked and not one picture in '
+        + (c.fixed === 1 ? 'it' : 'them') + ', so there is nothing to describe. '
+        + 'Text-only documents are the usual reason.';
+    }
+    const stuck = sum.no_picture_available || 0;
+    return 'Every picture here already has a description'
+      + (stuck ? ', apart from ' + n1(stuck, 'figure') + ' no picture could be '
+                 + 'made of, which a person has to write' : '') + '.';
+  }
+
   /* ----------------------------------------------------------- the verbs */
   function renderVerbs(cid, st) {
     const c = st.counts || {};
@@ -176,7 +201,7 @@
         engine ? 'Download every original, then repair the copies here. Nothing is pushed.' : noEngine)
       + btn('pdfDescribe', 'Describe images', 'ai', canDescribe,
         canDescribe ? 'Write real descriptions for the figures still on a placeholder'
-          : (engine ? 'Nothing is waiting for a description.' : noEngine))
+          : whyNoDescribing(st, noEngine))
       + btn('pdfUpload', 'Upload', 'danger', canUpload,
         canUpload ? 'Put the fixed PDFs over their originals in Canvas'
           : 'Nothing is fixed and waiting to be uploaded.')
@@ -370,7 +395,8 @@
     hint.textContent = items.length
       ? n1(items.length, 'picture') + ' waiting. A description is at most 110 characters; '
         + 'leave it empty and tick Decorative for a picture that carries no meaning.'
-      : 'Every figure that has a picture has been described. Nothing is uploaded from here.';
+      : whyNoDescribing(st, 'The PDF engine is not installed, so nothing here can be read.')
+        + ' Nothing is uploaded from here.';
     S.pdf.dirty = {};
     const save = $('#pdfAltSave');
     const mark = () => {

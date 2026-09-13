@@ -2,6 +2,10 @@
   --bg:#f6f7f9; --panel:#fff; --ink:#16191d; --muted:#5b6472; --line:#dfe3e9;
   --accent:#2f6f4f; --accent-soft:#e8f2ec; --warn:#8a5a00; --warn-soft:#fdf3e0;
   --danger:#a3342b; --danger-soft:#fbeceb; --edit:#1f5c8b; --edit-soft:#e7f0f8;
+  /* Between --line and --muted. --line disappears at any width, which is not a
+     thickness problem: 1.2:1 against the page cannot be seen however thick it
+     is drawn. Use this where a rule has a job to do. */
+  --rule:#b6bec9;
   --ai:#6b4c9a; --ai-soft:#f0eaf8; --gold:#E9A821; --navy:#061E3F; --paper:#fbfaf7; --radius:9px;
   /* Zone colours, one per area, so the areas read as one tool instead of five
      themes. A zone shows in three places only: the tab underline, the rule
@@ -29,6 +33,7 @@
     --bg:#14171b; --panel:#1c2026; --ink:#e7eaee; --muted:#98a2b1; --line:#2c323a;
     --accent:#6fbf95; --accent-soft:#1e2f27; --warn:#d9a441; --warn-soft:#2e2718;
     --danger:#e08078; --danger-soft:#31201e; --edit:#78b4e6; --edit-soft:#1a2632;
+    --rule:#525b66;
     --ai:#b79ae0; --ai-soft:#241d31; --gold:#E9A821; --navy:#061E3F; --paper:#191d22;
     --a11y:#6fd3c7; --a11y-soft:#14302c; --build:#e0a37e; --build-soft:#2f2119;
     --tools:#a7b3c4; --tools-soft:#23282f;
@@ -431,8 +436,8 @@ html.busy .btn, html.busy button{cursor:progress}
 /* A toolbar group: its label, its buttons and the rule that ends it, as one
    unit that wraps whole. Split across two rows, a divider and a heading land
    in the middle of a row meaning nothing. */
-.tbGroup{display:inline-flex;align-items:center;gap:8px;padding-right:9px;
-  border-right:1px solid var(--line)}
+.tbGroup{display:inline-flex;align-items:center;gap:8px;padding-right:12px;
+  border-right:2px solid var(--rule)}
 .tbGroup:last-child{border-right:0;padding-right:0}
 .tbTag{font-size:10px;letter-spacing:.09em;text-transform:uppercase;
   color:var(--muted);font-weight:600;white-space:nowrap}

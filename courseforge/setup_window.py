@@ -110,9 +110,14 @@ class SetupWindow:
             tk.Label(card, text=f"{row_['label']}  ({how})", font=self.f_body,
                      bg=CARD, fg=INK, anchor="w").pack(anchor="w", padx=12, pady=(8, 0))
             note = found.get(row_["tool"], {}).get("enables", "")
-            if note:
-                tk.Label(card, text=note, font=self.f_body, bg=CARD, fg=MUTED,
-                         anchor="w", wraplength=440, justify="left").pack(anchor="w", padx=12)
+            # Say why a thing is by hand where the label is, not in a log nobody
+            # has opened yet. "By hand" with no reason beside it just reads as
+            # the tool being lazy about it.
+            why = tools.MANUAL_WHY.get(row_["tool"], "")
+            for text in (note, why):
+                if text:
+                    tk.Label(card, text=text, font=self.f_body, bg=CARD, fg=MUTED,
+                             anchor="w", wraplength=440, justify="left").pack(anchor="w", padx=12)
         tk.Label(card, text="", bg=CARD).pack(pady=(0, 6))
         self.skip_btn = tk.Button(row, text="Not now", font=self.f_btn, command=self._skip,
                                   bg=CARD, fg=INK, activebackground="#2c323a",

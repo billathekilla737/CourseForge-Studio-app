@@ -166,6 +166,11 @@ WINGET = {
     "tesseract": ("UB-Mannheim.TesseractOCR", "Tesseract OCR"),
     "java": ("EclipseAdoptium.Temurin.21.JRE", "Eclipse Temurin JRE 21"),
 }
+# Why a tool is not automated, shown next to it rather than buried in a log.
+MANUAL_WHY = {
+    "verapdf": "No package manager carries it, and it ships as a Java installer. "
+               "Install Java first.",
+}
 VERAPDF_STEPS = (
     "veraPDF has no winget package, so it is two steps by hand:\n"
     "  1. Download the greenfield installer from https://verapdf.org/software/\n"

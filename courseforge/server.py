@@ -467,8 +467,17 @@ class App:
         csv_path.write_text(buf.getvalue(), encoding="utf-8-sig")
         json_path = adir / "grades.json"
         json_path.write_text(json.dumps(draft, indent=2, ensure_ascii=False), encoding="utf-8")
-        return {"csv": str(csv_path), "json": str(json_path),
-                "rows": len(draft.get("students", {}))}
+        rows = len(draft.get("students", {}))
+        audit.record(
+            self.course_dir(course_id), "grade", "exported",
+            "Wrote %d grade(s) and their comments to a spreadsheet on this "
+            "computer. Nothing was sent anywhere." % rows,
+            students=[audit.person(uid, extracted.get(uid, {}).get("name", ""))
+                      for uid in draft.get("students", {})],
+            count=rows, course_id=course_id,
+            detail={"assignment_id": str(assignment_id), "csv": str(csv_path),
+                    "json": str(json_path)})
+        return {"csv": str(csv_path), "json": str(json_path), "rows": rows}
 
     def curve(self, course_id, assignment_id, body: dict) -> dict:
         """Preview, apply, or remove a grade curve.
@@ -535,11 +544,34 @@ class App:
                 course_id, assignment_id, row["user_id"],
                 curve=curve.apply_to(entry, planned["scope"], row["delta"], note))
         self._refresh_totals(course_id, assignment_id)
+        moved = [r for r in planned["rows"] if r["delta"]]
+        audit.record(
+            self.course_dir(course_id), "grade", "curved",
+            "Curved %d grade(s) on this assignment: %s on %s, biggest gain %s. "
+            "Nothing was sent to Canvas."
+            % (len(moved), planned["kind"], planned.get("criterion_label") or "the whole score",
+               planned.get("biggest_gain")),
+            students=[audit.person(r["user_id"], r.get("name", ""),
+                                   delta=r["delta"], to=r.get("after"))
+                      for r in moved],
+            count=len(moved), course_id=course_id,
+            detail={"assignment_id": str(assignment_id), "kind": planned["kind"],
+                    "scope": planned["scope"], "amount": planned["amount"],
+                    "target": planned["target"], "label": note["label"]})
         planned["applied"] = True
         return planned
 
+    @staticmethod
+    def _said(value) -> str:
+        """A score as the record says it, so "None" never appears in a sentence."""
+        return "not graded" if value is None else str(value)
+
     def edit_student(self, course_id, assignment_id, user_id, body: dict) -> dict:
         """A hand edit from the review pane: sliders and the comment."""
+        before = ((self.store.draft(course_id, assignment_id).get("students") or {})
+                  .get(str(user_id)) or {})
+        was_total, was_source = before.get("total"), before.get("source")
+        was_comment = before.get("comment") or ""
         changes = {k: v for k, v in body.items() if k != "user_id"}
         changes.setdefault("source", "human")
         if "scores" in changes:
@@ -560,6 +592,25 @@ class App:
                 draft = self.store.update_student(course_id, assignment_id, user_id,
                                                   final_total=want)
                 entry = draft["students"][str(user_id)]
+        if was_total != entry.get("total") or was_comment != (entry.get("comment") or ""):
+            name = (self.store.extracted(course_id, assignment_id)
+                    .get(str(user_id), {}).get("name", ""))
+            what = []
+            if was_total != entry.get("total"):
+                what.append("the score from %s to %s"
+                            % (self._said(was_total), self._said(entry.get("total"))))
+            if was_comment != (entry.get("comment") or ""):
+                what.append("the comment")
+            audit.record(
+                self.course_dir(course_id), "grade", "edited",
+                "Changed %s by hand, over what Claude proposed. Nothing was sent "
+                "to Canvas." % " and ".join(what),
+                students=[audit.person(user_id, name, score=entry.get("total"))],
+                count=1, course_id=course_id,
+                detail={"assignment_id": str(assignment_id),
+                        "from_total": was_total, "to_total": entry.get("total"),
+                        "was_source": was_source,
+                        "comment_changed": was_comment != (entry.get("comment") or "")})
         return entry
 
     def _refresh_totals(self, course_id, assignment_id) -> None:

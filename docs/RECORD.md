@@ -18,12 +18,16 @@ kind that ends an argument early rather than starting one.
 
 ## What is recorded
 
-Every Canvas write the Studio makes, from every area. In practice:
+Every Canvas write the Studio makes, and every decision that produced a grade
+before one reached Canvas. The second half matters as much as the first: a push
+entry says a number was written, and cannot say who or what decided it. In
+practice:
 
 | Area | What it says |
 |---|---|
 | Accommodations | Which students, which quiz, how much extra time, and whether Canvas took it. Refusals are recorded too. |
 | Grade | How many scores went to which assignment, for which students, with the score, and whether they landed hidden or visible. Showing and hiding grades are their own entries. |
+| Grade, before Canvas | The grading run itself: which model read whose work, against which rubric, what it proposed, what it cost, and how many it flagged for a person. Then every curve, every score or comment changed by hand over what the model proposed, and every export of the grades to a spreadsheet. None of these touch Canvas, and all of them are the answer to "who decided this". |
 | Accessibility | Pages, documents and PDFs restyled, fixed or uploaded, with counts. |
 | Build | Content placed in the course. |
 | Tools | Due dates moved, exports, imports, navigation changes, quiz backups. Term-schedule changes are recorded against the course they touched, not as one line about "the schedule". |
@@ -104,7 +108,11 @@ newline-delimited JSON; every line stands alone and reads without this tool.
 ## What it does not do
 
 - It does not record reads. Opening a course, listing files and pulling
-  grades leave no entry; only changes do.
+  grades leave no entry; only changes do. A slider moved back to where it
+  started is not a change and writes nothing.
+- It does not record every keystroke of a hand edit. One entry is written
+  when a score or a comment ends up different from what was there before,
+  not one per drag.
 - It does not record what someone did directly in Canvas. If the extra time
   was set in the Canvas UI rather than here, this file will not know.
 - It does not sign anything. There is no key, so the chain proves internal

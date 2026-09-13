@@ -139,6 +139,12 @@ def _save_chain(root: Path, state: dict) -> None:
         pass
 
 
+# Set whenever an entry is written, watched by the Syncer. A record that is
+# only in Canvas three minutes later is a record you can lose by closing the
+# laptop, and the moments worth having are exactly the busy ones.
+CHANGED = threading.Event()
+
+
 def person(user_id=None, name: str = "", **extra) -> dict:
     """One student, as an entry names them."""
     out = {"id": str(user_id) if user_id is not None else "", "name": name or ""}
@@ -188,10 +194,12 @@ def _record(root, area, action, sentence, *, students, url, count, result,
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
         _save_chain(root, {"hash": entry["hash"], "seq": entry["seq"],
                            "at": entry["at"]})
+    CHANGED.set()      # tell the syncer there is something new
     return entry
 
 
 # ----------------------------------------------------------------- reading
+
 def _rows(path: Path) -> list[dict]:
     out = []
     try:
@@ -425,10 +433,14 @@ class Syncer(threading.Thread):
     is written down rather than raised at whoever happened to be typing.
     """
 
-    def __init__(self, app, every_s: int = 180):
+    def __init__(self, app, every_s: int = 180, settle_s: int = 15):
         super().__init__(name="audit-sync", daemon=True)
         self.app = app
         self.every_s = max(30, int(every_s))
+        # After something is recorded, wait this long before uploading: a push
+        # of thirty grades writes one entry, but a batch of area work writes
+        # several in a row, and they belong in one upload.
+        self.settle_s = max(2, int(settle_s))
         self.stop_event = threading.Event()
         self.last: dict = {}
 
@@ -465,7 +477,10 @@ class Syncer(threading.Thread):
             return
         while not self.stop_event.is_set():
             self.once()
-            self.stop_event.wait(self.every_s)
+            # Whichever comes first: something was written, or the period is up.
+            if CHANGED.wait(self.every_s):
+                CHANGED.clear()
+                self.stop_event.wait(self.settle_s)
 
     def close(self) -> None:
         self.stop_event.set()

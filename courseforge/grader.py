@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from . import blender, curve, gradesync, llm, overlap, teaching
+from . import audit, blender, curve, gradesync, llm, overlap, teaching
 from .canvas import CanvasClient
 from .config import Config
 from .extract import (ARCHIVE_EXT, Extracted, Submission, expand_archive,
@@ -1069,6 +1069,33 @@ def grade_assignment(cfg: Config, store: Store, course_id, assignment_id,
     draft["last_graded_at"] = datetime.now().isoformat(timespec="seconds")
     draft["estimated_cost_usd"] = round(spend, 4)
     store.save_draft(course_id, assignment_id, draft)
+
+    # The grade was proposed here, not at the push. A year from now the
+    # question is which model read this student's work, against which rubric,
+    # on what day -- and the push record cannot answer any of it.
+    graded = [uid for uid in targets if (entries.get(uid) or {}).get("source") == "claude"]
+    failed = [uid for uid in targets if (entries.get(uid) or {}).get("source") == "error"]
+    models = sorted({str((entries.get(uid) or {}).get("model") or "")
+                     for uid in targets} - {""})
+    audit.record(
+        store.course_dir(course_id), "grade", "drafted",
+        'Claude proposed a grade and a comment for %d student(s) on "%s". '
+        "Nothing was sent to Canvas." % (len(graded), assignment.get("name") or assignment_id),
+        students=[audit.person(uid, (extracted.get(uid) or {}).get("name", ""),
+                               score=(entries.get(uid) or {}).get("total"),
+                               model=(entries.get(uid) or {}).get("model"))
+                  for uid in targets],
+        count=len(graded), course_id=course_id,
+        result="failed" if failed and not graded else "ok",
+        detail={"assignment_id": str(assignment_id),
+                "models": models,
+                "rubric": [c.get("label") for c in rubric],
+                "points_possible": possible,
+                "cost_usd": round(spend, 4),
+                "flagged_for_review": sum(
+                    1 for uid in graded if (entries.get(uid) or {}).get("needs_human")),
+                "failed": len(failed),
+                "regrade": bool(only)})
     progress("done", total, total)
     return draft
 

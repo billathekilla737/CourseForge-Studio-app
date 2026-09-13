@@ -1541,14 +1541,32 @@ a.acrossItem,a.acrossItem:visited{color:var(--ink)}
 
 .ibList{display:flex;flex-direction:column;border:1px solid var(--line);
   border-radius:var(--radius);overflow:hidden;background:var(--panel)}
-.ibRow{display:flex;flex-direction:column;gap:3px;width:100%;text-align:left;
-  padding:11px 13px;border:0;border-top:1px solid var(--line);background:var(--panel);
-  color:var(--ink);font:inherit;cursor:pointer}
+/* The row is the container; the button inside it is what opens the thread,
+   so the tick box beside it can be reached by keyboard and by touch rather
+   than only by holding shift. */
+.ibRow{display:flex;align-items:flex-start;gap:9px;width:100%;
+  padding:11px 13px 11px 10px;border-top:1px solid var(--line);background:var(--panel)}
+.ibRowMain{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0;
+  text-align:left;padding:0;border:0;background:none;color:var(--ink);font:inherit;
+  cursor:pointer}
+.ibPick{margin:2px 0 0;flex:0 0 auto;cursor:pointer}
 .ibRow:first-child{border-top:0}
 .ibRow:hover{background:var(--zone-soft)}
-.ibRow.picked{background:var(--zone-soft);box-shadow:inset 3px 0 0 var(--zone)}
+.ibRow.open{background:var(--zone-soft);box-shadow:inset 3px 0 0 var(--zone)}
+.ibRow.sel{background:var(--ai-soft)}
 .ibRow.unread{box-shadow:inset 3px 0 0 var(--gold)}
-.ibRow.unread.picked{box-shadow:inset 3px 0 0 var(--zone)}
+.ibRow.unread.open{box-shadow:inset 3px 0 0 var(--zone)}
+.ibRow.sel.open,.ibRow.sel.unread{box-shadow:inset 3px 0 0 var(--ai)}
+
+.ibTools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;
+  padding:7px 12px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--panel);font-size:12.5px}
+.ibTools.on{background:var(--ai-soft);border-color:var(--ai)}
+.ibTools .spacer{flex:1}
+.ibTools .hint{font-size:11px}
+.ibAll{display:flex;align-items:center;gap:7px;cursor:pointer;font-weight:600}
+.ibAll input{cursor:pointer}
+.ibActs{display:flex;gap:5px;flex-wrap:wrap}
 .ibTop{display:flex;gap:8px;align-items:baseline}
 .ibWho{font-size:12.5px;font-weight:650;min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}

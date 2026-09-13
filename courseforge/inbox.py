@@ -27,6 +27,7 @@ a defence anybody wants to make to a dean.
 from __future__ import annotations
 
 import html
+import json
 import re
 from datetime import datetime, timezone
 
@@ -322,3 +323,181 @@ def send_reply(app, conversation_id, body: str, confirm_token: str | None = None
     return {"ok": True, "conversation_id": str(conversation_id),
             "sent_to": [p["name"] or p["tag"] for p in out_people(t)],
             "body": final, "canvas": out}
+
+
+# ------------------------------------------------------------- several at once
+# Marking, archiving and deleting are not sending. They change your own copy of
+# a thread and the student is never told, which is why a bulk form is offered
+# here and deliberately is not offered for a reply. Deleting is still the one
+# that cannot be taken back, so it says so and it is its own red button.
+MAX_BULK = 200
+
+BULK_ACTIONS = {
+    "read": {
+        "state": "read",
+        "doing": "Marking read",
+        "sentence": "Mark %s read in your Canvas Inbox.",
+        "note": "This changes the unread mark on your own copy. Nothing is sent, "
+                "the student is not told, and you can mark them unread again.",
+        "done": "marked read",
+    },
+    "unread": {
+        "state": "unread",
+        "doing": "Marking unread",
+        "sentence": "Mark %s unread in your Canvas Inbox.",
+        "note": "This changes the unread mark on your own copy. Nothing is sent, "
+                "the student is not told, and you can mark them read again.",
+        "done": "marked unread",
+    },
+    "archive": {
+        "state": "archived",
+        "doing": "Archiving",
+        "sentence": "Archive %s in your Canvas Inbox.",
+        "note": "Archived threads leave the inbox and stay in Canvas under "
+                "Archived. Nothing is sent and the student is not told. You can "
+                "move them back.",
+        "done": "archived",
+    },
+    "unarchive": {
+        "state": "read",
+        "doing": "Moving to the inbox",
+        "sentence": "Move %s back into your Canvas Inbox.",
+        "note": "They return to the inbox as read. Nothing is sent and the "
+                "student is not told.",
+        "done": "moved back to the inbox",
+    },
+    "delete": {
+        "state": None,
+        "doing": "Deleting",
+        "sentence": "Delete %s from your Canvas Inbox.",
+        "note": "This deletes your copy only, and it cannot be undone. The "
+                "student keeps their copy of the conversation and is not told. "
+                "Nothing is sent.",
+        "done": "deleted",
+    },
+}
+
+
+def _bulk_ids(conversation_ids) -> list[str]:
+    seen, out = set(), []
+    for raw in (conversation_ids or []):
+        one = str(raw).strip()
+        if one and one not in seen:
+            seen.add(one)
+            out.append(one)
+    if not out:
+        raise ValueError("Pick at least one thread first.")
+    if len(out) > MAX_BULK:
+        raise ValueError("That is %d threads at once. %d is the most this will do "
+                         "in one go, so a slip of the hand cannot empty an inbox."
+                         % (len(out), MAX_BULK))
+    return out
+
+
+def _bulk_names(app, ids: list[str], scope: str = "") -> dict:
+    """Subject and who, for the threads being acted on.
+
+    One listing read rather than one read per thread: the confirmation has to
+    name what it is about to change, and the record has to name whose messages
+    they were, but neither is worth N round trips to Canvas. A thread the
+    listing does not carry is named by its id and still acted on.
+    """
+    found: dict[str, dict] = {}
+    try:
+        rows = app.client.conversations(scope=scope or "", limit=MAX_THREADS)
+    except Exception:  # noqa: BLE001
+        return found
+    wanted = set(ids)
+    for row in rows:
+        key = str(row.get("id"))
+        if key not in wanted:
+            continue
+        t = Thread(app, row, app.me_id)
+        found[key] = {
+            "subject": row.get("subject") or "(no subject)",
+            "people": out_people(t),
+            "course_id": t.course_id or "",
+            "was": "unread" if row.get("workflow_state") == "unread" else "read",
+        }
+    return found
+
+
+def _bulk_line(one: str, known: dict | None, spec: dict) -> dict:
+    """One row of the confirmation: which thread, and what happens to it."""
+    known = known or {}
+    who = ", ".join(p["name"] or p["tag"] for p in known.get("people") or [])
+    subject = known.get("subject") or ("thread " + one)
+    return {"label": subject + (" \u00b7 " + who if who else ""),
+            "from": known.get("was") or "in your inbox",
+            "to": spec["done"]}
+
+
+def bulk(app, conversation_ids, action: str, scope: str = "",
+         confirm_token: str | None = None, log=lambda *_a, **_k: None) -> dict:
+    """Mark, archive or delete several threads at once, after the gate.
+
+    One Canvas call per thread. The batch endpoint would be one call, but it
+    answers with a progress object and no per-thread result, and a screen that
+    says "12 deleted" has to be able to say which twelve and which one failed.
+    """
+    spec = BULK_ACTIONS.get(action)
+    if spec is None:
+        raise ValueError("Unknown inbox action %r. It does one of: %s."
+                         % (action, ", ".join(sorted(BULK_ACTIONS))))
+    ids = _bulk_ids(conversation_ids)
+    known = _bulk_names(app, ids, scope)
+
+    count = "%d thread%s" % (len(ids), "" if len(ids) == 1 else "s")
+    app._gate("inbox-bulk",
+              {"action": action, "conversation_ids": sorted(ids)},
+              spec["sentence"] % count + " " + spec["note"],
+              confirm_token,
+              # The sender names the row; the state is what changes. The
+              # dialog strikes the "from" value through, so a name there read
+              # as though the student were the thing being deleted.
+              detail=json.dumps([_bulk_line(i, known.get(i), spec) for i in ids]),
+              what=spec["doing"].lower() + " conversations")
+
+    done, failed = [], []
+    for index, one in enumerate(ids, start=1):
+        log("%s %d/%d" % (spec["doing"], index, len(ids)), index - 1, len(ids))
+        try:
+            if spec["state"] is None:
+                app.client.delete_conversation(one)
+            else:
+                app.client.set_conversation_state(one, spec["state"])
+            done.append(one)
+        except Exception as exc:  # noqa: BLE001
+            failed.append({"id": one, "error": "%s: %s" % (type(exc).__name__, exc)})
+
+    # One line in the record per run, naming everyone whose messages moved.
+    # Deleting somebody's message is exactly the kind of thing that has to be
+    # answerable a year later.
+    people, seen = [], set()
+    for one in done:
+        for p in (known.get(one) or {}).get("people") or []:
+            if p["user_id"] not in seen:
+                seen.add(p["user_id"])
+                people.append(audit.person(p["user_id"], p["name"]))
+    courses = {(known.get(one) or {}).get("course_id") for one in done}
+    courses.discard("")
+    if done:
+        audit.record(
+            app.course_dir(next(iter(courses))) if len(courses) == 1 else app.store.root,
+            "inbox", action,
+            "%s %d conversation%s in your own Canvas Inbox. Nothing was sent."
+            % (spec["done"].capitalize(), len(done), "" if len(done) == 1 else "s"),
+            students=people, count=len(done),
+            course_id=next(iter(courses)) if len(courses) == 1 else "",
+            result="failed" if failed and not done else "ok",
+            detail={"conversation_ids": done,
+                    "subjects": [(known.get(one) or {}).get("subject") or one
+                                 for one in done],
+                    "failed": failed})
+    log("done", len(ids), len(ids))
+    sentence = "%d thread%s %s." % (len(done), "" if len(done) == 1 else "s",
+                                    spec["done"])
+    if failed:
+        sentence += " %d could not be changed." % len(failed)
+    return {"action": action, "done": done, "failed": failed,
+            "sentence_done": sentence + " Nothing was sent to anybody."}

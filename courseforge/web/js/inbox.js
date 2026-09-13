@@ -9,11 +9,21 @@
    box. The box is the only thing that can be sent, one thread at a time, and
    sending goes through the server's confirm gate like every other Canvas
    write: refused once with a sentence, sent on the second pass. There is no
-   send-all and no rule that sends by itself. */
+   send-all and no rule that sends by itself.
+
+   Selecting several threads and marking, archiving or deleting them is a
+   different thing from replying to them, which is why it is offered here and
+   sending in bulk still is not. None of it reaches a student: it changes your
+   own copy of a thread, and the person who wrote it is never told. Deleting
+   is the one that cannot be undone, so it says so and keeps its own red
+   button. Shift-click takes a range and ctrl-click toggles one, the same as
+   the grading roster, because a second way to mean the same thing is one more
+   thing to remember. */
 (function () {
   'use strict';
 
-  S.inbox = S.inbox || { scope: '', threads: [], open: null, read: {}, drafts: {}, told: {} };
+  S.inbox = S.inbox || { scope: '', threads: [], open: null, read: {}, drafts: {},
+    told: {}, picked: new Set(), anchor: null };
   const mem = () => S.inbox;
   const CHIP_MS = 120000;
 
@@ -63,6 +73,7 @@
       <p class="hint ibNote">Messages from students across every course. Claude reads a
         thread with the names taken out and drafts a reply; nothing is sent until you
         press Send on that reply.</p>
+      <div id="ibTools"></div>
       <div class="ibCols">
         <div id="ibList">Loading…</div>
         <div id="ibPane"></div>
@@ -72,7 +83,13 @@
       `<button class="chip" type="button" data-scope="${esc(s.id)}"
         aria-pressed="${s.id === mem().scope}">${esc(s.label)}</button>`).join('');
     $('#ibScopes').querySelectorAll('[data-scope]').forEach(b => {
-      b.onclick = () => { mem().scope = b.dataset.scope; openInbox(null); };
+      b.onclick = () => {
+        // A different list: ids picked in one scope mean nothing in the next.
+        mem().picked.clear();
+        mem().anchor = null;
+        mem().scope = b.dataset.scope;
+        openInbox(null);
+      };
     });
 
     let data;
@@ -94,7 +111,13 @@
     $('#ibHint').textContent = `${mem().threads.length} thread${
       mem().threads.length === 1 ? '' : 's'}`
       + (data.unread ? ` · ${data.unread} unread` : '');
+    // A thread that has gone (archived, deleted, or simply off the end of
+    // this scope) must not stay selected and turn up in the next action.
+    const here = new Set(mem().threads.map(t => String(t.id)));
+    [...mem().picked].forEach(id => { if (!here.has(id)) mem().picked.delete(id); });
     drawList();
+    drawTools();
+    watchKeys();
     inboxChip();
     if (threadId) openThread(threadId);
     else $('#ibPane').appendChild(emptyState('Pick a thread on the left. Reading one '
@@ -110,20 +133,149 @@
       host.appendChild(emptyState('Nothing in this view.'));
       return;
     }
-    host.innerHTML = '<div class="ibList">' + rows.map(t => {
+    host.innerHTML = '<div class="ibList">' + rows.map((t, i) => {
       const who = (t.with || []).map(p => p.name || p.tag).join(', ') || 'someone';
-      return `<button class="ibRow${t.unread ? ' unread' : ''}${
-        String(mem().open) === String(t.id) ? ' picked' : ''}" type="button"
-        data-id="${esc(t.id)}">
-        <span class="ibTop"><span class="ibWho">${esc(who)}</span>
-          <span class="ibAgo">${esc(t.ago || '')}</span></span>
-        <span class="ibSubj">${esc(t.subject)}</span>
-        <span class="ibPrev">${esc(t.preview || '')}</span>
-      </button>`;
+      const sel = mem().picked.has(String(t.id));
+      return `<div class="ibRow${t.unread ? ' unread' : ''}${sel ? ' sel' : ''}${
+        String(mem().open) === String(t.id) ? ' open' : ''}">
+        <input type="checkbox" class="ibPick" data-i="${i}" ${sel ? 'checked' : ''}
+          aria-label="Select the thread from ${esc(who)} about ${esc(t.subject)}">
+        <button class="ibRowMain" type="button" data-i="${i}" data-id="${esc(t.id)}">
+          <span class="ibTop"><span class="ibWho">${esc(who)}</span>
+            <span class="ibAgo">${esc(t.ago || '')}</span></span>
+          <span class="ibSubj">${esc(t.subject)}</span>
+          <span class="ibPrev">${esc(t.preview || '')}</span>
+        </button>
+      </div>`;
     }).join('') + '</div>';
-    host.querySelectorAll('[data-id]').forEach(b => {
-      b.onclick = () => openThread(b.dataset.id);
+    host.querySelectorAll('.ibRowMain').forEach(b => {
+      b.onclick = ev => {
+        const i = +b.dataset.i;
+        // Held keys mean "pick", not "open". A plain click is still the way in
+        // to a thread, and it drops whatever was selected, the same as the
+        // grading roster.
+        if (ev.shiftKey || ev.ctrlKey || ev.metaKey) {
+          ev.preventDefault();
+          pick(i, ev.shiftKey);
+          return;
+        }
+        mem().picked.clear();
+        mem().anchor = i;
+        drawTools();
+        openThread(b.dataset.id);
+      };
     });
+    host.querySelectorAll('.ibPick').forEach(box => {
+      box.onclick = ev => { ev.stopPropagation(); pick(+box.dataset.i, ev.shiftKey); };
+    });
+  }
+
+  /* ------------------------------------------------- selecting several */
+  /* Shift extends from the last row touched; anything else toggles one. The
+     range runs over the rows as they are on screen, which is what you see and
+     therefore what you mean. */
+  function pick(index, extend) {
+    const rows = mem().threads;
+    if (!rows[index]) return;
+    if (extend && mem().anchor != null && rows[mem().anchor]) {
+      const from = Math.min(mem().anchor, index), to = Math.max(mem().anchor, index);
+      for (let i = from; i <= to; i++) mem().picked.add(String(rows[i].id));
+    } else {
+      const key = String(rows[index].id);
+      if (mem().picked.has(key)) mem().picked.delete(key); else mem().picked.add(key);
+      mem().anchor = index;
+    }
+    drawList();
+    drawTools();
+  }
+
+  function pickAll(on) {
+    mem().picked.clear();
+    if (on) mem().threads.forEach(t => mem().picked.add(String(t.id)));
+    mem().anchor = null;
+    drawList();
+    drawTools();
+  }
+
+  /* What can be done to a selection, and what each one is called when it is
+     put as a question. Archiving reverses in the archived scope, where the
+     inbox verb would make no sense. */
+  const BULK = {
+    read: { doing: 'Marking read', ask: 'Mark these read?', verb: 'Yes, mark them read' },
+    unread: { doing: 'Marking unread', ask: 'Mark these unread?', verb: 'Yes, mark them unread' },
+    archive: { doing: 'Archiving', ask: 'Archive these?', verb: 'Yes, archive them' },
+    unarchive: { doing: 'Moving to the inbox', ask: 'Move these back to the inbox?',
+      verb: 'Yes, move them back' },
+    delete: { doing: 'Deleting', ask: 'Delete these threads?', verb: 'Yes, delete them' },
+  };
+
+  function drawTools() {
+    const host = $('#ibTools');
+    if (!host) return;
+    const rows = mem().threads;
+    const n = mem().picked.size;
+    const all = rows.length > 0 && n === rows.length;
+    const archived = mem().scope === 'archived';
+    if (!rows.length) { host.innerHTML = ''; return; }
+    host.innerHTML = `<div class="ibTools${n ? ' on' : ''}">
+      <label class="ibAll"><input type="checkbox" id="ibAll" ${all ? 'checked' : ''}>
+        <span>${n ? esc(n) + ' selected' : 'Select all'}</span></label>
+      ${n ? `<div class="ibActs">
+        <button class="btn sm" type="button" data-act="read">Mark read</button>
+        <button class="btn sm" type="button" data-act="unread">Mark unread</button>
+        <button class="btn sm" type="button"
+          data-act="${archived ? 'unarchive' : 'archive'}">${
+          archived ? 'Move to inbox' : 'Archive'}</button>
+        <button class="btn sm danger" type="button" data-act="delete">Delete…</button>
+      </div>
+      <span class="spacer"></span>
+      <span class="hint">Changes your copy. Nothing is sent to anybody.</span>
+      <button class="btn sm" type="button" id="ibNone">Clear</button>` : ''}
+    </div>`;
+    const box = $('#ibAll');
+    box.indeterminate = n > 0 && !all;
+    box.onchange = () => pickAll(box.checked);
+    const none = $('#ibNone');
+    if (none) none.onclick = () => pickAll(false);
+    host.querySelectorAll('[data-act]').forEach(b => {
+      b.onclick = () => runBulk(b.dataset.act);
+    });
+  }
+
+  /* Escape drops a selection, so a mis-click is one key away from undone.
+     Re-registered on every draw, so it is removed first rather than stacked. */
+  function onKey(ev) {
+    if (ev.key !== 'Escape' || !mem().picked.size) return;
+    if ($('#modalHost').innerHTML) return;          // the dialog owns Escape
+    pickAll(false);
+    setStatus('selection cleared', 'ok');
+  }
+  function watchKeys() {
+    document.removeEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey);
+    onLeave(() => document.removeEventListener('keydown', onKey));
+  }
+
+  function runBulk(act) {
+    const ids = [...mem().picked];
+    const spec = BULK[act];
+    if (!ids.length || !spec) return;
+    runJobConfirmed(`${spec.doing}: ${ids.length} thread${ids.length === 1 ? '' : 's'}`,
+      token => api('/inbox/bulk', { body: {
+        ids, action: act, scope: mem().scope, confirm: token } }),
+      out => {
+        if (!out) return;
+        // A deleted thread cannot stay open in the pane beside the list.
+        if (act === 'delete' && (out.done || []).some(id => String(id) === String(mem().open))) {
+          mem().open = null;
+        }
+        mem().picked.clear();
+        mem().anchor = null;
+        setStatus(out.sentence_done || 'done', (out.failed || []).length ? 'err' : 'ok');
+        openInbox(mem().open);
+      },
+      { title: spec.ask, verb: spec.verb,
+        note: 'Nothing has been sent to anybody, and nothing will be.' });
   }
 
   async function openThread(id) {

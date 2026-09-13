@@ -5,10 +5,13 @@
     GET  /api/inbox/{cid}                   one thread, with its messages
     POST /api/inbox/{cid}/read {instructions}   what it asks, and a draft (a job)
     POST /api/inbox/{cid}/reply {body}      send one reply (gated twice)
+    POST /api/inbox/bulk {ids, action}      mark, archive or delete several (a job)
 
 Reading the inbox is student data, so every call here goes through the
-grading-scoped client. Nothing is marked read. Nothing is sent without the
-confirm token, and there is no route that sends more than one reply.
+grading-scoped client. Nothing is marked read by reading it. Nothing is sent
+without the confirm token, and there is no route that sends more than one
+reply: the bulk route only ever changes your own copy of a thread, so it can
+never put a word in front of a student.
 """
 from __future__ import annotations
 
@@ -36,6 +39,27 @@ def listing(req):
         raise HTTPError(400, "Canvas knows inbox, unread, archived and sent.")
     return inbox.listing(req.app, scope=scope, course_id=req.q("course") or None,
                          limit=limit)
+
+
+@route("POST", "/api/inbox/bulk", area="inbox")
+def bulk(req):
+    """Several threads, one action, one trip through the gate.
+
+    Registered before `/api/inbox/{cid}` so "bulk" is read as the verb it is
+    rather than as a conversation id.
+    """
+    body = req.body if isinstance(req.body, dict) else {}
+    ids = body.get("ids") or body.get("conversation_ids")
+    action = str(body.get("action") or "").strip()
+    if action not in inbox.BULK_ACTIONS:
+        raise HTTPError(400, "The inbox can mark threads read or unread, archive "
+                             "them, move them back, or delete them.")
+
+    def job(log):
+        return inbox.bulk(req.app, ids, action, scope=str(body.get("scope") or ""),
+                          confirm_token=body.get("confirm"), log=log)
+
+    return req.job("inbox.bulk", job)
 
 
 @route("GET", "/api/inbox/{cid}", area="inbox")

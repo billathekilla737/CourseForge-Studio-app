@@ -454,6 +454,32 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
         return self.get(f"/conversations/{conversation_id}",
                         auto_mark_as_read=("true" if mark_read else "false"))
 
+    CONVERSATION_STATES = ("read", "unread", "archived")
+
+    def set_conversation_state(self, conversation_id: int | str, state: str) -> dict:
+        """Move one thread between read, unread and archived.
+
+        Canvas has no separate unarchive: putting an archived thread back to
+        read is what returns it to the inbox. Done one at a time rather than
+        through the batch endpoint, which answers with a progress object and
+        no per-thread result, and this needs to be able to say which ones.
+        """
+        if state not in self.CONVERSATION_STATES:
+            raise ValueError(f"a conversation is read, unread or archived, not {state!r}")
+        return self._form("PUT", f"/conversations/{conversation_id}",
+                          [("conversation[workflow_state]", state)])
+
+    def delete_conversation(self, conversation_id: int | str) -> dict:
+        """Remove one thread from your own inbox.
+
+        Canvas deletes it for you alone. The student keeps their copy of the
+        conversation and is not told, so this is not a way to unsend anything.
+        There is no undo on your side.
+        """
+        payload, _ = self._request(
+            "DELETE", f"{self.base}/api/v1/conversations/{conversation_id}")
+        return payload or {}
+
     def reply_to_conversation(self, conversation_id: int | str, body: str,
                               recipients: list | None = None) -> dict:
         """Add one message to a thread that already exists."""

@@ -707,11 +707,12 @@ async function openRoster(afterwards) {
         </details>
 
         <div class="foot">
-          <button class="btn" id="roApply" ${state.rows.length ? '' : 'disabled'}
-            >Save, then apply everywhere…</button>
           <span class="spacer"></span>
           <button class="btn" id="roClose">Close</button>
-          <button class="btn ai" id="roSave">Save list</button>
+          <button class="btn" id="roSave">Save list</button>
+          <button class="btn danger" id="roApply" ${state.rows.length ? '' : 'disabled'}
+            title="Saves the list, then asks before it changes any quiz in Canvas"
+            >Save, then apply everywhere…</button>
         </div>
       </div></div>`;
 
@@ -1433,12 +1434,6 @@ function renderSchedule() {
         <span class="ctlLabel">Actions</span>
         <button class="btn sm ai" id="scInstruct"
           title="Say what you want changed, in plain words">Tell it what to change…</button>
-        <button class="btn sm" id="scRoster"
-          title="Students with a standing accommodation, across every course you teach"
-          >Student roster…</button>
-        <button class="btn sm" id="scAccom"
-          title="Apply every standing accommodation to every timed quiz this term"
-          >Accommodations: apply all…</button>
       </div>
       <div class="ctlGroup ctlShow">
         <span class="ctlLabel">Show</span>
@@ -1462,8 +1457,6 @@ function renderSchedule() {
     };
   });
   $('#scInstruct').onclick = openInstruct;
-  $('#scRoster').onclick = () => openRoster();
-  $('#scAccom').onclick = () => applyAccommodations('all', null, null);
   $('#scPast').onclick = () => { f.hidePast = !f.hidePast; renderSchedule(); };
   $('#scExam').onclick = () => { f.examOnly = !f.examOnly; renderSchedule(); };
   $('#scGrade').onclick = () => { f.gradeOnly = !f.gradeOnly; renderSchedule(); };

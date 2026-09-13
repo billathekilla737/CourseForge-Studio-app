@@ -78,6 +78,38 @@ section goes out as written. The rail on the Assistant screen says
 how many students are covered, and **Re-read the roster** picks up anyone who
 enrolled since.
 
+## Asking the Assistant about a student
+
+The swap exists so you can. Two verbs read what the Studio already knows, on
+this computer, and hand it back by tag:
+
+```bash
+python -m courseforge students list --course 734975
+python -m courseforge students show --course 734975 --who Student-14
+```
+
+`list` is every student as a tag with how much is graded, what is flagged and
+whether an accommodation is on record. `show` is one student: scores per
+assignment, whether each was pushed, what was flagged for a person and why, the
+comment and rationales, and what the record says was done for them. The
+Assistant runs these itself when you ask about someone by name.
+
+Three things are true of them at once, and all three matter:
+
+* **No Canvas request is made.** Everything is assembled out of work the Studio
+  has already done. The Canvas client the Assistant holds still cannot reach
+  the roster, submissions, grades or analytics -- `canvas_policy` refuses those
+  in the client, so a prompt injected into a course page can never turn into a
+  read of the gradebook.
+* **No name can come out.** The payload is pseudonymised where it is built, and
+  `students.assert_clean` refuses to return anything with a real name, login,
+  SIS id or email still in it -- including inside a comment or rationale
+  somebody typed by hand.
+* **It only knows what the Studio did.** An assignment graded in Canvas
+  directly is not in the answer, and "nothing graded here" is not the same as
+  "submitted nothing". The verb says so, and the Assistant is told to say which
+  it is rather than let you assume.
+
 ## The limit, stated where it is relied on
 
 The swap covers what you type and what Claude writes back. It does not cover

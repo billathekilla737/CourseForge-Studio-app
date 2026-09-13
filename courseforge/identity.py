@@ -382,9 +382,12 @@ class NameMap:
         if not self.by_tag:
             return ("No roster read for this course yet, so names go out as you "
                     "type them. Open Grade once to read it.")
-        return (f"{len(self.by_tag)} students on this roster are swapped for "
-                f"{PREFIX}-1, {PREFIX}-2 ... before anything is sent, and turned "
-                "back for you here. The list of who is who stays on this PC.")
+        return (f"{len(self.by_tag)} students are swapped for {PREFIX}-1, "
+                f"{PREFIX}-2 ... before anything is sent, and turned back for you "
+                "here. Ask about a student by name and the Assistant answers from "
+                "what the Studio has graded on this PC; it cannot read Canvas's "
+                "roster, submissions or gradebook, and the list of who is who "
+                "never leaves this machine.")
 
     # ------------------------------------------------------------- on disk
     def to_json(self) -> dict:

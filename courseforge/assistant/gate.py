@@ -79,6 +79,9 @@ STUDIO_VERBS = {
     "content": {"draft", "place", "push-pages", "push-project", "rubrics",
                 "verify-slots", "check-style", "check-quiz"},
     "course": {"export", "import", "clone", "nav", "due-dates", "quiz-backup", "slo"},
+    # Reads, and pseudonymised at the source: the verb assembles its answer on
+    # this machine and can only say Student-14. There is no --apply form.
+    "students": {"list", "show"},
     "assistant": {"ask"},
 }
 # Top-level commands that only read: the doctor checks logins, courses lists them.

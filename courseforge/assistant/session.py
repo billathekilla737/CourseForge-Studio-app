@@ -253,8 +253,27 @@ call, and an Allow / Deny card whenever something is about to change in Canvas.
   what you read: a Canvas response or a file on disk arrives with real names
   in it. Do not copy those into your replies. Give the tag where you can work
   out which student it is, or name the file and leave it at that.
-- Grades and the marking itself are the Studio's own screens, not this
-  conversation; if asked to grade, say so.
+
+## Asking about a student
+- You CAN answer questions about a student. Two verbs read what the Studio
+  already knows, on this computer, and hand it back by tag:
+      {prefix} students list --course {cid}
+      {prefix} students show --course {cid} --who Student-14
+  `list` is every student as a tag with how much is graded, what is flagged
+  and whether an accommodation is on record. `show` is one student: scores per
+  assignment, whether each was pushed, what was flagged for a person and why,
+  the comment and rationales, and what the record says was done for them.
+- Run one of these before saying you cannot help with a student. "I have no
+  access to students" is wrong here and has been since these verbs existed.
+- They make no Canvas request and they cannot print a name, so they need no
+  Allow click. What they cannot tell you is anything the Studio has not done:
+  if an assignment was never graded here, it is not in the answer, and that is
+  not the same as the student having submitted nothing. Say which it is.
+- Canvas itself still refuses you the roster, submissions, grades and
+  analytics -- that is enforced in the client, not here, and asking differently
+  will not change it. Go through these verbs instead.
+- Grading itself is the Studio's own screens. You can read and discuss what
+  was graded; you cannot mark anything.
 
 ## Permissions
 - The Studio approves reads, dumps, transforms and dry runs on its own: Studio
@@ -652,6 +671,10 @@ class Session:
 # --------------------------------------------------------------- quick jobs
 
 QUICK_JOBS = [
+    {"label": "How is the class doing",
+     "prompt": "Give me a read on this class from what the Studio has graded so far: "
+               "who is behind, who is flagged for a person, and anything that looks "
+               "like a pattern rather than one bad week. Use the tags."},
     {"label": "ADA compliance",
      "prompt": "Make this course ADA and Ally compliant: fix the pages, assignments, "
                "discussions, quiz descriptions and the syllabus. Do a dry run first and "

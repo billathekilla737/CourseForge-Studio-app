@@ -5,6 +5,7 @@
     python -m courseforge courses     list your courses
     python -m courseforge tools       the optional tools, and install them
     python -m courseforge record      what the Studio did, and whether it adds up
+    python -m courseforge students    what it knows about a student, by tag
 """
 from __future__ import annotations
 
@@ -211,6 +212,28 @@ def cmd_record(cfg: Config, course: str, verify: bool, sync: bool,
     return 0
 
 
+def cmd_students(cfg: Config, course: str, who: str = "") -> int:
+    """What the Studio knows about a student, by tag, with the name taken out.
+
+    The Assistant runs this instead of reading Canvas, which it cannot do. The
+    pseudonymising happens inside `students.py`, so there is no form of this
+    command that prints a name.
+    """
+    import json
+
+    from . import students
+    from .server import App
+    app = App(cfg)
+    try:
+        out = (students.student_view(app, course, who) if who
+               else students.class_view(app, course))
+    except students.NotOnThisRoster as exc:
+        print(str(exc).strip("\"'"))
+        return 2
+    print(json.dumps(out, indent=1, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     from . import cli as area_cli
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -234,6 +257,15 @@ def main(argv: list[str] | None = None) -> int:
                          help="with --install, run the installers rather than printing them")
     p_tools.add_argument("--ask-again", action="store_true",
                          help="forget the saved answer so the first-run offer returns")
+    p_students = sub.add_parser(
+        "students", help="what the Studio knows about a student, by tag")
+    sv = p_students.add_subparsers(dest="verb", required=True)
+    sl = sv.add_parser("list", help="every student in the course as a tag and a line of state")
+    sl.add_argument("--course", required=True, help="Canvas course id")
+    ss = sv.add_parser("show", help="one student, by tag")
+    ss.add_argument("--course", required=True, help="Canvas course id")
+    ss.add_argument("--who", required=True, help="a tag, for example Student-14")
+
     p_record = sub.add_parser("record", help="the account of what the Studio did")
     p_record.add_argument("--course", default="account",
                           help="Canvas course id, or 'account' for what belongs to no course")
@@ -259,6 +291,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "tools":
         return cmd_tools(cfg, install=args.install, yes=args.yes,
                          ask_again=args.ask_again)
+    if args.command == "students":
+        return cmd_students(cfg, args.course, getattr(args, "who", "") or "")
     if args.command == "record":
         return cmd_record(cfg, args.course, args.verify, args.sync,
                           args.student, args.limit)

@@ -1428,17 +1428,32 @@ a.card,a.card:visited{color:var(--ink);text-decoration:none}
 
    Only the course list wears this. The assignment list shares the section and
    must stay a single column. */
-#viewPicker.pickerHome{display:grid;align-content:start;
+#viewPicker.pickerHome{display:grid;align-content:start;align-items:start;
   grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);
   column-gap:22px;row-gap:0}
-#viewPicker.pickerHome > #pickerResume,
-#viewPicker.pickerHome > .sectionHead{grid-column:1/-1}
-#viewPicker.pickerHome > #pickerBody{grid-column:1}
-#viewPicker.pickerHome > #pickerStrip{grid-column:2}
+/* Rows are named rather than left to auto-placement so the two columns start
+   level: each one opens with its own .sectionHead, on the same row, so the two
+   headings are plainly siblings. With the list's heading spanning the full
+   width instead, it sat a row above the other column's and the right-hand side
+   looked like it began somewhere else. */
+#viewPicker.pickerHome > #pickerResume{grid-column:1/-1;grid-row:1}
+#viewPicker.pickerHome > .sectionHead{grid-column:1;grid-row:2}
+#viewPicker.pickerHome > #pickerBody{grid-column:1;grid-row:3}
+/* display:contents, so the right-hand heading and its list are grid items in
+   their own right. As one element spanning both rows its height was shared out
+   between them, which pushed the left column's list 50px below the right
+   column's -- the two headings level and everything under them not. */
+#viewPicker.pickerHome > #pickerStrip{display:contents}
+#viewPicker.pickerHome > #pickerStrip > .sectionHead{grid-column:2;grid-row:2}
+#viewPicker.pickerHome > #pickerStrip > .acrossStack{grid-column:2;grid-row:3}
 @media (max-width:900px){
   #viewPicker.pickerHome{grid-template-columns:minmax(0,1fr)}
-  #viewPicker.pickerHome > #pickerBody,
-  #viewPicker.pickerHome > #pickerStrip{grid-column:1}
+  #viewPicker.pickerHome > #pickerResume,
+  #viewPicker.pickerHome > .sectionHead,
+  #viewPicker.pickerHome > #pickerBody{grid-column:1;grid-row:auto}
+  #viewPicker.pickerHome > #pickerStrip > .sectionHead,
+  #viewPicker.pickerHome > #pickerStrip > .acrossStack{grid-column:1;grid-row:auto}
+  #viewPicker.pickerHome > #pickerStrip > .sectionHead{margin-top:24px}
 }
 
 /* Where you left off. Navy with the gold rule, the same band the hub wears, so
@@ -1482,8 +1497,6 @@ a.card,a.card:visited{color:var(--ink);text-decoration:none}
 /* The four things that are not about one course. A stack, so they are plainly
    a different kind of thing from the rows beside them. */
 .acrossStack{display:flex;flex-direction:column;gap:8px}
-.acrossStack h2{margin:0 0 2px;font-size:13px;font-weight:650}
-.acrossStack .lead{margin:0 0 4px;font-size:11.5px;color:var(--muted);line-height:1.55}
 .acrossItem{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;
   align-items:start;width:100%;text-align:left;font:inherit;color:var(--ink);
   padding:10px 12px;background:var(--panel);border:1px solid var(--line);

@@ -203,10 +203,9 @@
     const off = (t, m) => `<span class="acrossItem off" aria-disabled="true"
         title="Not installed in this build"><span class="ic"></span>
         <span><span class="t">${esc(t)}</span><span class="m">${esc(m)}</span></span></span>`;
-    host.innerHTML = `<section class="acrossStack" aria-labelledby="acrossH">
-      <h2 id="acrossH">Across your courses</h2>
-      <p class="lead">These four work on several courses at once. Each shows you the
-        plan before anything is sent.</p>
+    host.innerHTML = `<div class="sectionHead"><h2 id="acrossH">Across your courses</h2>
+      <span class="hint">several at once</span></div>
+    <section class="acrossStack" aria-labelledby="acrossH">
       <a class="acrossItem" href="#/schedule"><span class="ic grade"></span>
         <span><span class="t">Term schedule</span>
         <span class="m">Every dated assignment in the term, week by week, with

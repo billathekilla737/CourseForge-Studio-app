@@ -12,9 +12,9 @@ server with a confirm token and shown as a plain sentence (`askConfirm`).
 
 | Route | Opens | File |
 |---|---|---|
-| `#/` | Courses picker plus an "Across your courses" strip (Term schedule, Accommodations, Batch accessibility) | grade.js / hub.js |
+| `#/` | Courses picker plus an "Across your courses" strip (Term schedule, Accommodations, Batch Course Restyle) | grade.js / hub.js |
 | `#/schedule` | Term schedule (existing) | grade.js |
-| `#/batch` | Batch accessibility across courses | a11y.js |
+| `#/batch` | Batch Course Restyle across courses | a11y.js |
 | `#/c/<cid>` | **Course hub** (new) | hub.js |
 | `#/c/<cid>/grade` | Assignment list (existing `openCourse`) | grade.js |
 | `#/c/<cid>/a/<aid>` | Grading workspace (existing, untouched) | grade.js |

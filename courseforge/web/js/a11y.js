@@ -427,9 +427,9 @@
     // inside one, so it wears that zone. showView reads the zone off the route,
     // and #/batch names no course or area for it to read.
     document.body.dataset.area = 'a11y';
-    crumbs([{ label: 'Courses', href: '#/' }, { label: 'Batch accessibility' }]);
+    crumbs([{ label: 'Courses', href: '#/' }, { label: 'Batch Course Restyle' }]);
     $('#headerActions').innerHTML = '';
-    areaHead('Batch accessibility', 'Fetch, restyle, verify and push several courses in one run. Dry run first; nothing is pushed until you confirm.');
+    areaHead('Batch Course Restyle', 'Fetch, restyle, verify and push several courses in one run. Dry run first; nothing is pushed until you confirm.');
     if (has('areaTabs')) areaTabs([], null, null);
     const body = $('#areaBody');
     body.innerHTML = '<div class="hint">Loading your courses...</div>';
@@ -543,13 +543,13 @@
     $('#batchDry').onclick = () => {
       const ids = pickedIds();
       if (!ids.length) { setStatus('pick at least one course', 'err'); return; }
-      runJob('Batch accessibility: dry run', () => api('/batch/a11y', { body: { course_ids: ids, look: S.a11y.batchLook || 'clean', apply: false } }),
+      runJob('Batch Course Restyle: dry run', () => api('/batch/a11y', { body: { course_ids: ids, look: S.a11y.batchLook || 'clean', apply: false } }),
         res => renderBatchSummary(result, res, false));
     };
     $('#batchApply').onclick = () => {
       const ids = pickedIds();
       if (!ids.length) { setStatus('pick at least one course', 'err'); return; }
-      runJobConfirmed('Batch accessibility: apply',
+      runJobConfirmed('Batch Course Restyle: apply',
         token => api('/batch/a11y', { body: { course_ids: ids, look: S.a11y.batchLook || 'clean', apply: true, confirm: token } }),
         res => renderBatchSummary(result, res, false),
         { title: 'Push the restyled bodies to these courses?' });

@@ -60,13 +60,13 @@ def _first_match(pairs: list[tuple[Path, str]]) -> str:
     return ""
 
 
-def _module(name: str, pip: str, enables: str) -> dict:
+def _module(name: str, pip: str, enables: str, label: str = "") -> dict:
     try:
         mod = importlib.import_module(name)
         ver = getattr(mod, "__version__", "") or getattr(mod, "VersionBind", "") or ""
-        return {"ok": True, "version": str(ver), "enables": enables}
+        return {"ok": True, "label": label or pip, "version": str(ver), "enables": enables}
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "version": "", "enables": enables,
+        return {"ok": False, "label": label or pip, "version": "", "enables": enables,
                 "detail": f"{type(exc).__name__}: {exc}",
                 "install": f"python -m pip install {pip}"}
 
@@ -85,6 +85,7 @@ def detect(cfg=None) -> dict:
                 tess = cand
                 break
     out["tesseract"] = {
+        "label": "Tesseract OCR",
         "ok": bool(tess and Path(tess).exists()), "path": tess or "",
         "version": _version([tess, "--version"]) if tess else "",
         "enables": "OCR text layers for scanned PDFs",
@@ -102,6 +103,7 @@ def detect(cfg=None) -> dict:
                 vera = str(cand)
                 break
     out["verapdf"] = {
+        "label": "veraPDF",
         "ok": bool(vera and Path(vera).exists()), "path": vera or "",
         "version": "",
         "enables": "Prove PDF/UA-1 compliance (the census by rule)",
@@ -112,6 +114,7 @@ def detect(cfg=None) -> dict:
     java = (getattr(cfg, "java_path", "") or os.environ.get("JAVACMD")
             or shutil.which("java") or _first_match(java_dirs()))
     out["java"] = {
+        "label": "Java",
         "ok": bool(java and Path(java).exists()), "path": java or "",
         "version": _version([java, "-version"]) if java else "",
         "enables": "Runs veraPDF",
@@ -132,6 +135,7 @@ def detect(cfg=None) -> dict:
     # --- claude cli -----------------------------------------------------------------
     claude = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude.exe")
     out["claude"] = {
+        "label": "the Claude CLI",
         "ok": bool(claude and Path(claude).exists()), "path": claude if claude and Path(claude).exists() else "",
         "version": _version([claude, "--version"]) if claude and Path(claude).exists() else "",
         "enables": "Every model call in the local build",
@@ -139,6 +143,7 @@ def detect(cfg=None) -> dict:
     }
 
     out["pdf_engine"] = {
+        "label": "the PDF engine",
         "ok": out["pymupdf"]["ok"] and out["pikepdf"]["ok"],
         "enables": "The whole PDF fixer",
         "install": "python -m pip install pymupdf pikepdf fonttools",

@@ -202,10 +202,10 @@
           <div class="t">Accommodations roster</div>
           <div class="m">Standing extra time and attempts, applied to any quiz in any course.</div></button>
         ${batchOn
-          ? `<a class="card acrossCard" href="#/batch"><div class="t">Batch accessibility</div>
+          ? `<a class="card acrossCard" href="#/batch"><div class="t">Batch Course Restyle</div>
                <div class="m">Restyle and verify pages across several courses at once. Dry run first.</div></a>`
           : `<button class="card acrossCard off" type="button" disabled title="Not installed in this build">
-               <div class="t">Batch accessibility</div>
+               <div class="t">Batch Course Restyle</div>
                <div class="m">Not installed in this build.</div></button>`}
         ${batchOn
           ? `<a class="card acrossCard" href="#/files"><div class="t">ADA file compliance</div>

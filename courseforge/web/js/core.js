@@ -293,7 +293,7 @@ function route() {
   let opened;
   if (parts[0] === 'schedule') opened = openSchedule();
   else if (parts[0] === 'batch') {
-    opened = typeof openBatch === 'function' ? openBatch() : missingOpener('Batch accessibility');
+    opened = typeof openBatch === 'function' ? openBatch() : missingOpener('Batch Course Restyle');
   } else if (parts[0] === 'files') {
     opened = typeof openFileCompliance === 'function'
       ? openFileCompliance() : missingOpener('ADA file compliance');

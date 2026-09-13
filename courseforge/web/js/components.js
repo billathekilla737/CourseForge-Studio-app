@@ -176,7 +176,7 @@
       .filter(([, t]) => t && t.ok === false);
     const html = !missing.length ? '' : `<div class="needCards">${missing.map(([name, t]) => `
       <div class="needCard" role="group" aria-labelledby="need-${esc(name)}">
-        <b id="need-${esc(name)}">Install ${esc(name)}</b>
+        <b id="need-${esc(name)}">Install ${esc(t.label || name)}</b>
         <span class="needWhat">to enable ${esc(t.enables || 'this part of the Studio')}.</span>
         ${t.install ? `<code class="needHow">${esc(t.install)}</code>` : ''}
         ${t.detail ? `<span class="needDetail muted">${esc(clamp(t.detail, 140))}</span>` : ''}

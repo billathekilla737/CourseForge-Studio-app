@@ -957,11 +957,31 @@ class App:
                     if op.get("quiz_id"):
                         self.client.update_quiz(op["course_id"], op["quiz_id"],
                                                 dates=utc)
-                applied.append({"describe": line})
+                applied.append({"describe": line, "course_id": op["course_id"]})
             except Exception as exc:  # noqa: BLE001
-                failed.append({"describe": line,
+                failed.append({"describe": line, "course_id": op["course_id"],
                                "error": f"{type(exc).__name__}: {exc}"})
             log(f"{index}/{total} done", index, total)
+
+        if applied or failed:
+            # Publishing an assignment and announcing to a class are changes a
+            # student can be affected by, so they are recorded per course
+            # rather than as one line about "the schedule".
+            touched = {str(r.get("course_id")) for r in applied + failed
+                       if r.get("course_id")}
+            for cid in sorted(touched):
+                mine = [p for p in applied if str(p.get("course_id")) == cid]
+                bad = [f for f in failed if str(f.get("course_id")) == cid]
+                audit.record(
+                    self.course_dir(cid), "tools", "schedule",
+                    "Applied %d change(s) from the term schedule%s: %s."
+                    % (len(mine), ", %d refused by Canvas" % len(bad) if bad else "",
+                       "; ".join(p["describe"] for p in mine[:8])
+                       + (" and more" if len(mine) > 8 else "")),
+                    count=len(mine), course_id=cid,
+                    result="failed" if bad and not mine else "ok",
+                    detail={"applied": [p["describe"] for p in mine],
+                            "failed": bad})
 
         if applied:
             # What Canvas now says has changed, so the page stops showing the
@@ -1109,6 +1129,23 @@ class App:
 
         log(f"messaged {len(sent)} student(s)"
             + (f", {sum(len(f['names']) for f in failed)} failed" if failed else ""))
+        # Who was written to, and what was said. A message to a student about
+        # missing work is the other half of the accommodations argument: "we
+        # told them" needs the same evidence as "we gave them the time".
+        if sent or failed:
+            audit.record(
+                self.course_dir(course_id), "grade", "messaged",
+                'Sent a private Canvas message about "%s" to %d student(s)%s. '
+                'Subject: "%s".'
+                % (info["name"], len(sent),
+                   ", %d could not be reached" % sum(len(f["names"]) for f in failed)
+                   if failed else "", subject),
+                students=[audit.person(u, pool[u]["name"]) for u in sent],
+                count=len(sent), course_id=course_id,
+                result="failed" if failed and not sent else "ok",
+                detail={"assignment_id": str(assignment_id), "subject": subject,
+                        "body": body[:2000],
+                        "not_reached": [n for f in failed for n in f["names"]]})
         return {"assignment": info["name"], "subject": subject,
                 "count": len(sent), "sent": [pool[u]["name"] for u in sent],
                 "failed": failed}
@@ -1709,6 +1746,14 @@ class App:
         log("telling Canvas to hold new grades on this assignment until they are "
             "posted, including any typed in SpeedGrader")
         self.client.set_assignment_post_policy(assignment_id, True)
+        # A course setting changed on the instructor's live course, and one that
+        # governs SpeedGrader too, so it belongs in the record even though it is
+        # a side effect of pushing rather than something anyone asked for.
+        audit.record(self.course_dir(course_id), "grade", "post-policy",
+                     "Set this assignment to hold new grades until they are "
+                     "posted, so nothing lands visible by accident.",
+                     course_id=course_id,
+                     detail={"assignment_id": str(assignment_id), "manual": True})
 
     def pull(self, course_id, assignment_id) -> dict:
         """Refresh the Canvas side and merge. Cheap enough to run on a timer."""
@@ -2038,6 +2083,13 @@ class App:
                    what="quiz settings")
 
         self.client.update_quiz_settings(course_id, quiz_id, checked["changes"])
+        audit.record(self.course_dir(course_id), "tests", "quiz-settings",
+                     'Changed the settings on the quiz "%s": %s.'
+                     % (quiz.get("title") or quiz_id,
+                        quizedit.summary(checked["described"], quiz)),
+                     count=len(checked["changes"]), course_id=course_id,
+                     url="%s/courses/%s/quizzes/%s" % (self.cfg.base_url, course_id, quiz_id),
+                     detail={"quiz_id": str(quiz_id), "changed": checked["described"]})
         # A quiz assignment carries its own copy of the dates. Writing the quiz
         # is enough for Canvas to move both, but the local cache is now stale
         # either way, and so is the schedule's copy of this row.

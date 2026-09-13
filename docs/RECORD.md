@@ -26,10 +26,12 @@ Every Canvas write the Studio makes, from every area. In practice:
 | Grade | How many scores went to which assignment, for which students, with the score, and whether they landed hidden or visible. Showing and hiding grades are their own entries. |
 | Accessibility | Pages, documents and PDFs restyled, fixed or uploaded, with counts. |
 | Build | Content placed in the course. |
-| Tools | Due dates moved, exports, imports, navigation changes, quiz backups. |
+| Tools | Due dates moved, exports, imports, navigation changes, quiz backups. Term-schedule changes are recorded against the course they touched, not as one line about "the schedule". |
+| Tests | Quiz settings: what changed, on which quiz. |
+| Messages | Private Canvas messages to students who have turned nothing in: who was written to, the subject, and who could not be reached. |
 | Assistant | Each Allow you clicked, and what it allowed. |
 
-Accommodations and grades name the student, by Canvas user id and by name,
+Accommodations, grades and messages name the student, by Canvas user id and by name,
 because a record of accommodations that does not say who they were for answers
 nothing. Everything else names the page or the file.
 

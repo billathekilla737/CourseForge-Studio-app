@@ -2068,37 +2068,49 @@ function renderHeaderActions() {
   // Chasing missing work only makes sense once the deadline has gone.
   const dueAt = (S.ws.assignment || {}).due_at;
   const pastDue = !!(dueAt && new Date(dueAt).getTime() < Date.now());
+  // Four groups, in the order the work happens, each an inline-flex unit so a
+  // group wraps whole rather than splitting across rows and leaving its label
+  // and its divider stranded. That is the one thing a plain row of thirteen
+  // buttons could not do.
   $('#headerActions').innerHTML = `
-    <button class="btn" id="btnSync">${synced ? 'Re-sync' : 'Sync from Canvas'}</button>
-    ${hasBlend ? `<button class="btn" id="btnBlend" ${blenderOk ? '' : 'disabled'}
-      title="${blenderOk ? 'Open every .blend in Blender and extract stats, renders and a 3D preview'
-                         : 'Blender was not found on this machine'}">Blender pass</button>` : ''}
-    <label class="modelPick" title="Which Claude model grades written work">Claude
-      <select class="modelSel" id="selModel">
-        ${models.map(m => `<option value="${esc(m)}"${m === S.health.model ? ' selected' : ''}>${esc(m)}</option>`).join('')}
-      </select></label>
-    <label class="modelPick${visionModel() === S.health.model ? '' : ' differs'}"
-      title="Work with pictures in it is read by this one. Opus vision costs several
+    <span class="tbGroup"><span class="tbTag">Get</span>
+      <button class="btn" id="btnSync">${synced ? 'Re-sync' : 'Sync from Canvas'}</button>
+      ${hasBlend ? `<button class="btn" id="btnBlend" ${blenderOk ? '' : 'disabled'}
+        title="${blenderOk ? 'Open every .blend in Blender and extract stats, renders and a 3D preview'
+                           : 'Blender was not found on this machine'}">Blender pass</button>` : ''}
+    </span>
+    <span class="tbGroup"><span class="tbTag">Grade</span>
+      <label class="modelPick" title="Which Claude model grades written work">Claude
+        <select class="modelSel" id="selModel">
+          ${models.map(m => `<option value="${esc(m)}"${m === S.health.model ? ' selected' : ''}>${esc(m)}</option>`).join('')}
+        </select></label>
+      <label class="modelPick${visionModel() === S.health.model ? '' : ' differs'}"
+        title="Work with pictures in it is read by this one. Opus vision costs several
 times more without judging a render any better, so it is set to sonnet out of the box.
 Where every submission has images, this is the model that grades the whole class.">Images
-      <select class="modelSel" id="selVision">
-        ${models.map(m => `<option value="${esc(m)}"${m === visionModel() ? ' selected' : ''}>${esc(m)}</option>`).join('')}
-      </select></label>
-    <button class="btn ai" id="btnGrade" ${(!synced || !canAI) ? 'disabled' : ''}
-      title="${canAI ? 'Grade every student with Claude against this rubric' : 'Claude CLI is not logged in'}">Auto-grade all</button>
-    <button class="btn" id="btnView"
-      title="Read what this assignment asks for, as Canvas has it now">View assignment</button>
-    ${pastDue ? `<button class="btn" id="btnRemind"
-      title="Message every student who has turned nothing in for this">Remind missing</button>` : ''}
-    <button class="btn" id="btnInstr">Instructions${S.ws.instructions ? ' •' : ''}</button>
-    <button class="btn" id="btnWork">${S.showWork ? 'Hide work' : 'Show work'}</button>
-    <button class="btn ${S.view === 'insights' ? 'on' : ''}" id="btnCharts" ${synced ? '' : 'disabled'}>${S.view === 'insights' ? 'Back to grading' : 'Insights'}</button>
-    <button class="btn" id="btnExport" ${synced ? '' : 'disabled'}>Export</button>
-    <button class="btn danger" id="btnPush" ${synced ? '' : 'disabled'}>Push to Canvas…</button>
-    <button class="btn" id="btnRelease" ${synced ? '' : 'disabled'}
-      title="Show students the grades that are already in Canvas for this assignment">Make live…</button>`;
+        <select class="modelSel" id="selVision">
+          ${models.map(m => `<option value="${esc(m)}"${m === visionModel() ? ' selected' : ''}>${esc(m)}</option>`).join('')}
+        </select></label>
+      <button class="btn" id="btnInstr"
+        title="Standing notes for Claude about how to mark this assignment">Instructions${S.ws.instructions ? ' •' : ''}</button>
+      <button class="btn ai" id="btnGrade" ${(!synced || !canAI) ? 'disabled' : ''}
+        title="${canAI ? 'Grade every student with Claude against this rubric' : 'Claude CLI is not logged in'}">Auto-grade all</button>
+    </span>
+    <span class="tbGroup"><span class="tbTag">Read</span>
+      <button class="btn" id="btnView"
+        title="Read what this assignment asks for, as Canvas has it now">View assignment</button>
+      <button class="btn" id="btnWork">${S.showWork ? 'Hide work' : 'Show work'}</button>
+      <button class="btn ${S.view === 'insights' ? 'on' : ''}" id="btnCharts" ${synced ? '' : 'disabled'}>${S.view === 'insights' ? 'Back to grading' : 'Insights'}</button>
+    </span>
+    <span class="tbGroup"><span class="tbTag">Send</span>
+      <button class="btn danger" id="btnPush" ${synced ? '' : 'disabled'}
+        title="Write the grades into your Canvas gradebook. Asks first, and lets you choose whether students can see them">Push to Canvas…</button>
+      ${pastDue ? `<button class="btn" id="btnRemind"
+        title="Message every student who has turned nothing in for this">Remind missing</button>` : ''}
+      <button class="btn" id="btnExport" ${synced ? '' : 'disabled'}
+        title="Write every grade, rubric score and comment to a spreadsheet in this assignment's folder on this computer. Nothing leaves the machine">Export grades</button>
+    </span>`;
   $('#btnSync').onclick = doSync;
-  $('#btnRelease').onclick = () => openRelease(null);
   $('#btnGrade').onclick = () => doGrade(null);
   $('#selModel').onchange = ev => setModel(ev.target.value);
   $('#selVision').onchange = ev => setModel(ev.target.value, 'vision_model');
@@ -2308,11 +2320,51 @@ async function setModel(model, key = 'model') {
   }
 }
 
+/* "exported 23 rows" said nothing anybody could act on: not what a row was,
+   not what was in it, and not where the file went. The answer to all three is
+   short enough to just show. */
 function doExport() {
   const { courseId, assignmentId } = S.ids;
   api(`/a/${courseId}/${assignmentId}/export`, { body: {} })
-    .then(r => setStatus(`exported ${r.rows} rows`, 'ok'))
-    .catch(err => setStatus('export failed: ' + err.message, 'err'));
+    .then(r => {
+      setStatus(`${r.rows} grade${r.rows === 1 ? '' : 's'} written to grades.csv`, 'ok');
+      showExported(r);
+    })
+    .catch(err => setStatus('export failed: ' + firstLine(err.message), 'err'));
+}
+
+function showExported(r) {
+  const folder = String(r.csv || '').replace(/[\\/][^\\/]*$/, '');
+  const host = $('#modalHost');
+  host.innerHTML = `<div class="modalBack"><div class="modal narrow">
+      <h3>${esc(r.rows)} grade${r.rows === 1 ? '' : 's'} exported</h3>
+      <div class="sub">Written to this computer. Nothing was sent anywhere, and
+        nothing in Canvas changed.</div>
+      <dl class="exList">
+        <dt>grades.csv</dt>
+        <dd>One row per student: name, status, points earned, any curve, the total,
+          the percentage and letter, every rubric criterion as its own column, and
+          the comment. Opens in Excel.</dd>
+        <dt>grades.json</dt>
+        <dd>The same thing as the Studio holds it, including the rubric and what
+          Claude flagged. For a script, or for a colleague's tool.</dd>
+      </dl>
+      <label class="annLabel">Where they are
+        <input type="text" id="exPath" readonly value="${esc(folder)}"></label>
+      <div class="foot">
+        <button class="btn" id="exCopy">Copy the folder path</button>
+        <span class="spacer"></span>
+        <button class="btn primary" id="exClose">Close</button>
+      </div></div></div>`;
+  $('#exClose').onclick = () => { host.innerHTML = ''; };
+  $('#exCopy').onclick = () => {
+    const box = $('#exPath');
+    box.select();
+    navigator.clipboard.writeText(folder)
+      .then(() => setStatus('folder path copied', 'ok'))
+      .catch(() => setStatus('could not copy; the path is selected, press Ctrl+C', 'err'));
+  };
+  $('#exPath').focus();
 }
 
 /* ---------------------------------------------------------- instructions */
@@ -3069,6 +3121,13 @@ function openPush(only) {
   const { courseId, assignmentId } = S.ids;
   const host = $('#modalHost');
   const scope = (only && only.length) ? only : null;
+  // Grades sitting in Canvas from an earlier push that students still cannot
+  // see. Releasing those used to be a button of its own on the toolbar, which
+  // read as a second way to send grades. It is not: it is the tail of this one.
+  const inScope = scope ? new Set(scope.map(String)) : null;
+  const stillHidden = Object.values(S.ws.extracted || {})
+    .filter(s => s.canvas_score != null && !s.canvas_posted_at
+      && (!inScope || inScope.has(String(s.user_id))));
   host.innerHTML = `<div class="modalBack"><div class="modal">
       <h3>Push grades to Canvas${scope ? ` — ${scope.length} selected` : ''}</h3>
       <div class="sub">This writes into your gradebook. The plan below is worked
@@ -3081,11 +3140,19 @@ function openPush(only) {
         <span style="color:var(--muted)">(off by default: read them first, they are AI drafts)</span>
       </label>
       <div class="log" id="pushLog">Working out what would be written…</div>
+      ${stillHidden.length ? `<div class="callout pushHidden">
+        <b>${esc(stillHidden.length)} grade${stillHidden.length === 1 ? '' : 's'} already in
+        Canvas ${stillHidden.length === 1 ? 'is' : 'are'} still hidden from students.</b>
+        That is from an earlier push. This one does not change them.
+        <button class="btn sm" type="button" id="pushShowOld">Show them to students…</button>
+      </div>` : ''}
       <div class="foot">
         <button class="btn" id="pushCancel">Cancel</button>
         <button class="btn danger" id="pushGo" disabled>Post for real</button>
       </div></div></div>`;
   $('#pushCancel').onclick = () => { host.innerHTML = ''; };
+  const showOld = $('#pushShowOld');
+  if (showOld) showOld.onclick = () => openRelease(scope);
   // Turning comments on or off changes what would be written, so the plan is
   // worked out again rather than left on screen describing the other setting.
   $('#pushComments').onchange = () => { $('#pushGo').disabled = true; plan(); };
@@ -3173,7 +3240,7 @@ function openPush(only) {
         note: (withComments ? 'Comments will be written as well.'
                             : 'Scores only, no comments.')
               + ' Push hidden puts them in the gradebook where only you can see them,'
-              + ' and nothing reaches students until you press Make live.'
+              + ' and you can show them later from this same dialog.'
               + ' Push live writes them and posts them at once, so the class can'
               + ' read them straight away.',
         actions: [{ label: 'Push hidden', value: false, cls: '' },
@@ -3383,13 +3450,10 @@ function renderBulkBar() {
       <button class="btn sm" id="bulkCurve"
         title="Curve just these students">Curve…</button>
       <button class="btn sm danger" id="bulkPush"
-        title="Push only these students to Canvas">Push…</button>
-      <button class="btn sm" id="bulkRelease"
-        title="Show these students the grades already in Canvas for them">Make live…</button>
+        title="Push only these students to Canvas. Asks first, and lets you choose whether they can see the grades">Push…</button>
     </div>`;
   $('#bulkAll').onclick = selectAllShown;
   $('#bulkNone').onclick = clearPicked;
-  $('#bulkRelease').onclick = () => openRelease(pickedIds());
   const tc = $('#bulkTakeCanvas'); if (tc) tc.onclick = () => resolveConflicts(pickedIds(), 'canvas');
   const km = $('#bulkKeepMine'); if (km) km.onclick = () => resolveConflicts(pickedIds(), 'mine');
   $('#bulkGrade').onclick = () => doGrade(pickedIds());

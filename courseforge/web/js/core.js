@@ -350,11 +350,17 @@ function showView(which) {
   // paints it on this event; the assignment list shares the view and must not
   // inherit it.
   const strip = $('#pickerStrip');
+  const home = which === 'picker' && !r.courseId;
   if (strip) {
-    if (which === 'picker' && !r.courseId) {
+    if (home) {
       document.dispatchEvent(new CustomEvent('studio:picker', { detail: { host: strip } }));
     } else strip.innerHTML = '';
   }
+  // Two columns for the course list, one for the assignment list inside it.
+  // They share the section, so the layout has to be switched rather than set.
+  const picker = $('#viewPicker');
+  if (picker) picker.classList.toggle('pickerHome', home);
+  if (!home) { const band = $('#pickerResume'); if (band) band.innerHTML = ''; }
   document.dispatchEvent(new CustomEvent('studio:view', { detail: { view: which, route: r } }));
 }
 function crumbs(items) {
@@ -436,6 +442,16 @@ async function ensureCourse(courseId) {
 
 /* Where grading left off in a course, so the hub can offer to continue it.
    A reading preference, kept per browser. */
+/* What a person calls this course. The server already strips the registrar's
+   prefix and the delivery mode into `title` (schedule.course_title); this is
+   the one place the browser decides to use it, so a heading never opens with
+   "202630". Falls back to the full Canvas name when a course arrived from
+   somewhere that has no title, and the full name is always the tooltip. */
+function courseTitle(c) {
+  if (!c) return 'Course';
+  return c.title || c.name || ('Course ' + (c.id == null ? '' : c.id));
+}
+
 const LAST_ASSIGNMENT_KEY = 'cf.lastAssignment.';
 function rememberAssignment(courseId, assignmentId) {
   try { localStorage.setItem(LAST_ASSIGNMENT_KEY + courseId, String(assignmentId)); }
@@ -567,7 +583,7 @@ function skipToContent() {
 }
 
 Object.assign(Studio, {
-  registerArea, onLeave, announce, ensureCourse, lastAssignment, renderAreaBar,
+  registerArea, onLeave, announce, ensureCourse, courseTitle, lastAssignment, renderAreaBar,
   openModal, closeModal, focusView,
 });
 

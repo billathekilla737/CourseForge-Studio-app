@@ -1637,56 +1637,150 @@ async function renderStorage() {
     + `</span></span>`;
 }
 
+/* The course list. Opens on the course you were last grading in, because that
+   is what you came back for most mornings; the rest of the courses and the
+   four cross-course tools share the row underneath.
+
+   Everything on this screen is read off this machine. The counts beside a
+   course come from the assignment list already cached for it, so a course you
+   have never opened says so rather than the page making five Canvas calls to
+   tell you something you are about to click into anyway. */
 async function openCourses(refresh) {
   const tb = $('#teachBar'); if (tb) tb.classList.add('hidden');
   showView('picker');
   crumbs([{ label: 'Courses' }]);
-  $('#headerActions').innerHTML = '';
   $('#pickerTitle').textContent = 'Your courses';
   $('#pickerHint').textContent = 'Loading…';
+  $('#pickerResume').innerHTML = '';
   $('#btnRefresh').onclick = () => openCourses(true);
   $('#headerActions').innerHTML =
-    '<button class="btn" id="btnSchedule">Term schedule</button>';
+    '<button class="btn" id="btnSchedule">Term schedule</button>'
+    + '<button class="btn" id="btnToken" title="Replace the saved Canvas token">'
+    + 'Canvas token…</button>';
   $('#btnSchedule').onclick = () => { location.hash = '#/schedule'; };
-  $('#headerActions').insertAdjacentHTML('beforeend',
-    '<button class="btn" id="btnToken" title="Replace the saved Canvas token">' +
-    'Canvas token…</button>');
   $('#btnToken').onclick = () => openSetup();
+
+  let picked;
   try {
-    S.courses = await api('/courses' + (refresh ? '?refresh=1' : ''));
-    S.termInfo = await api('/terms');
+    picked = await api('/picker' + (refresh ? '?refresh=1' : ''));
   } catch (err) {
     $('#pickerHint').textContent = firstLine(err.message) + ' — see the banner above.';
     return;
   }
+  S.courses = picked.courses || [];
+  S.termInfo = picked.terms || { terms: [] };
 
   // Default to the term we are actually in; remember an explicit choice.
   if (S.term == null) S.term = S.termInfo.default || '__all';
-  const list = S.term === '__all'
-    ? S.courses
-    : S.courses.filter(c => (c.term_label || '') === S.term);
+  const inTerm = c => S.term === '__all' || (c.term_label || '') === S.term;
+  let list = S.courses.filter(inTerm);
+
+  /* Only carry on with a course the filter is currently showing. Offering a
+     Fall course while someone is looking at Spring would be answering a
+     question they did not ask. */
+  const resume = picked.resume
+    && S.courses.some(c => String(c.id) === String(picked.resume.course_id) && inTerm(c))
+    ? picked.resume : null;
+  if (resume) list = list.filter(c => String(c.id) !== String(resume.course_id));
+
+  renderResume(resume);
+  $('#pickerTitle').textContent = resume ? 'Your other courses' : 'Your courses';
 
   const opts = (S.termInfo.terms || []).map(t =>
     `<option value="${esc(t.label)}"${t.label === S.term ? ' selected' : ''}>${esc(t.label)} (${t.count})</option>`).join('');
   $('#pickerHint').innerHTML =
-    `<select class="termSel" id="selTerm">${opts}
+    `<select class="termSel" id="selTerm" aria-label="Which term">${opts}
        <option value="__all"${S.term === '__all' ? ' selected' : ''}>All terms (${S.courses.length})</option>
      </select>
-     <span style="margin-left:10px">${list.length} course${list.length === 1 ? '' : 's'}</span>`;
+     <span style="margin-left:10px">${courseCount(list, resume)}</span>`;
 
   $('#pickerBody').innerHTML = list.length
-    ? '<div class="cards">' + list.map(c => `
-        <button class="card ${c.excluded ? 'off' : ''}" data-id="${c.id}" ${c.excluded ? 'disabled' : ''}>
-          <div class="t">${esc(c.name)}</div>
-          <div class="m">${esc(c.term_label || c.term || '')}${c.students != null ? ' · ' + c.students + ' students' : ''}</div>
-          ${c.excluded ? '<div class="m" style="margin-top:6px"><span class="pill warn">excluded in config</span></div>' : ''}
-        </button>`).join('') + '</div>'
-    : '<p style="color:var(--muted)">No courses in this term.</p>';
+    ? '<div class="pickList">' + list.map(courseRow).join('') + '</div>'
+    : `<p class="hint">${resume ? 'That is every course in this term.'
+        : 'No courses in this term.'}</p>`;
 
   renderStorage();
   $('#selTerm').onchange = ev => { S.term = ev.target.value; openCourses(false); };
-  $('#pickerBody').querySelectorAll('.card:not(.off)').forEach(b =>
+  $('#pickerBody').querySelectorAll('.pickRow:not(.off)').forEach(b =>
     b.onclick = () => { location.hash = '#/c/' + b.dataset.id; });
+}
+
+function courseCount(list, resume) {
+  const n = list.length + (resume ? 1 : 0);
+  const waiting = list.reduce((a, c) => a + (+c.waiting || 0), 0)
+    + (resume ? (+resume.waiting || 0) : 0);
+  return `${n} course${n === 1 ? '' : 's'}`
+    + (waiting ? ` · ${waiting} submission${waiting === 1 ? '' : 's'} waiting` : '');
+}
+
+/* One row per course: the catalogue code, what the course is actually called,
+   and the state this machine knows about. A course nobody has opened here says
+   so plainly rather than showing a zero that would read as "nothing to do". */
+function courseRow(c) {
+  const bits = [];
+  if (c.students != null) bits.push(c.students + ' student' + (c.students === 1 ? '' : 's'));
+  if (c.excluded) bits.push('excluded in config.json');
+  const right = [];
+  if (c.excluded) right.push('<span class="pill warn">excluded</span>');
+  else if (c.waiting) right.push(`<span class="pill warn">${c.waiting} to grade</span>`);
+  else if (!c.known) right.push('<span class="pill">not opened yet</span>');
+  else right.push('<span class="pill ok">nothing waiting</span>');
+  if (c.touched_at) right.push(`<span class="pill">${esc(ago(c.touched_at))}</span>`);
+
+  return `<button class="pickRow ${c.excluded ? 'off' : ''}" type="button"
+      data-id="${esc(c.id)}"${c.excluded ? ' disabled' : ''}
+      title="${esc(c.name)}">
+    <span class="pickCode">${esc(c.code || '')}</span>
+    <span><span class="nm">${esc(c.title || c.name)}</span>
+      <span class="sub">${esc(bits.join(' · '))}</span></span>
+    <span class="rt">${right.join('')}</span>
+  </button>`;
+}
+
+/* Where you left off, or nothing at all. A band that said "no recent work"
+   would be furniture on the one screen that should get out of the way. */
+function renderResume(r) {
+  const host = $('#pickerResume');
+  if (!host) return;
+  if (!r) { host.innerHTML = ''; return; }
+  const where = [r.code, r.term_label].filter(Boolean).join(' · ');
+  const what = r.assignment_name
+    ? `${r.waiting ? r.waiting + ' waiting on ' : 'last on '}"${r.assignment_name}"`
+    : (r.waiting ? r.waiting + ' submissions waiting' : 'no submissions waiting');
+  host.innerHTML = `<section class="resumeBand" aria-labelledby="resumeH">
+    <div>
+      <div class="kicker">Where you left off</div>
+      <h2 id="resumeH">${esc(r.title)}</h2>
+      <p>${esc(where)}${where ? ' · ' : ''}${esc(what)}, ${esc(r.ago || 'earlier')}.</p>
+    </div>
+    <div class="go">
+      <button class="btn primary" type="button" id="resumeGo">Carry on grading</button>
+      <button class="btn" type="button" id="resumeOpen">Open the course</button>
+    </div>
+  </section>`;
+  $('#resumeOpen').onclick = () => { location.hash = '#/c/' + r.course_id; };
+  $('#resumeGo').onclick = () => {
+    location.hash = r.assignment_id
+      ? `#/c/${r.course_id}/a/${r.assignment_id}`
+      : `#/c/${r.course_id}/grade`;
+  };
+}
+
+/* "5 hours ago". The hub says the same thing about the same timestamps; this
+   is the browser's copy so the picker does not wait on a round trip for it. */
+function ago(iso) {
+  if (!iso) return '';
+  const when = new Date(iso);
+  if (isNaN(when)) return '';
+  const secs = (Date.now() - when.getTime()) / 1000;
+  if (secs < 90) return 'just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return mins + ' min ago';
+  const hours = Math.round(mins / 60);
+  if (hours < 36) return hours + ' hour' + (hours === 1 ? '' : 's') + ' ago';
+  const days = Math.round(hours / 24);
+  if (days < 14) return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  return Math.round(days / 7) + ' weeks ago';
 }
 
 /* ------------------------------------------------------------ assignments */
@@ -1694,9 +1788,10 @@ async function openCourse(courseId, refresh) {
   const tb = $('#teachBar'); if (tb) tb.classList.add('hidden');
   showView('picker');
   S.course = S.courses.find(c => String(c.id) === String(courseId)) || { id: courseId, name: 'Course ' + courseId };
-  crumbs([{ label: 'Courses', href: '#/' }, { label: S.course.name, href: '#/c/' + courseId }, { label: 'Grade' }]);
+  crumbs([{ label: 'Courses', href: '#/' }, { label: courseTitle(S.course), href: '#/c/' + courseId }, { label: 'Grade' }]);
   $('#headerActions').innerHTML = '';
-  $('#pickerTitle').textContent = S.course.name;
+  $('#pickerTitle').textContent = courseTitle(S.course);
+  $('#pickerTitle').title = S.course.name || '';
   const sb = $('#storageBar'); if (sb) sb.innerHTML = '';
   $('#pickerHint').textContent = 'Loading assignments…';
   $('#btnRefresh').onclick = () => openCourse(courseId, true);
@@ -1816,7 +1911,7 @@ async function openAssignment(courseId, assignmentId, opts = {}) {
   S.assignment = a;
   crumbs([
     { label: 'Courses', href: '#/' },
-    { label: (S.course && S.course.name) || 'Course', href: '#/c/' + courseId + '/grade' },
+    { label: courseTitle(S.course), href: '#/c/' + courseId + '/grade' },
     { label: a.name || 'Assignment' },
   ]);
   renderHeaderActions();

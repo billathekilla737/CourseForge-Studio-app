@@ -34,6 +34,29 @@ def install(app) -> None:  # noqa: ARG001  (the routes register on import)
 
 
 # --------------------------------------------------------------------- routes
+@route("GET", "/api/picker", area="hub")
+def picker(req):
+    """Everything the course list draws, in one call.
+
+    The courses and the term counts were already two round trips; the state
+    beside each course is new, and all of it is read off this disk. A picker
+    that asked Canvas how many submissions are waiting in five courses would
+    take five calls to tell you something you are about to click into anyway.
+    So a course that has never been opened here simply says so, and the first
+    visit fills it in.
+    """
+    app = req.app
+    refresh = req.flag("refresh")
+    courses = [dict(c) for c in app.courses(refresh)]
+    for course in courses:
+        course.update(local_state(app, course.get("id")))
+    return {
+        "courses": courses,
+        "terms": app.term_summary(False),
+        "resume": _resume(courses),
+    }
+
+
 @route("GET", "/api/courses/{cid}/hub", area="hub")
 def hub(req):
     return build_hub(req.app, req.params["cid"])
@@ -111,6 +134,94 @@ def refresh(req):
         return out
 
     return req.job("hub.refresh", job)
+
+
+# ------------------------------------------------- state beside each course
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def local_state(app, course_id) -> dict:
+    """What this machine already knows about one course. No Canvas, no model.
+
+    Three questions the course list could not answer before: has this course
+    ever been opened here, is anything waiting to be graded in it, and when was
+    it last worked on. All three come from files that are already written, so
+    the list paints in the time it takes to stat a few dozen paths.
+    """
+    cdir = Path(app.store.root) / str(course_id)
+    if not cdir.is_dir():
+        return {"known": False, "waiting": 0, "assignments": 0, "graded": 0,
+                "touched_at": None, "last_assignment": None}
+
+    rows = app.store.assignments(course_id) or []
+    waiting = sum(int(r.get("needs_grading") or 0) for r in rows)
+    names = {str(r.get("id")): r.get("name", "") for r in rows}
+
+    graded = 0
+    newest_draft, newest_aid = 0.0, None
+    try:
+        children = [p for p in cdir.iterdir() if p.is_dir() and p.name.isdigit()]
+    except OSError:
+        children = []
+    for child in children:
+        when = _mtime(child / "draft.json")
+        if not when:
+            continue
+        graded += 1
+        if when > newest_draft:
+            newest_draft, newest_aid = when, child.name
+
+    touched = max(newest_draft, _mtime(cdir / "assignments.json"),
+                  _mtime(cdir / ledger.FILE))
+    return {
+        "known": True,
+        "waiting": waiting,
+        "assignments": len(rows),
+        "graded": graded,
+        "touched_at": _iso(touched),
+        # The work itself, not merely a list that was synced: this is what
+        # "carry on" should point at.
+        "worked_at": _iso(newest_draft),
+        "last_assignment": ({"id": newest_aid, "name": names.get(newest_aid or "", "")}
+                            if newest_aid else None),
+    }
+
+
+def _iso(stamp: float) -> str | None:
+    if not stamp:
+        return None
+    return datetime.fromtimestamp(stamp, timezone.utc).isoformat(timespec="seconds")
+
+
+def _resume(courses: list[dict]) -> dict | None:
+    """The course to offer to carry on with, or None on a first run.
+
+    Chosen by when grading was last saved rather than by what the browser last
+    opened, so it survives a new browser and never offers a course that was
+    only glanced at. None is a real answer: there is nothing to carry on with
+    before any work has been done, and a band saying so would be furniture.
+    """
+    done = [c for c in courses if c.get("worked_at") and not c.get("excluded")]
+    if not done:
+        return None
+    best = max(done, key=lambda c: c["worked_at"])
+    last = best.get("last_assignment") or {}
+    return {
+        "course_id": best.get("id"),
+        "course_name": best.get("name", ""),
+        "title": best.get("title") or best.get("name", ""),
+        "code": best.get("code", ""),
+        "term_label": best.get("term_label", ""),
+        "assignment_id": last.get("id"),
+        "assignment_name": last.get("name") or "",
+        "waiting": best.get("waiting", 0),
+        "worked_at": best.get("worked_at"),
+        "ago": _ago(best.get("worked_at")),
+    }
 
 
 # ------------------------------------------------------------------ the hub

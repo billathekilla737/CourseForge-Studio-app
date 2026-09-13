@@ -37,6 +37,10 @@
 
 <!-- picker: the course list, and the assignment list of one course -->
 <section id="viewPicker" class="wrap">
+  <!-- The course you were last grading in, offered with one button. Painted by
+       grade.js on the course list only, and left empty when there is nothing to
+       carry on with, so a first run is not given a band about nothing. -->
+  <div id="pickerResume"></div>
   <div class="sectionHead">
     <h2 id="pickerTitle">Your courses</h2>
     <span class="hint" id="pickerHint">Loading…</span>

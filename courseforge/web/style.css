@@ -1243,13 +1243,10 @@ header{border-top:3px solid var(--gold)}
 .zoneNote{margin:0;font-size:11.5px;color:var(--muted)}
 .zoneNote.bad{color:var(--danger)}
 .hubSection{margin-top:26px}
-.across{margin-top:26px}
 /* A card is a surface, not a sentence. An anchor styled as one would otherwise
    take the link colour and sit next to an identical card built from a button,
    one blue and one not, for no reason a reader could work out. */
-a.card,a.card:visited,a.acrossCard,a.acrossCard:visited{color:var(--ink);text-decoration:none}
-.acrossCard{cursor:pointer}
-.acrossCard.off{cursor:not-allowed}
+a.card,a.card:visited{color:var(--ink);text-decoration:none}
 
 /* ---------------- install cards ----------------
    What is missing, what it enables, how to install it, and Check again. */
@@ -1422,3 +1419,83 @@ a.card,a.card:visited,a.acrossCard,a.acrossCard:visited{color:var(--ink);text-de
 .subTabGroup:first-child{margin-left:0;padding-left:0;border-left:0}
 .pdfTriageLink{margin-left:8px;color:var(--zone);font-weight:600;white-space:nowrap}
 
+
+/* ================================================= the course list (home)
+   The picker opens on the course you were last grading in, because most
+   mornings that is the one you came back for. Underneath, the other courses
+   and the four cross-course tools share a row: two short columns read faster
+   than one long one, and the tools stop looking like more courses.
+
+   Only the course list wears this. The assignment list shares the section and
+   must stay a single column. */
+#viewPicker.pickerHome{display:grid;align-content:start;
+  grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);
+  column-gap:22px;row-gap:0}
+#viewPicker.pickerHome > #pickerResume,
+#viewPicker.pickerHome > .sectionHead{grid-column:1/-1}
+#viewPicker.pickerHome > #pickerBody{grid-column:1}
+#viewPicker.pickerHome > #pickerStrip{grid-column:2}
+@media (max-width:900px){
+  #viewPicker.pickerHome{grid-template-columns:minmax(0,1fr)}
+  #viewPicker.pickerHome > #pickerBody,
+  #viewPicker.pickerHome > #pickerStrip{grid-column:1}
+}
+
+/* Where you left off. Navy with the gold rule, the same band the hub wears, so
+   the two screens read as one tool. */
+.resumeBand{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;
+  align-items:center;padding:17px 20px;margin:0 0 20px;
+  border-radius:var(--radius);border-top:3px solid var(--gold);
+  background:var(--navy);color:#fff}
+@media (max-width:640px){.resumeBand{grid-template-columns:minmax(0,1fr)}}
+.resumeBand .kicker{font-size:10.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--gold);margin-bottom:6px}
+.resumeBand h2{margin:0 0 5px;font-size:19px;font-weight:650;text-wrap:balance}
+.resumeBand p{margin:0;font-size:12.5px;color:#b9c6d8}
+.resumeBand .go{display:flex;gap:8px;flex-wrap:wrap}
+.resumeBand .btn{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.26);
+  color:#fff}
+.resumeBand .btn:hover{background:rgba(255,255,255,.18)}
+.resumeBand .btn.primary{background:var(--gold);border-color:var(--gold);
+  color:#231a04;font-weight:650}
+.resumeBand .btn.primary:hover{background:#f2b53d}
+
+/* The other courses: one row each, not a card each. */
+.pickList{display:flex;flex-direction:column;border:1px solid var(--line);
+  border-radius:var(--radius);overflow:hidden;background:var(--panel)}
+.pickRow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:11px;
+  align-items:center;width:100%;padding:11px 14px;text-align:left;font:inherit;
+  color:var(--ink);background:var(--panel);cursor:pointer;
+  border:0;border-top:1px solid var(--line)}
+.pickRow:first-child{border-top:0}
+.pickRow:hover{background:var(--zone-soft)}
+.pickRow .nm{font-size:13.5px;font-weight:600;min-width:0}
+.pickRow .sub{font-size:11px;color:var(--muted);margin-top:2px}
+.pickRow .rt{display:flex;gap:6px;align-items:center;justify-content:flex-end;
+  flex-wrap:wrap}
+.pickRow.off{opacity:.55;cursor:not-allowed}
+.pickRow.off:hover{background:var(--panel)}
+.pickCode{display:inline-block;font:600 10.5px/1 var(--mono);letter-spacing:.03em;
+  color:var(--zone);background:var(--zone-soft);padding:4px 6px;border-radius:5px;
+  white-space:nowrap}
+
+/* The four things that are not about one course. A stack, so they are plainly
+   a different kind of thing from the rows beside them. */
+.acrossStack{display:flex;flex-direction:column;gap:8px}
+.acrossStack h2{margin:0 0 2px;font-size:13px;font-weight:650}
+.acrossStack .lead{margin:0 0 4px;font-size:11.5px;color:var(--muted);line-height:1.55}
+.acrossItem{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;
+  align-items:start;width:100%;text-align:left;font:inherit;color:var(--ink);
+  padding:10px 12px;background:var(--panel);border:1px solid var(--line);
+  border-radius:7px;cursor:pointer;text-decoration:none}
+.acrossItem:hover{border-color:var(--accent)}
+.acrossItem .ic{width:8px;height:8px;border-radius:2px;margin-top:5px;
+  background:var(--zone)}
+.acrossItem .ic.a11y{background:var(--a11y)}
+.acrossItem .ic.grade{background:var(--accent)}
+.acrossItem .t{display:block;font-size:12.5px;font-weight:600}
+.acrossItem .m{display:block;font-size:11px;color:var(--muted);margin-top:2px;
+  line-height:1.5}
+.acrossItem.off{opacity:.55;cursor:not-allowed}
+.acrossItem.off:hover{border-color:var(--line)}
+a.acrossItem,a.acrossItem:visited{color:var(--ink)}

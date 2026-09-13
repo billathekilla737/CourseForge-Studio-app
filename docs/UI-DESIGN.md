@@ -12,7 +12,7 @@ server with a confirm token and shown as a plain sentence (`askConfirm`).
 
 | Route | Opens | File |
 |---|---|---|
-| `#/` | Courses picker plus an "Across your courses" strip (Term schedule, Accommodations, Batch Course Restyle) | grade.js / hub.js |
+| `#/` | The course list: "Where you left off", the other courses as rows, and "Across your courses" as a stack beside them | grade.js / hub.js |
 | `#/schedule` | Term schedule (existing) | grade.js |
 | `#/batch` | Batch Course Restyle across courses | a11y.js |
 | `#/c/<cid>` | **Course hub** (new) | hub.js |
@@ -43,7 +43,29 @@ Grading edits required by the route change: the crumbs in `openCourse` become
 
 ## 2. Navigation
 
-1. Picker: course cards, plus the cross-course strip.
+1. The course list (`#viewPicker.pickerHome`, a two-column grid):
+
+   * **Where you left off** — a navy band with the gold rule, the same one the
+     hub wears. It names the course grading was last saved in, the assignment,
+     and how many submissions are waiting, with **Carry on grading** going
+     straight to that assignment. Chosen from `worked_at` (the newest
+     `draft.json` mtime) rather than from what the browser last opened, so it
+     survives a new browser and never offers a course that was only glanced at.
+     Absent entirely on a first run: a band saying there is nothing to carry on
+     with is furniture on the one screen that should get out of the way.
+   * The other courses as rows, not cards: catalogue code, the short title, and
+     what this machine knows — waiting to grade, or `not opened yet` for a
+     course with no cached assignment list, plus when it was last touched.
+   * The four cross-course tools as a stack in the right column. As cards they
+     sat in the same grid in the same shape as the courses, and the page read
+     as nine equal boxes of which four were not courses.
+
+   `GET /api/picker` answers all of it in one call, entirely from local files.
+   Course names come through `title` (`schedule.course_title`), so no heading
+   anywhere opens with the registrar's prefix; `courseTitle()` in core.js is
+   the single browser-side use of it and the full Canvas name is the tooltip.
+   The assignment list shares `#viewPicker` and must stay one column, so the
+   class is toggled in `showView`, not set.
 2. Course hub: five area cards with live status from local state only
    (`GET /api/courses/<cid>/hub`), a `stale` flag triggering a background refresh.
 3. Area bar (`<nav id="areaBar">`, second row under the header): Grade,
@@ -232,6 +254,7 @@ writes use full-size buttons.
 
 | Area | Endpoints |
 |---|---|
+| Picker | `GET /api/picker?refresh=` (courses with local state, terms, and what to carry on with) |
 | Hub | `GET /api/courses/{cid}/hub`, `GET /api/courses/{cid}/ledger`, `POST /api/courses/{cid}/hub/refresh`; `/api/health` gains `tools` |
 | Gateway | `GET /api/a11y/{cid}/{kind}/state`; `POST .../list`, `.../fetch`, `.../describe`, `.../fixes`, `.../push {apply, confirm}` |
 | PDF | `GET /api/pdf/{cid}/state`; `GET /api/pdf/{cid}/picture?hash=`; `POST /api/pdf/{cid}/(fix|describe|upload|prove|backup|rollback)`; `POST /api/pdf/{cid}/alt` |

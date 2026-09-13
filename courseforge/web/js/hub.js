@@ -31,7 +31,8 @@
   /* ---------------------------------------------------------------- open */
   async function openHub(courseId) {
     showView('hub');
-    $('#hubTitle').textContent = (S.course && String(S.course.id) === String(courseId) && S.course.name) || 'Course';
+    $('#hubTitle').textContent = (S.course && String(S.course.id) === String(courseId)
+      && courseTitle(S.course)) || 'Course';
     $('#hubSub').textContent = 'Loading…';
     $('#hubStats').innerHTML = '';
     $('#hubBody').innerHTML = '';
@@ -41,9 +42,10 @@
 
     const course = await ensureCourse(courseId);
     if (!stillHere(courseId)) return;
-    crumbs([{ label: 'Courses', href: '#/' }, { label: course.name }]);
-    $('#hubTitle').textContent = course.name;
-    document.title = `${course.name} · CourseForge Studio`;
+    crumbs([{ label: 'Courses', href: '#/' }, { label: courseTitle(course) }]);
+    $('#hubTitle').textContent = courseTitle(course);
+    $('#hubTitle').title = course.name || '';
+    document.title = `${courseTitle(course)} · CourseForge Studio`;
 
     let hub;
     try { hub = await api(`/courses/${courseId}/hub`); }
@@ -73,7 +75,7 @@
   /* --------------------------------------------------------------- paint */
   function paint(courseId, hub) {
     const course = { ...(S.course || {}), ...(hub.course || {}) };
-    $('#hubTitle').textContent = course.name || 'Course ' + courseId;
+    $('#hubTitle').textContent = courseTitle(course) || 'Course ' + courseId;
     const bits = [];
     if (course.term_label || course.term) bits.push(course.term_label || course.term);
     if (course.code) bits.push(course.code);
@@ -191,31 +193,42 @@
   /* Under the course cards on the picker: the three things that are not about
      one course. Painted on the shell's studio:picker event, which fires each
      time the course list is shown and never for the assignment list. */
+  /* A stack beside the course list rather than a fourth row of cards under it.
+     Built as cards, these four sat in the same grid as the courses in the same
+     shape, and the page read as nine equal boxes of which four were not
+     courses at all. */
   function renderAcross(host) {
     if (!host) return;
     const batchOn = typeof openBatch === 'function' || (window.Studio && window.Studio.areas && window.Studio.areas.has('a11y'));
-    host.innerHTML = `<section class="across" aria-labelledby="acrossH">
-      <div class="sectionHead"><h2 id="acrossH">Across your courses</h2></div>
-      <div class="cards acrossCards">
-        <a class="card acrossCard" href="#/schedule">
-          <div class="t">Term schedule</div>
-          <div class="m">Every dated assignment in the term, week by week, with reminders and announcements.</div></a>
-        <button class="card acrossCard" type="button" id="acrossRoster">
-          <div class="t">Accommodations roster</div>
-          <div class="m">Standing extra time and attempts, applied to any quiz in any course.</div></button>
-        ${batchOn
-          ? `<a class="card acrossCard" href="#/batch"><div class="t">Batch Course Restyle</div>
-               <div class="m">Restyle and verify pages across several courses at once. Dry run first.</div></a>`
-          : `<button class="card acrossCard off" type="button" disabled title="Not installed in this build">
-               <div class="t">Batch Course Restyle</div>
-               <div class="m">Not installed in this build.</div></button>`}
-        ${batchOn
-          ? `<a class="card acrossCard" href="#/files"><div class="t">ADA file compliance</div>
-               <div class="m">The PDFs, slide decks and Word documents across several courses. Survey first; nothing is uploaded until you say so.</div></a>`
-          : `<button class="card acrossCard off" type="button" disabled title="Not installed in this build">
-               <div class="t">ADA file compliance</div>
-               <div class="m">Not installed in this build.</div></button>`}
-      </div></section>`;
+    const off = (t, m) => `<span class="acrossItem off" aria-disabled="true"
+        title="Not installed in this build"><span class="ic"></span>
+        <span><span class="t">${esc(t)}</span><span class="m">${esc(m)}</span></span></span>`;
+    host.innerHTML = `<section class="acrossStack" aria-labelledby="acrossH">
+      <h2 id="acrossH">Across your courses</h2>
+      <p class="lead">These four work on several courses at once. Each shows you the
+        plan before anything is sent.</p>
+      <a class="acrossItem" href="#/schedule"><span class="ic grade"></span>
+        <span><span class="t">Term schedule</span>
+        <span class="m">Every dated assignment in the term, week by week, with
+          reminders and announcements.</span></span></a>
+      <button class="acrossItem" type="button" id="acrossRoster">
+        <span class="ic grade"></span>
+        <span><span class="t">Accommodations roster</span>
+        <span class="m">Standing extra time and attempts, applied to any quiz in
+          any course.</span></span></button>
+      ${batchOn
+        ? `<a class="acrossItem" href="#/batch"><span class="ic a11y"></span>
+             <span><span class="t">Batch Course Restyle</span>
+             <span class="m">Restyle and verify pages across several courses at
+               once. Dry run first.</span></span></a>`
+        : off('Batch Course Restyle', 'Not installed in this build.')}
+      ${batchOn
+        ? `<a class="acrossItem" href="#/files"><span class="ic a11y"></span>
+             <span><span class="t">ADA file compliance</span>
+             <span class="m">PDFs, slide decks and Word documents across several
+               courses. Survey first; nothing is uploaded until you say so.</span></span></a>`
+        : off('ADA file compliance', 'Not installed in this build.')}
+    </section>`;
     const roster = host.querySelector('#acrossRoster');
     if (roster) roster.onclick = () => {
       if (typeof openRoster === 'function') openRoster();

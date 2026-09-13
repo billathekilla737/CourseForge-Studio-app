@@ -171,7 +171,7 @@
       let info = null;
       for (let i = 0; i < 180; i++) {
         info = await api('/jobs/' + job);
-        if (info.state !== 'running') break;
+        if (info.state !== 'running' || !stillHere(courseId)) break;
         await sleep(700);
       }
       if (!stillHere(courseId)) return;

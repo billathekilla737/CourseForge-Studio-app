@@ -237,7 +237,11 @@ def office(app, course_id, kind_id: str) -> dict:
         fixed = item.fixed.is_file()
         after = before
         if fixed:
-            titled = sum(1 for v in (fixes.get("titles") or {}).values() if (v or "").strip())
+            # Only a title written for a slide the scan found untitled fixes a
+            # defect; renaming a slide that already had one earns nothing.
+            untitled_slides = {str(u.get("slide")) for u in (item.report.get("untitled") or [])}
+            titled = sum(1 for k, v in (fixes.get("titles") or {}).items()
+                         if (v or "").strip() and str(k) in untitled_slides)
             after = score_defects(_office_defects(
                 int(summary.get("alt_todo") or 0),
                 max(0, untitled - titled),
@@ -283,8 +287,20 @@ def html(app, course_id) -> dict:
     wd = wdmod.workdir(app.course_dir(course_id))
     has_listing = (wd / "manifest.json").is_file()
     manifest = _load(wd / "manifest.json")
+    # verify-report.json is a list, one record per styled item (see
+    # a11y/workdir.py). Reading it as a dict raised on the first course that
+    # had ever been verified, and the whole Pages part came back as "could not
+    # be read" exactly when there was something to report.
     report = _load(wd / "verify-report.json")
-    verified = {str(r.get("key")): r for r in (report.get("items") or [])} if report else {}
+    if isinstance(report, list):
+        records = report
+    elif isinstance(report, dict):
+        records = report.get("items") or []
+    else:
+        records = []
+    verified = {str(r.get("key")): r for r in records if isinstance(r, dict) and r.get("key")}
+    if not isinstance(manifest, dict):
+        manifest = {}
 
     rows = []
     for item in (manifest.get("items") or []):
@@ -362,6 +378,13 @@ def forecast(app, course_id) -> dict:
         headline = ("By the measures Ally uses, this course scores %.0f where it "
                     "scored %.0f before the Studio touched it, across %d file%s."
                     % (after, before, len(every), "" if len(every) == 1 else "s"))
+    elif any(r.get("fixed") for r in every):
+        fixed_n = sum(1 for r in every if r.get("fixed"))
+        headline = ("Scored %.0f across %d file%s. %d file%s fixed here, but "
+                    "nothing that was fixed is among the defects this score "
+                    "counts, so before and after are the same number."
+                    % (after, len(every), "" if len(every) == 1 else "s",
+                       fixed_n, " was" if fixed_n == 1 else "s were"))
     else:
         headline = ("Scored %.0f across %d file%s. Nothing has been fixed here "
                     "yet, so before and after are the same number."

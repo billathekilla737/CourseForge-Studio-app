@@ -490,7 +490,15 @@ def _studio_problem(args, seg):
     if head == "assistant":
         return ("a nested Assistant session", "run")
     rest = args[2:]
-    if _APPLY.search(" ".join(rest)):
+    # An argument the shell would still expand or reassemble is not one the
+    # gate can read: `$env:X`, `%X%`, `$(echo --apply)` and a backtick escape
+    # all reach the verb as --apply while this text says nothing of the kind.
+    # A quote split through the flag ('--ap'ply) is the same trick, so the
+    # flag is looked for with the quotes taken out.
+    for a in rest:
+        if re.search(r"[$`%()]", a):
+            return ("a built-up argument to a Studio verb that the gate cannot read", "run")
+    if _APPLY.search(re.sub(r"[\"']", "", " ".join(rest))):
         cid = _course_of(rest)
         return ("%s %s with --apply changes the live Canvas course" % (head, verb),
                 "canvas-write",

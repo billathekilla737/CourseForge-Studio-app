@@ -94,6 +94,11 @@ Check everything:
 python -m courseforge doctor
 ```
 
+To prove the whole thing works without touching a live course, work through
+[docs/TEST-PLAN.md](docs/TEST-PLAN.md): preflight commands, a safety check
+that nothing writes without a confirmation, and a numbered walk through every
+area with what each step should show.
+
 ## Running it
 
 **Windows, no terminal:** double-click **`CourseForge Studio.vbs`**. A small

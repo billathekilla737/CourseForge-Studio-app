@@ -32,7 +32,7 @@ from . import (accommodations, areas, audit, blender, confirm, curve, grader,
 from .canvas import CanvasClient, CanvasError
 from . import config
 from .config import Config
-from .store import Store
+from .store import Store, safe_id
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
@@ -101,6 +101,15 @@ class JobSink:
         self._jobs.item(self._id, key, state, detail, finished)
 
 
+MAX_BODY_BYTES = 16 * 1024 * 1024
+# Exceptions whose message is already a sentence for the person.
+PLAIN_ERRORS = ("Refused", "PushRefused", "HTTPError", "NotOnThisRoster")
+# Finished jobs are kept so a page that closed the dialog can still read the
+# result, but not forever: each one holds its plan or draft in memory.
+JOB_KEEP_SECONDS = 60 * 60
+JOB_KEEP_COUNT = 200
+
+
 class Jobs:
     """In-memory registry of background jobs."""
 
@@ -108,10 +117,26 @@ class Jobs:
         self._jobs: dict[str, dict] = {}
         self._lock = threading.Lock()
 
+    def _sweep(self, now: float) -> None:
+        """Drop finished jobs that are old, oldest first past the cap. Caller holds the lock."""
+        done = [j for j in self._jobs.values() if j.get("state") != "running"]
+        done.sort(key=lambda j: j.get("updated", 0))
+        stale = {j["id"] for j in done if now - j.get("updated", now) > JOB_KEEP_SECONDS}
+        over = len(self._jobs) - len(stale) - JOB_KEEP_COUNT
+        for j in done:
+            if over <= 0:
+                break
+            if j["id"] not in stale:
+                stale.add(j["id"])
+                over -= 1
+        for job_id in stale:
+            self._jobs.pop(job_id, None)
+
     def start(self, kind: str, fn) -> str:
         job_id = uuid.uuid4().hex[:12]
         now = time.time()
         with self._lock:
+            self._sweep(now)
             self._jobs[job_id] = {"id": job_id, "kind": kind, "state": "running",
                                   "log": [], "items": {}, "updated": now,
                                   "started_at": datetime.now().isoformat(timespec="seconds")}
@@ -137,8 +162,12 @@ class Jobs:
                                               updated=time.time(),
                                               **exc.payload())
             except Exception as exc:  # noqa: BLE001
+                # A refusal an area wrote for a person to read is shown as
+                # written; the class name is for the trace, not the page.
+                plain = type(exc).__name__ in PLAIN_ERRORS or isinstance(exc, PermissionError)
                 with self._lock:
-                    self._jobs[job_id].update(state="error", error=f"{type(exc).__name__}: {exc}",
+                    self._jobs[job_id].update(state="error",
+                                              error=str(exc) if plain else f"{type(exc).__name__}: {exc}",
                                               trace=traceback.format_exc()[-2000:],
                                               items={}, updated=time.time())
 
@@ -245,7 +274,7 @@ class App:
 
     def course_dir(self, course_id) -> Path:
         """Where an area keeps its work for one course: data/<course>/<area>/..."""
-        path = self.store.root / str(course_id)
+        path = self.store.root / safe_id(course_id)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -502,6 +531,30 @@ class App:
         self._refresh_totals(course_id, assignment_id)
         planned["applied"] = True
         return planned
+
+    def edit_student(self, course_id, assignment_id, user_id, body: dict) -> dict:
+        """A hand edit from the review pane: sliders and the comment."""
+        changes = {k: v for k, v in body.items() if k != "user_id"}
+        changes.setdefault("source", "human")
+        if "scores" in changes:
+            changes["total"] = round(sum(float(v or 0) for v in changes["scores"].values()), 2)
+            # A rubric score by hand replaces a breakdown-less total pulled
+            # from Canvas.
+            changes["total_only"] = False
+        draft = self.store.update_student(course_id, assignment_id, user_id, **changes)
+        entry = draft["students"][str(user_id)]
+        # The curve sits on top of the earned score, and a slider just moved
+        # the earned score. The curved total is what the roster shows and what
+        # a push writes, so it has to follow, or the two disagree until the
+        # next curve or re-grade happens to recompute it.
+        if entry.get("curve") and curve.is_scored(entry):
+            want = curve.final_total(entry, draft.get("rubric") or [],
+                                     draft.get("points_possible") or 0)
+            if entry.get("final_total") != want:
+                draft = self.store.update_student(course_id, assignment_id, user_id,
+                                                  final_total=want)
+                entry = draft["students"][str(user_id)]
+        return entry
 
     def _refresh_totals(self, course_id, assignment_id) -> None:
         """Recompute the curved total on every entry that has a curve."""
@@ -898,7 +951,10 @@ class App:
                     "error": "Nothing in that plan could be applied."}
 
         if not dry_run:
-            self._gate("instruct", [instruct.describe(op) for op in ops],
+            # The whole operation, not its one-line description: an
+            # announcement is described by its title, and the message it
+            # posts has to be part of what the token is bound to.
+            self._gate("instruct", [{"line": instruct.describe(op), "op": op} for op in ops],
                        f"{len(ops)} change(s) to your live courses",
                        confirm_token, what="changing your courses")
 
@@ -1258,6 +1314,10 @@ class App:
         have actually changed, because it is megabytes and a pass that reused
         cached renders produced nothing new to carry.
         """
+        # This uploads to the instructor's own Canvas files, not to the course,
+        # so it needs no second click. It is still a Canvas write, and the hard
+        # lock in config.json has to mean what it says everywhere.
+        self._require_writes("carrying grading between machines")
         adir = self.store.assignment_dir(course_id, assignment_id)
         draft = self.store.draft(course_id, assignment_id)
         if not draft:
@@ -1426,7 +1486,8 @@ class App:
 
         return {"did": "in_step", "rev": local["rev"]}
 
-    def handoff_disable(self, course_id, assignment_id, remove: bool = False) -> dict:
+    def handoff_disable(self, course_id, assignment_id, remove: bool = False,
+                        confirm_token: str | None = None) -> dict:
         """Stop carrying this assignment, and optionally clear it from Canvas."""
         adir = self.store.assignment_dir(course_id, assignment_id)
         removed = 0
@@ -1434,10 +1495,22 @@ class App:
             folder = getattr(self.cfg, "handoff_folder", handoff.FOLDER)
             wanted = {handoff.draft_name(course_id, assignment_id),
                       handoff.blend_name(course_id, assignment_id)}
-            for f in self.client.user_folder_files(folder):
-                if f.get("display_name") in wanted:
-                    self.client.delete_file(f["id"])
-                    removed += 1
+            found = [f for f in self.client.user_folder_files(folder)
+                     if f.get("display_name") in wanted]
+            if found:
+                # Deleting a file from Canvas is a Canvas write like any other,
+                # and the copy being deleted may be the only one of grading
+                # done on another machine. Same second click as everything else.
+                self._gate("handoff_off",
+                           {"course_id": str(course_id),
+                            "assignment_id": str(assignment_id),
+                            "files": sorted(str(f.get("id")) for f in found)},
+                           f"Delete {len(found)} handoff file(s) for this assignment "
+                           f"from your Canvas files. Grading on this machine is kept.",
+                           confirm_token, what="removing a handoff")
+            for f in found:
+                self.client.delete_file(f["id"])
+                removed += 1
         try:
             handoff.state_path(adir).unlink()
         except OSError:
@@ -1866,8 +1939,14 @@ class App:
                     "assignment_id": str(assignment_id),
                     "grades": sorted([str(i["user_id"]), i.get("score")]
                                      for i in planned),
-                    "comments": bool(include_comments)},
-                   f"Write {len(planned)} grade(s) to Canvas",
+                    # The words as well as the fact: editing a comment after
+                    # the dialog was shown has to ask again, as promised.
+                    "comments": (sorted([str(i["user_id"]), i.get("comment") or ""]
+                                        for i in planned)
+                                 if include_comments else False)},
+                   f"Write {len(planned)} grade(s) to Canvas. The assignment is "
+                   "set to manual posting first, so nothing shows to students "
+                   "until you make it live.",
                    confirm_token, what="posting grades")
 
         self._ensure_manual_posting(course_id, assignment_id, log)
@@ -2487,12 +2566,18 @@ def make_handler(app: App):
                        "application/json; charset=utf-8")
 
         def _body(self) -> dict:
-            length = int(self.headers.get("Content-Length") or 0)
-            if not length:
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            # Nothing the page sends is more than a few hundred kilobytes; a
+            # length past this is a mistake or a hostile client, and reading
+            # it would pin a thread and the memory it asks for.
+            if length <= 0 or length > MAX_BODY_BYTES:
                 return {}
             try:
                 return json.loads(self.rfile.read(length).decode("utf-8"))
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 return {}
 
         def _same_origin(self) -> bool:
@@ -2749,15 +2834,8 @@ def make_handler(app: App):
 
                     if action == "student":
                         uid = parts[5] if len(parts) > 5 else body.get("user_id")
-                        changes = {k: v for k, v in body.items() if k != "user_id"}
-                        changes.setdefault("source", "human")
-                        if "scores" in changes:
-                            changes["total"] = round(sum(float(v or 0) for v in changes["scores"].values()), 2)
-                            # A rubric score by hand replaces a breakdown-less
-                            # total pulled from Canvas.
-                            changes["total_only"] = False
-                        draft = app.store.update_student(cid, aid, uid, **changes)
-                        return self._json({"ok": True, "student": draft["students"][str(uid)]})
+                        return self._json({"ok": True,
+                                           "student": app.edit_student(cid, aid, uid, body)})
 
                     if action == "handoff":
                         how = str(body.get("do") or "send")
@@ -2771,7 +2849,8 @@ def make_handler(app: App):
                             return self._json({"job": job})
                         if how == "off":
                             return self._json(app.handoff_disable(
-                                cid, aid, bool(body.get("remove"))))
+                                cid, aid, bool(body.get("remove")),
+                                body.get("confirm")))
                         job = app.jobs.start("handoff", lambda log: app.handoff_send(
                             cid, aid, body.get("blend"), log))
                         return self._json({"job": job})

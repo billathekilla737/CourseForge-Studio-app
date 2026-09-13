@@ -28,6 +28,7 @@ dependencies = [
   "python-pptx>=1.0",    # PowerPoint remediation
   "lxml>=5.0",           # python-pptx XML edits
   "pillow>=10.0",        # contact sheets, figure thumbnails
+  "tzdata; sys_platform == 'win32'",  # zoneinfo has no zone database on Windows
 ]
 
 [project.optional-dependencies]

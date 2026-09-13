@@ -38,10 +38,19 @@ def score_many(req):
     ids = _ids(req.body)
 
     def job(log):
-        rows = []
+        rows, failed = [], []
         for i, cid in enumerate(ids, start=1):
             log("%d/%d scoring" % (i, len(ids)), i - 1, len(ids))
-            out = score.forecast(req.app, cid)
+            # One course that cannot be read must not take the other four off
+            # the report. It is listed as failed, with the reason, and the
+            # averages are over the courses that did score.
+            try:
+                out = score.forecast(req.app, cid)
+            except Exception as exc:  # noqa: BLE001
+                failed.append({"course_id": cid, "course": _name(req.app, cid),
+                               "error": "%s: %s" % (type(exc).__name__, exc)})
+                log("%d/%d could not be scored" % (i, len(ids)), i, len(ids))
+                continue
             out["course"] = _name(req.app, cid)
             rows.append(out)
             log("%d/%d done" % (i, len(ids)), i, len(ids))
@@ -54,7 +63,7 @@ def score_many(req):
         pending = [r for r in rows if r.get("needs_scan")]
         first = rows[0] if rows else {}
         return {
-            "courses": rows, "before": before, "after": after,
+            "courses": rows, "failed": failed, "before": before, "after": after,
             "files": sum(r["files"] for r in rows),
             "unscanned": [{"course_id": r["course_id"], "course": r.get("course"),
                            "waiting": r.get("waiting") or []} for r in pending],
@@ -62,7 +71,9 @@ def score_many(req):
             "sentence_done": (
                 "Across %d course%s: %.0f now, %.0f before."
                 % (len(scored), "" if len(scored) == 1 else "s", after, before)
-                if scored else "Nothing in these courses has been scanned yet."),
+                if scored else "Nothing in these courses has been scanned yet.")
+            + (" %d course%s could not be read." % (len(failed), "" if len(failed) == 1 else "s")
+               if failed else ""),
             "method": first.get("method", ""),
             "method_note": first.get("method_note", ""),
         }

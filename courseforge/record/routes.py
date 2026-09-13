@@ -68,7 +68,9 @@ def download(req):
     cid = req.params["cid"]
     root = _root(req.app, cid)
     month = req.q("month")
-    for path in audit.months(root):
+    # Months come back oldest first. With no month asked for, the button says
+    # "this month", so the newest file is the one to hand over.
+    for path in reversed(audit.months(root)):
         if not month or path.stem == month:
             return FileResponse(path, "application/x-ndjson", download=True)
     raise HTTPError(404, "Nothing has been recorded for that month.")

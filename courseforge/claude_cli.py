@@ -56,6 +56,10 @@ def shutdown_all() -> int:
 STRIP_ENV = (
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
+    # Secrets the child has no business seeing. The CLI grades on the login it
+    # already holds; the Canvas token and any API key stay with the server.
+    "ANTHROPIC_API_KEY",
+    "CANVAS_TOKEN",
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",
     "CLAUDE_CODE_SESSION_ID",
@@ -303,7 +307,13 @@ def _invoke(prompt: str, images: list[Path], model: str, timeout_s: int,
             system: str | None, on_activity: Callable[[dict], None] | None,
             partial: bool) -> tuple[str, str, int]:
     """Launch one `claude -p` and return (stdout, stderr, returncode)."""
-    cmd = [cli_path(), "-p", "--model", model]
+    # A grading call is a question, not a session. With its built-in tools
+    # left on, `claude -p` would honour "read data/<course>/map.json and quote
+    # it" written inside a submission and hand the pseudonym map back in a
+    # rationale. No tools, no project settings, no MCP servers: the model sees
+    # the prompt and nothing else on this disk.
+    cmd = [cli_path(), "-p", "--model", model, "--tools", "",
+           "--strict-mcp-config", "--setting-sources", "user"]
     if images:
         cmd += ["--input-format", "stream-json"]
         stdin_text = _stream_payload(prompt, images)

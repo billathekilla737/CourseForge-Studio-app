@@ -93,11 +93,16 @@ def _clean_courses(course_ids) -> list[str]:
 def _pdf_row(ctx, cid) -> dict:
     st = course_pdfs.state(ctx, cid)
     files = st.get("files") or []
+    # The words below are the ones course_pdfs.state actually writes into
+    # `state`: "not fetched", "backed up", "needs a person", "fixed, not
+    # uploaded", "uploaded". Earlier names ("fixed", "verified") matched
+    # nothing, so a scan of forty repaired PDFs reported none ready.
+    # The queue is grouped by reason, so the files in it are the group counts.
     return {
         "files": len(files),
-        "scanned": sum(1 for f in files if f.get("state") not in ("", "original", None)),
-        "needs_person": len(st.get("queue") or []),
-        "ready": sum(1 for f in files if f.get("state") in ("fixed", "verified")),
+        "scanned": sum(1 for f in files if f.get("state") not in ("not fetched", "", None)),
+        "needs_person": sum(int(g.get("count") or 0) for g in (st.get("queue") or [])),
+        "ready": sum(1 for f in files if f.get("state") == "fixed, not uploaded"),
         "uploaded": sum(1 for f in files if f.get("state") == "uploaded"),
         # Figures still holding the placeholder the repair wrote. Carried so
         # the screen can say what uploading now would actually ship: a file
@@ -129,12 +134,18 @@ def _docs_row(ctx, cid, kind_id) -> dict:
                 alt_todo += len(_todo(it.report, it.fixes) or [])
             except Exception:  # noqa: BLE001
                 pass
+    states = [it.state() for it in items]
     return {
         "files": len(rows),
         "scanned": len(scanned),
         "issues": issues,
         "alt_todo": alt_todo,
-        "listed_at": listed.get("listed_at"),
+        # The same two columns the PDF row carries, so the table does not read
+        # as if no deck or document is ever ready or ever went up.
+        "ready": sum(1 for s in states if s in ("fixes ready", "verified")),
+        "uploaded": sum(1 for s in states if s == "pushed"),
+        "needs_person": sum(1 for s in states if s == "unsupported"),
+        "listed_at": listed.get("at"),
         "needs": gateway.tool_needs(ctx, kind),
     }
 
@@ -328,12 +339,14 @@ def push(ctx, course_ids, kinds=None, apply: bool = False, gate=None, log=None) 
         return {"ran_at": now_iso(), "action": "push", "applied": False,
                 "dry_run": True, "sentence": push_sentence(plan), **plan}
     if gate:
+        # A JSON string, not a list: the confirm dialog parses the detail back
+        # into rows a person reads before agreeing.
         gate({"course_ids": plan["course_ids"], "kinds": plan["kinds"],
               "ready": plan["ready"]},
              push_sentence(plan),
-             [{"label": r["name"],
-               "from": "%d ready" % sum(k["ready"] for k in r["kinds"].values()),
-               "to": "uploaded"} for r in plan["rows"]])
+             json.dumps([{"label": r["name"],
+                          "from": "%d ready" % sum(k["ready"] for k in r["kinds"].values()),
+                          "to": "uploaded"} for r in plan["rows"]]))
 
     rows, total = [], len(plan["course_ids"])
     uploaded = failed = 0
@@ -352,6 +365,8 @@ def push(ctx, course_ids, kinds=None, apply: bool = False, gate=None, log=None) 
                 row["kinds"][kind_id] = {"uploaded": got, "failed": bad}
                 uploaded += got
                 failed += bad
+                if got:
+                    _record_uploads(ctx, cid, kind_id, res)
         except Exception as exc:  # noqa: BLE001
             row["error"] = "%s: %s" % (type(exc).__name__, exc)
             failed += 1
@@ -361,3 +376,26 @@ def push(ctx, course_ids, kinds=None, apply: bool = False, gate=None, log=None) 
                "rows": rows, "uploaded": uploaded, "failed": failed,
                "sentence": push_sentence(plan)}
     return _save(ctx, summary)
+
+
+def _record_uploads(ctx, cid, kind_id: str, res: dict) -> None:
+    """One ledger line per course and kind, the same line the per-course
+    screens write. The per-course routes record their own uploads; this path
+    calls the pipelines directly, so until now a batch upload changed live
+    courses and left nothing in the course's record of what the Studio did."""
+    from .. import ledger
+    n = len(res.get("uploaded") or [])
+    sentence = res.get("sentence_done") or (
+        "Uploaded %d fixed %s over the originals in %s; the originals are kept on "
+        "this computer" % (n, KIND_LABEL[kind_id], course_label(ctx, cid)))
+    base_url = getattr(ctx.cfg, "base_url", "") or ""
+    ids = [u.get("file_id") for u in (res.get("uploaded") or []) if u.get("file_id")]
+    if kind_id == "pdf":
+        undo = {"route": "/pdf/%s/rollback" % cid, "body": {"file_ids": ids, "apply": True}}
+        kind = "pdf.push"
+    else:
+        undo = {"route": "/a11y/%s/%s/restore" % (cid, kind_id), "body": {"file_ids": ids}}
+        kind = kind_id
+    ledger.record(ctx.course_dir(cid), "pdf" if kind_id == "pdf" else "docs",
+                  sentence + " (batch run)", url="%s/courses/%s/files" % (base_url, cid),
+                  count=n, kind=kind, undo=undo)

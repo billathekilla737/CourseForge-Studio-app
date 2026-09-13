@@ -20,6 +20,7 @@ if not exist config.json (
   copy /y config.example.json config.json >nul
 )
 
-start "" http://127.0.0.1:8900
-python -m canvasgrader serve
+REM The status window owns the server, reads the port from config.json and
+REM opens the browser itself.
+python -m courseforge gui
 pause

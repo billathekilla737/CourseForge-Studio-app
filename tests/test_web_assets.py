@@ -70,3 +70,24 @@ class RegexStrings(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TheShellNamesWhereYouAre(unittest.TestCase):
+    """Three small things the review found missing from the shell."""
+
+    def test_the_page_has_an_icon(self):
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertIn('rel="icon"', html)
+        self.assertTrue((WEB / "favicon.svg").is_file())
+
+    def test_every_route_resets_the_tab_title(self):
+        """Leaving a course for the list kept the course name in the tab."""
+        src = (WEB / "js" / "core.js").read_text(encoding="utf-8")
+        self.assertIn("document.title = TITLES[parts[0]] || 'CourseForge Studio';", src)
+
+    def test_the_inbox_view_has_a_heading_to_land_on(self):
+        """Skip to content and the after-route focus knew every view but the
+        one Inbox and Reports share, so neither could be reached by keyboard."""
+        src = (WEB / "js" / "core.js").read_text(encoding="utf-8")
+        self.assertIn("inbox: '#viewInbox h2'", src)
+        self.assertIn("'#viewInbox', '#viewWork'", src)

@@ -210,17 +210,21 @@
           const name = btn.dataset.install;
           const info = ((S.health && S.health.tools) || {})[name] || {};
           const label = info.label || name;
-          if (!confirm(`Install ${label} on this computer now?\n\n`
-            + 'It is fetched from the publisher and installed for your account '
-            + 'only. Nothing is sent to Canvas.')) return;
-          runJob(`Installing ${label}`,
+          /* The shell's dialog rather than the browser's own: same look as
+             every other question the Studio asks, and it cannot be suppressed
+             by a "stop asking" tick the way the browser's can. */
+          askConfirm({
+            summary: `Install ${label} on this computer now. It is fetched from the `
+              + 'publisher and installed for your account only. Nothing is sent to Canvas.',
+          }, () => runJob(`Installing ${label}`,
             () => api('/tools/install', { method: 'POST', body: { tools: [name] } }),
             out => {
               if (out && out.tools) S.health = { ...(S.health || {}), tools: out.tools };
               setStatus((out && out.sentence_done) || 'done',
                 (out && (out.installed || []).length) ? 'ok' : 'err');
               needCards(names, host);
-            });
+            }), { title: `Install ${label}?`, verb: 'Yes, install it',
+            note: 'This changes this computer, not Canvas.' });
         };
       });
       host.querySelectorAll('[data-check]').forEach(btn => {

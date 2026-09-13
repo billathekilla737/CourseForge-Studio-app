@@ -122,19 +122,24 @@ def check_many(app, course_ids: list, cfg=None, log=lambda *_a, **_k: None) -> d
                            "error": "%s: %s" % (type(exc).__name__, exc)})
         log("%d/%d done" % (index, len(ids)), index, len(ids))
 
-    # Per policy, across every course: the shape a dean asks for.
+    # Per policy, across every course: the shape a dean asks for. A course with
+    # no syllabus at all is its own finding and is said in the summary; counted
+    # here it would show as missing every statement, and "most often missing:
+    # disability services" would be the wrong sentence about the wrong problem.
+    with_syllabus = [r for r in rows if not r["empty"]]
     by_policy = []
     for policy in policies:
-        misses = [r["course"] for r in rows
+        misses = [r["course"] for r in with_syllabus
                   if not next((x["present"] for x in r["rows"]
                                if x["id"] == policy["id"]), True)]
         by_policy.append({"id": policy["id"], "label": policy["label"],
                           "why": policy["why"],
                           "missing_in": misses, "missing": len(misses),
-                          "present": len(rows) - len(misses)})
+                          "present": len(with_syllabus) - len(misses)})
     clean = [r for r in rows if not r["missing"] and not r["empty"]]
     return {
         "courses": rows, "failed": failed, "by_policy": by_policy,
+        "no_syllabus": [r["course"] for r in rows if r["empty"]],
         "checked": len(rows), "clean": len(clean),
         "summary": _summary(rows, clean, by_policy),
         "note": ("A match means the syllabus mentions the subject. It does not "

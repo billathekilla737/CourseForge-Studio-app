@@ -164,6 +164,9 @@ class Launcher:
             self.claude_lbl.config(text='Change "port" in config.json and try again.', fg=MUTED)
             return
 
+        # The same background pieces `serve` starts, so the window and the
+        # terminal run the same app.
+        _app.start_handoff_worker()
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self._set_state(OK, "Running")

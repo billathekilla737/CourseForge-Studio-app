@@ -33,6 +33,13 @@ def cmd_doctor(cfg: Config) -> int:
     try:
         token = cfg.token()
         print(f"Canvas token   : found ({len(token)} chars)")
+        # The encrypted copy is what is read; an old plaintext file left
+        # beside it is still a token on disk, often in a synced folder.
+        plain = [c for c in cfg.token_candidates()
+                 if c.is_file() and not c.name.endswith(".enc")]
+        for c in plain:
+            print(f"                 also a plaintext copy at {c}; delete it once "
+                  "this says OK.")
     except Exception as exc:  # noqa: BLE001
         # A token that was never found is not a failed login, and saying so
         # sends people off to regenerate a perfectly good token instead of

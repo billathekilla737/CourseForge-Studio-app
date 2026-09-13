@@ -49,6 +49,11 @@ def detect_mode(manifest: dict) -> str:
         return explicit
     if any(manifest.get(k) for k in ("modules", "assignments", "discussions", "quizzes", "syllabus_file")):
         return "project"
+    # An inline syllabus body is the project shape too; the pages shape has no
+    # syllabus at all, so without this a syllabus-only manifest was asked for
+    # a page it was never meant to have.
+    if manifest.get("syllabus_html") is not None:
+        return "project"
     pages = manifest.get("pages") or []
     if pages and any(p.get("slug") or p.get("front_page") for p in pages if isinstance(p, dict)):
         return "project"
@@ -233,6 +238,7 @@ def validate(manifest: dict, root: Path | None = None) -> list[str]:
                 if str(it.get("key") or "") not in keys[bucket]:
                     problems.append(f"Module '{mlabel}' points at {bucket[:-1]} key '{it.get('key')}', "
                                     f"which is not in {bucket}.")
-    if not pages and not any(keys.values()) and not manifest.get("syllabus_file"):
+    if (not pages and not any(keys.values()) and not manifest.get("syllabus_file")
+            and manifest.get("syllabus_html") is None):
         problems.append("The manifest has nothing to push.")
     return problems

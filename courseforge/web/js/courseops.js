@@ -60,6 +60,8 @@
     S.tools.courseId = cid;
     S.tools.sub = sub;
     showView('area');
+    // The crumb must name this course, not the one looked at before it.
+    if (typeof ensureCourse === 'function') await ensureCourse(cid);
     crumbs([
       { label: 'Courses', href: '#/' },
       { label: (S.course && S.course.name) || S.tools.label || 'Course', href: '#/c/' + cid },
@@ -224,6 +226,17 @@
     };
     const applyBtn = $('#dtApply');
     if (applyBtn) applyBtn.onclick = () => applyDates(cid, host, plan);
+    // A proposed date typed over by hand is something to write even when the
+    // computed table already matched the course, so the first edit wakes the
+    // button up. The server still skips any item whose date is unchanged.
+    host.querySelectorAll('.dtProposed').forEach(input => {
+      input.oninput = () => {
+        if (!applyBtn) return;
+        applyBtn.disabled = false;
+        applyBtn.title = '';
+        applyBtn.textContent = 'Apply the dates as edited';
+      };
+    });
   }
 
   function applyDates(cid, host, plan) {

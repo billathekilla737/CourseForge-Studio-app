@@ -148,7 +148,10 @@ class Config:
         cfg = cls()
         cfg._path = path
         for key, value in raw.items():
-            if hasattr(cfg, key) and not key.startswith("_"):
+            # Only settings. A key such as "token" names a method here, and
+            # letting it through would replace the method with a string.
+            if (hasattr(cfg, key) and not key.startswith("_")
+                    and not callable(getattr(cfg, key))):
                 setattr(cfg, key, value)
 
         cfg.base_url = (os.environ.get("CANVAS_BASE_URL") or cfg.base_url).rstrip("/")

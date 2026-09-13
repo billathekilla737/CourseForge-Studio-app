@@ -453,7 +453,11 @@ def rubrics_push(req):
             raise ValueError("Every rubric was skipped, so there is nothing to push: " +
                              "; ".join(w for r in plan["rows"] for w in r["warnings"][:1]))
         sentence = plan["sentence"].rstrip(".") + f" in {plan['course_name']}."
-        app._gate("build.rubrics", {"course_id": str(cid), "titles": plan["keys"]}, sentence, token,
+        # Bound to the definitions themselves, not their titles: a token minted
+        # for one set of criteria must not spend on another with the same names.
+        app._gate("build.rubrics",
+                  {"course_id": str(cid), "titles": plan["keys"], "entries": entries},
+                  sentence, token,
                   detail=_detail([{"label": r["title"], "from": r["action"], "to": r["assignment"]}
                                   for r in plan["rows"] if r["action"] != "skip"]),
                   what="pushing rubrics")

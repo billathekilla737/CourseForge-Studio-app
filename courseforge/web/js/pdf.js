@@ -31,6 +31,8 @@
       title: 'Alt text, table header rows and heading structure inside .docx files' },
     { id: 'pdf', label: 'PDFs', group: FIX,
       title: 'Tag tree, reading order, OCR, alt text and PDF/UA-1 compliance for .pdf files' },
+    { id: 'triage', label: 'PDF triage', group: FIX,
+      title: 'Which PDFs are worst, before fixing any of them. Reads only.' },
     { id: 'pdf-text', label: 'in PDFs', group: FIND,
       title: 'Change the words inside PDFs -- a retired name, an old course code. '
         + 'Nothing to do with accessibility.' },

@@ -21,11 +21,28 @@ for the review UI and for any later push to Canvas.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+
+_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def safe_id(value) -> str:
+    """One path segment that stays inside the data folder.
+
+    Course and assignment ids arrive from the URL. A Canvas id is digits; the
+    account-wide record uses the word "account". Anything with a dot or a
+    separator in it is not an id and would name a folder somewhere else.
+    """
+    text = str(value)
+    if not _ID.match(text):
+        raise ValueError(f"{text!r} is not a course or assignment id")
+    return text
 
 
 class Store:
@@ -43,12 +60,12 @@ class Store:
 
     # ------------------------------------------------------------- locations
     def course_dir(self, course_id) -> Path:
-        path = self.root / str(course_id)
+        path = self.root / safe_id(course_id)
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def assignment_dir(self, course_id, assignment_id) -> Path:
-        path = self.course_dir(course_id) / str(assignment_id)
+        path = self.course_dir(course_id) / safe_id(assignment_id)
         (path / "files").mkdir(parents=True, exist_ok=True)
         return path
 

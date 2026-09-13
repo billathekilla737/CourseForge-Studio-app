@@ -67,7 +67,12 @@ def compute(start, weeks: int, finals_end, breaks=None, weekday: str = "Monday",
         return d - timedelta(days=d.weekday())
 
     def shift_past_holidays(d: date) -> date:
-        while is_holiday(d) or d.weekday() >= 5:
+        # A due day that lands on a holiday moves to the next class day, and a
+        # class day is Monday to Friday. When the chosen weekday is itself a
+        # Saturday or Sunday the weekend is not a reason to move: otherwise
+        # every "due Sunday" table quietly became "due Monday".
+        weekend_is_off = target < 5
+        while is_holiday(d) or (weekend_is_off and d.weekday() >= 5):
             d += timedelta(days=1)
         return d
 

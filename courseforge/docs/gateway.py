@@ -441,15 +441,29 @@ def course_name(app, cid) -> str:
     return f"course {cid}"
 
 
+_TOOLS_CACHE: dict = {"at": 0.0, "info": None}
+_TOOLS_TTL_S = 30.0
+
+
 def tool_needs(app, kind: Kind) -> list[str]:
-    """Names of the missing tools this kind depends on, or []."""
+    """Names of the missing tools this kind depends on, or [].
+
+    `tools.detect` starts a process per binary, and the page asks for state
+    every few seconds, so the answer is kept for half a minute. A tool that
+    was just installed shows up on the next poll after that.
+    """
     if not kind.tools:
         return []
-    try:
-        from .. import tools
-        info = tools.detect(getattr(app, "cfg", None))
-    except Exception:  # noqa: BLE001
-        return []
+    import time
+    now = time.time()
+    info = _TOOLS_CACHE["info"]
+    if info is None or now - _TOOLS_CACHE["at"] > _TOOLS_TTL_S:
+        try:
+            from .. import tools
+            info = tools.detect(getattr(app, "cfg", None))
+        except Exception:  # noqa: BLE001
+            return []
+        _TOOLS_CACHE.update(at=now, info=info)
     return [t for t in kind.tools if not (info.get(t) or {}).get("ok")]
 
 
@@ -914,8 +928,11 @@ def push(app, cid, kind: Kind, file_ids=None, apply: bool = False,
         p["uploaded"] = []
         log("nothing to upload: no verified files with fixes that are not already on Canvas")
         return p
-    detail = [{"label": r["name"], "from": _kb(r["from"]), "to": _kb(r["to"]),
-               "note": ", ".join(r["changes"])} for r in p["uploads"]]
+    # A JSON string, not a list: the confirm dialog parses the detail back
+    # into rows a person reads. Handed a list, it printed "[object Object]"
+    # for every file about to be overwritten.
+    detail = json.dumps([{"label": r["name"], "from": _kb(r["from"]), "to": _kb(r["to"]),
+                          "note": ", ".join(r["changes"])} for r in p["uploads"]])
     if gate is not None:
         gate(p["fingerprint"], p["sentence"], detail)
     uploaded, failed = [], []
@@ -995,7 +1012,9 @@ def restore(app, cid, kind: Kind, file_ids=None, gate=None, log=QUIET) -> dict:
     if p["count"] == 0:
         return {**p, "restored": []}
     if gate is not None:
-        gate(p["fingerprint"], p["sentence"], [{"label": r["name"], "from": "", "to": _kb(r["size"])} for r in p["rows"]])
+        gate(p["fingerprint"], p["sentence"],
+             json.dumps([{"label": r["name"], "from": "the fixed copy",
+                          "to": _kb(r["size"]) + " original"} for r in p["rows"]]))
     restored, failed = [], []
     for n, r in enumerate(p["rows"], 1):
         it = next(i for i in items(app, cid, kind, [r["file_id"]]))

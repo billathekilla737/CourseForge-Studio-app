@@ -54,7 +54,11 @@
     }
     // Arriving straight on #/reports, nothing has chosen a term yet, and
     // "every course I have ever taught" is never the question being asked.
-    const term = S.term || (S.termInfo && S.termInfo.default) || null;
+    // The course picker stores '__all' for "All terms"; no course carries that
+    // label, so taking it literally left this list empty. Fall back to the
+    // current term instead, which is the question a report is answering.
+    const chosen = (S.term && S.term !== '__all') ? S.term : null;
+    const term = chosen || (S.termInfo && S.termInfo.default) || null;
     const list = S.courses.filter(c => !c.excluded && (!term || c.term_label === term));
     if (!mem().picked) mem().picked = new Set(list.map(c => String(c.id)));
     host.innerHTML = `<div class="rpPickHead">
@@ -102,9 +106,22 @@
         : 'Pick the courses and run it. Each syllabus is read once; nothing is changed.'));
       return;
     }
-    host.innerHTML = mem().tab === 'score' ? scoreHtml(out) : policyHtml(out);
+    host.innerHTML = (mem().tab === 'score' ? scoreHtml(out) : policyHtml(out)) + failedHtml(out);
     const scan = $('#rpScan');
     if (scan) scan.onclick = () => scanMissing(out);
+  }
+
+  /* A course the server could not read is a row that is missing from the
+     table above, and a compliance report with a course quietly missing from
+     it is the failure mode this whole screen exists to avoid. Both reports
+     return `failed`; this prints it under whichever table is up. */
+  function failedHtml(out) {
+    const rows = (out && out.failed) || [];
+    if (!rows.length) return '';
+    return `<div class="callout rpTodo"><b>${esc(rows.length)} course${rows.length === 1 ? '' : 's'}
+        could not be read and ${rows.length === 1 ? 'is' : 'are'} not in the table.</b>
+      <ul class="rpTodoList">${rows.map(r => `<li><b>${esc(r.course || r.course_id)}</b>
+        <span class="muted">${esc(r.error || '')}</span></li>`).join('')}</ul></div>`;
   }
 
   /* ------------------------------------------------------------- the score */
@@ -205,12 +222,18 @@
         ${c.empty ? '<span class="pill warn">no syllabus</span>' : ''}</th>${cells}</tr>`;
     }).join('');
     const worst = (out.by_policy || []).filter(p => p.missing).sort((a, b) => b.missing - a.missing);
+    /* A course with no syllabus is one problem, not six. The server keeps it
+       out of the per-statement counts; here it gets its own line at the top,
+       because "write the syllabus" comes before any statement in it. */
+    const none = out.no_syllabus || [];
+    const noneLine = none.length ? `<li><b>No syllabus at all</b> in ${esc(none.join(', '))}.
+        <span class="muted">Nothing can be checked until there is one.</span></li>` : '';
     return `<div class="rpBand plain"><p>${esc(out.summary || '')}</p></div>
       <div class="gwTableWrap"><table class="gwTable rpMatrix">
       <caption class="srOnly">Which syllabi mention which required statement</caption>
       <thead><tr><th scope="col">Course</th>${heads}</tr></thead>
       <tbody>${rows}</tbody></table></div>
-      ${worst.length ? `<div class="rpGaps"><h3>What to fix first</h3><ul>${worst.map(p =>
+      ${(worst.length || none.length) ? `<div class="rpGaps"><h3>What to fix first</h3><ul>${noneLine}${worst.map(p =>
         `<li><b>${esc(p.label)}</b> — missing from ${esc(p.missing)} course${
           p.missing === 1 ? '' : 's'}. <span class="muted">${esc(p.why)}</span></li>`).join('')}</ul></div>` : ''}
       <div class="callout rpMethod"><b>What a tick means.</b> ${esc(out.note || '')}</div>`;

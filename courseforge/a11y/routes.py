@@ -350,7 +350,15 @@ def push_(req):
     except push.PushRefused as exc:
         raise HTTPError(409, str(exc))
     if not body.get("apply"):
+        # The shared gateway component reads the plan off `planned` and
+        # `skipped` at the top of the answer, not out of `plan`. Without these
+        # two lists its Dry run step showed "Nothing is planned" and left Apply
+        # disabled, so the HTML restyle could never be pushed from the page.
         return {"dry_run": True, "plan": p,
+                "planned": [{"key": r["key"], "title": r["title"], "label": r["label"],
+                             "from": r["from"], "to": r["to"]} for r in p["rows"]],
+                "skipped": [{"key": r["key"], "title": r["title"], "reason": r["reason"]}
+                            for r in p["skipped"]],
                 "sentence": push.confirm_sentence(p, _label(app, cid, load_manifest(wd)))}
     if not p["rows"]:
         raise HTTPError(409, "Nothing to push: every restyled body is excluded, unchanged or empty.")
@@ -391,7 +399,9 @@ def restore(req):
         p = push.restore_plan(wd)
     except push.PushRefused as exc:
         raise HTTPError(409, str(exc))
-    if not (req.body or {}).get("apply", True):
+    # Writing has to be asked for in so many words; a body with only a
+    # token in it is not a request to restore.
+    if not (req.body or {}).get("apply", False):
         return {"dry_run": True, "plan": p}
     if not p["rows"]:
         raise HTTPError(409, "Nothing to restore: no usable originals from the last push.")

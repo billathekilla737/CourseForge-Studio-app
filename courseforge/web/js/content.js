@@ -38,11 +38,16 @@
   const buildPublishWord = on => (on ? 'published, students see it' : 'unpublished, only you see it');
 
   /* ------------------------------------------------------------- the area */
-  function openBuild(courseId, rest) {
+  async function openBuild(courseId, rest) {
     rest = Array.isArray(rest) ? rest : [];
     const tab = (rest[0] === 'manifest' || rest[0] === 'rubrics') ? rest[0] : 'home';
     S.buildArea.courseId = String(courseId);
     showView('area');
+    // S.course is whatever course was looked at last. A tab opened straight on
+    // a Build route, or one that came here from another course's hub, would
+    // otherwise name that other course in the crumb above a screen that
+    // writes to this one.
+    if (typeof ensureCourse === 'function') await ensureCourse(courseId);
     crumbs([
       { label: 'Courses', href: '#/' },
       { label: (S.course && S.course.name) || 'Course', href: '#/c/' + courseId },
@@ -185,7 +190,7 @@
       if (!wrap || !rows.length) { const i = $('#bdModule'); if (i) i.placeholder = 'Type a module name'; return; }
       wrap.innerHTML = `<select id="bdModule"><option value="">(no module)</option>${rows.map(m =>
         `<option value="${esc(m.id)}" data-name="${esc(m.name)}">${esc(m.name)}${
-          m.published ? '' : ' — unpublished'}</option>`).join('')}</select>`;
+          m.published ? '' : ' (unpublished)'}</option>`).join('')}</select>`;
     }).catch(() => { const i = $('#bdModule'); if (i) i.placeholder = 'Type a module name'; });
     api(buildBase(courseId) + '/groups').then(res => {
       const rows = (res && res.groups) || [];
@@ -392,9 +397,20 @@
         <button class="btn primary" type="button" id="bdMfDry">Dry run</button>
         <button class="btn danger" type="button" id="bdMfPush">Push manifest…</button>
         <label class="tick"><input type="checkbox" id="bdMfPublish"> Publish what it creates</label>
+        ${summary.mode === 'project' ? `
+        <label class="tick"><input type="checkbox" id="bdMfSkip"> Leave the modules alone</label>
+        <label class="tick"><input type="checkbox" id="bdMfRebuild"> Rebuild the modules</label>` : ''}
         <span class="hint">The dry run reads the course and changes nothing.</span>
       </div>
       <div id="bdMfPlan"></div>`;
+    // The server's module-wipe gate reads these two from the request, not from
+    // the manifest, so without them a course that already has modules could
+    // never be pushed from this screen at all.
+    const mfBody = apply => ({
+      apply, publish: $('#bdMfPublish').checked,
+      skip_modules: !!($('#bdMfSkip') && $('#bdMfSkip').checked),
+      rebuild_modules: !!($('#bdMfRebuild') && $('#bdMfRebuild').checked),
+    });
     statStrip($('#bdMfStats'), [
       { label: 'Mode', value: summary.mode },
       { label: 'Pages', value: summary.pages },
@@ -405,11 +421,16 @@
     ]);
 
     const plan = $('#bdMfPlan');
-    if (S.buildArea.mfPlan) buildManifestPlan(plan, S.buildArea.mfPlan);
+    // A remembered plan belongs to one course; another course's table must not
+    // paint here as if it were this one's.
+    if (S.buildArea.mfPlan && S.buildArea.mfPlanFor === String(courseId)) {
+      buildManifestPlan(plan, S.buildArea.mfPlan);
+    }
     $('#bdMfDry').onclick = () => runJob('Manifest dry run',
-      () => api(buildBase(courseId) + '/manifest/push', { body: { apply: false, publish: $('#bdMfPublish').checked } }),
+      () => api(buildBase(courseId) + '/manifest/push', { body: mfBody(false) }),
       res => {
         S.buildArea.mfPlan = (res && res.plan) || null;
+        S.buildArea.mfPlanFor = String(courseId);
         buildManifestPlan(plan, S.buildArea.mfPlan);
         setStatus('dry run done; nothing was sent', 'ok');
       }, { autoClose: true });
@@ -417,10 +438,11 @@
       if (problems.length) { setStatus('fix the manifest problems first', 'err'); return; }
       runJobConfirmed('Pushing the manifest',
         token => api(buildBase(courseId) + '/manifest/push', {
-          body: { apply: true, publish: $('#bdMfPublish').checked, confirm: token },
+          body: Object.assign(mfBody(true), { confirm: token }),
         }),
         res => {
           S.buildArea.mfPlan = (res && res.plan) || S.buildArea.mfPlan;
+          S.buildArea.mfPlanFor = String(courseId);
           buildManifestPlan(plan, S.buildArea.mfPlan, res && res.result);
           setStatus('the manifest was pushed', 'ok');
           announce('The manifest was pushed to Canvas');
@@ -437,8 +459,9 @@
     const verify = plan.verify || {};
     host.innerHTML = `
       ${gate.refused ? `<div class="callout bad"><b>The modules are not rebuilt.</b>
-        ${esc(gate.sentence || '')} Tick Rebuild modules in the manifest itself if that is what you
-        want; until then the pages are pushed and the module list is left exactly as it is.</div>`
+        ${esc(gate.sentence || '')} Tick Leave the modules alone to push the content and keep the
+        module list exactly as it is, or Rebuild the modules to replace it, then run the dry run
+        again. Until one is ticked, nothing is pushed.</div>`
         : (gate.sentence ? `<div class="callout">${esc(gate.sentence)}</div>` : '')}
       ${verify.summary ? `<p class="muted">${esc(verify.summary)}</p>` : ''}
       ${(verify.failing || []).length ? `<ul class="applyList">${verify.failing.slice(0, 12).map(f =>

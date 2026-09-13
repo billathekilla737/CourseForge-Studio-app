@@ -829,7 +829,9 @@ function prettyUtc(iso) {
 /* ------------------------------------------------------------- announcement */
 function openAnnounce(courseId, assignmentId) {
   const host = $('#modalHost');
-  const item = (S.sched.items || []).find(
+  // Reached from the workspace too (View assignment, then Announcement), where
+  // the schedule may never have been opened and S.sched is still null.
+  const item = ((S.sched && S.sched.items) || []).find(
     i => String(i.assignment_id) === String(assignmentId)) || {};
   host.innerHTML = `<div class="modalBack"><div class="modal wide">
       <h3>Announcement</h3>
@@ -1313,7 +1315,11 @@ const weekKey = d => startOfWeek(d).toISOString().slice(0, 10);
 const fmtRange = (a, b) => `${a.toLocaleDateString([], { month: 'short', day: 'numeric' })} – ${
   b.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
 
-function ago(seconds) {
+/* Not `ago`: that name is taken further down by the version that reads an ISO
+   timestamp, and two declarations of one name in this file means the later one
+   wins everywhere. Fed seconds, it turned 2536 into a date in 1970 and the
+   footer said "Canvas synced 2954 weeks ago". */
+function agoSeconds(seconds) {
   if (seconds == null) return 'never';
   if (seconds < 60) return 'just now';
   const m = Math.round(seconds / 60);
@@ -1587,7 +1593,7 @@ function renderSchedFoot(error) {
   foot.innerHTML = `
     <span class="syncLine">
       ${busy ? '<span class="spin"></span>reading Canvas…'
-        : `Canvas synced <b>${ago(sc.age_s)}</b>${sc.fetched_at
+        : `Canvas synced <b>${agoSeconds(sc.age_s)}</b>${sc.fetched_at
             ? ` (${new Date(sc.fetched_at).toLocaleString([], {
                 month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })})` : ''}`}
       <button class="btn sm" id="scRefresh" ${busy ? 'disabled' : ''}>Refresh</button>
@@ -1787,11 +1793,17 @@ function ago(iso) {
 async function openCourse(courseId, refresh) {
   const tb = $('#teachBar'); if (tb) tb.classList.add('hidden');
   showView('picker');
+  // Arriving straight on this screen, the course list has not been read yet,
+  // and the crumb and the tab would say "Course 734975" until it was.
+  if (!S.courses.some(c => String(c.id) === String(courseId)) && typeof ensureCourse === 'function') {
+    try { await ensureCourse(courseId); } catch (_) { /* the fallback name below */ }
+  }
   S.course = S.courses.find(c => String(c.id) === String(courseId)) || { id: courseId, name: 'Course ' + courseId };
   crumbs([{ label: 'Courses', href: '#/' }, { label: courseTitle(S.course), href: '#/c/' + courseId }, { label: 'Grade' }]);
   $('#headerActions').innerHTML = '';
   $('#pickerTitle').textContent = courseTitle(S.course);
   $('#pickerTitle').title = S.course.name || '';
+  document.title = courseTitle(S.course) + ' · CourseForge Studio';
   const sb = $('#storageBar'); if (sb) sb.innerHTML = '';
   $('#pickerHint').textContent = 'Loading assignments…';
   $('#btnRefresh').onclick = () => openCourse(courseId, true);
@@ -1914,6 +1926,7 @@ async function openAssignment(courseId, assignmentId, opts = {}) {
     { label: courseTitle(S.course), href: '#/c/' + courseId + '/grade' },
     { label: a.name || 'Assignment' },
   ]);
+  document.title = (a.name || 'Assignment') + ' · CourseForge Studio';
   renderHeaderActions();
   S.sel = 0;
   render();
@@ -2246,14 +2259,21 @@ function doSync(opts = {}) {
   runJob('Syncing from Canvas', () => api(`/a/${courseId}/${assignmentId}/sync`, { body: {} }),
     () => {
       openAssignment(courseId, assignmentId);
-      if (opts.auto) setStatus('synced from Canvas just now', 'ok');
+      if (opts.auto) {
+        setStatus('synced from Canvas just now', 'ok');
+        // Arriving on a stale assignment went straight to this sync and
+        // returned before the handoff check, so a fresh machine never lined
+        // up with the other one until the next open. Do it here instead.
+        handoffOnOpen(courseId, assignmentId);
+      }
     },
     { autoClose: !!opts.auto });
 }
 function doGrade(only) {
   const { courseId, assignmentId } = S.ids;
   const n = only ? only.length : Object.keys(S.ws.extracted || {}).length;
-  const label = only ? `Grading 1 student` : `Auto-grading ${n} students with ${S.health.model}`;
+  const label = only ? `Grading ${n} student${n === 1 ? '' : 's'}`
+    : `Auto-grading ${n} students with ${S.health.model}`;
   runJob(label, () => api(`/a/${courseId}/${assignmentId}/grade`, { body: { only } }),
     () => openAssignment(courseId, assignmentId));
 }
@@ -2897,44 +2917,58 @@ function openCurve(only) {
   $('#cvScope').onchange = preview;
   $('#cvVal').oninput = debounced;
   $('#cvCancel').onclick = () => { host.innerHTML = ''; };
-  $('#cvApply').onclick = async () => {
+  // A curve changes nothing in Canvas, so there is no server token to spend;
+  // the shell's own dialog still asks, because the browser's built-in prompt
+  // is the one thing the front-end contract rules out. Cancel rebuilds this
+  // dialog from markup alone, which leaves it with no handlers, so reopen it.
+  $('#cvApply').onclick = () => {
     if (!latest || !latest.n_changed) return;
     const k = kindOf();
     const what = latest.criterion_label === 'whole score'
       ? 'the whole score' : `"${latest.criterion_label}"`;
-    if (!confirm(`Apply ${k.label.replace(/…$/, '')} to ${what} for `
-      + `${latest.n_changed} student(s)?\n\n`
-      + `Class average ${latest.before.mean} → ${latest.after.mean}`
-      + ` (${latest.before.mean_pct}% → ${latest.after.mean_pct}%).\n\n`
-      + 'The earned scores are kept and this can be removed later.')) return;
-    try {
-      const done = await api(`/a/${courseId}/${assignmentId}/curve`, {
-        body: {
-          kind: k.id, scope: $('#cvScope').value, only: scope,
-          amount: k.needs === 'amount' ? +$('#cvVal').value : 0,
-          target: k.needs === 'target' ? +$('#cvVal').value : null,
-          label: $('#cvLabel').value.trim(), apply: true,
-        },
-      });
-      S.ws = await api(`/a/${courseId}/${assignmentId}`);
-      host.innerHTML = '';
-      setStatus(`curve applied to ${done.n_changed} student(s)`, 'ok');
-      render();
-    } catch (err) { setStatus('curve failed: ' + err.message, 'err'); }
+    const body = {
+      kind: k.id, scope: $('#cvScope').value, only: scope,
+      amount: k.needs === 'amount' ? +$('#cvVal').value : 0,
+      target: k.needs === 'target' ? +$('#cvVal').value : null,
+      label: $('#cvLabel').value.trim(), apply: true,
+    };
+    askConfirm({
+      summary: `Apply ${k.label.replace(/…$/, '')} to ${what} for `
+        + `${latest.n_changed} student(s).`,
+      detail: `Class average ${latest.before.mean} to ${latest.after.mean} `
+        + `(${latest.before.mean_pct}% to ${latest.after.mean_pct}%).`,
+    }, async () => {
+      try {
+        const done = await api(`/a/${courseId}/${assignmentId}/curve`, { body });
+        S.ws = await api(`/a/${courseId}/${assignmentId}`);
+        host.innerHTML = '';
+        setStatus(`curve applied to ${done.n_changed} student(s)`, 'ok');
+        render();
+      } catch (err) { setStatus('curve failed: ' + err.message, 'err'); }
+    }, { title: 'Apply this curve?', verb: 'Apply curve',
+         note: 'Nothing is sent to Canvas. The earned scores are kept underneath, '
+               + 'and Remove curves puts them back exactly.',
+         onCancel: () => openCurve(only) });
   };
   const rm = $('#cvRemove');
-  if (rm) rm.onclick = async () => {
-    if (!confirm(scope
-      ? `Remove any curve from the ${scope.length} selected student(s)?`
-      : 'Remove every curve on this assignment? Scores go back to what was earned.')) return;
-    try {
-      const done = await api(`/a/${courseId}/${assignmentId}/curve`,
-        { body: { remove: true, only: scope } });
-      S.ws = await api(`/a/${courseId}/${assignmentId}`);
-      host.innerHTML = '';
-      setStatus(`curve removed from ${(done.removed || []).length} student(s)`, 'ok');
-      render();
-    } catch (err) { setStatus('could not remove: ' + err.message, 'err'); }
+  if (rm) rm.onclick = () => {
+    askConfirm({
+      summary: scope
+        ? `Remove any curve from the ${scope.length} selected student(s).`
+        : 'Remove every curve on this assignment.',
+      detail: 'Scores go back to what was earned.',
+    }, async () => {
+      try {
+        const done = await api(`/a/${courseId}/${assignmentId}/curve`,
+          { body: { remove: true, only: scope } });
+        S.ws = await api(`/a/${courseId}/${assignmentId}`);
+        host.innerHTML = '';
+        setStatus(`curve removed from ${(done.removed || []).length} student(s)`, 'ok');
+        render();
+      } catch (err) { setStatus('could not remove: ' + err.message, 'err'); }
+    }, { title: 'Remove the curve?', verb: 'Remove it',
+         note: 'Nothing is sent to Canvas.',
+         onCancel: () => openCurve(only) });
   };
 
   syncForm();
@@ -4040,8 +4074,9 @@ async function saveStudent(uid) {
     S.ws.draft.students[String(uid)] = r.student;
     setStatus('saved', 'ok');
     renderRoster();
+    // The curved total, when there is one: the same number the roster shows.
     const card = $('.bigScore');
-    if (card) card.innerHTML = `${r.student.total}<span class="of"> / ${S.ws.draft.points_possible || 0}</span>`;
+    if (card) card.innerHTML = `${num(finalOf(r.student))}<span class="of"> / ${S.ws.draft.points_possible || 0}</span>`;
     const note = $('.origNote'); if (note) note.innerHTML = aiDeltaNote(r.student);
   } catch (err) { setStatus('save failed: ' + err.message, 'err'); }
 }

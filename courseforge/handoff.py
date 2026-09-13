@@ -234,7 +234,9 @@ def apply_blend_zip(adir: Path, raw: bytes) -> int:
             if member.is_dir():
                 continue
             dest = (adir / member.filename).resolve()
-            if not str(dest).startswith(str(adir)):
+            # A path test, not a string test: "data/1/2" is a prefix of
+            # "data/1/23/x", and a string check would let that one through.
+            if not dest.is_relative_to(adir):
                 continue                      # refuses to escape the folder
             if dest.name not in BLEND_PARTS:
                 continue                      # and refuses anything unexpected

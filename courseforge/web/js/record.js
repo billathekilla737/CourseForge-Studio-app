@@ -137,12 +137,17 @@
     }
     $('#recToggle').onclick = () => {
       const want = !d.to_canvas;
-      if (!want && !confirm('Stop keeping this record in Canvas?\n\n'
-        + 'It carries on being written on this PC. What stops is the copy that '
-        + 'survives this PC being replaced.')) return;
-      api(base(cid) + '/setting', { body: { to_canvas: want } })
+      const change = () => api(base(cid) + '/setting', { body: { to_canvas: want } })
         .then(() => { setStatus(want ? 'kept in Canvas from now on' : 'the Canvas copy is off', 'ok'); load(cid); })
         .catch(err => setStatus(firstLine(err.message), 'err'));
+      if (want) { change(); return; }
+      /* The shell's own dialog, not the browser's: it is the one the rest of
+         the Studio asks with, and it says what does and does not stop. */
+      askConfirm({
+        summary: 'Stop keeping this record in Canvas. It carries on being written on '
+          + 'this PC. What stops is the copy that survives this PC being replaced.',
+      }, change, { title: 'Stop the Canvas copy?', verb: 'Yes, keep it on this PC only',
+        note: 'Nothing already saved in Canvas is removed.' });
     };
   }
 

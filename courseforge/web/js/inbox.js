@@ -85,7 +85,11 @@
       $('#ibHint').textContent = '';
       return;
     }
-    if (S.view !== 'inbox') return;
+    /* The route, not the view: Reports paints in this same section, so a slow
+       inbox read finishing after someone has moved on to Reports would find
+       S.view still saying 'inbox' and write into a screen that is no longer
+       there. */
+    if (!(S.route && S.route.parts && S.route.parts[0] === 'inbox')) return;
     mem().threads = data.threads || [];
     $('#ibHint').textContent = `${mem().threads.length} thread${
       mem().threads.length === 1 ? '' : 's'}`

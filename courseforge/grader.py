@@ -982,7 +982,9 @@ def class_summary(cfg: Config, store: Store, course_id, assignment_id,
         for uid, info in extracted.items():
             tag, name = info.get("pseudonym"), info.get("name")
             if tag and name:
-                text = re.sub(rf"\b{re.escape(tag)}\b", name, text)
+                # The name is text, not a replacement template: a backslash in
+                # it would otherwise be read as an escape and raise at unmask.
+                text = re.sub(rf"\b{re.escape(tag)}\b", lambda _m, n=name: n, text)
 
     summary = {
         "text": text,
@@ -1233,12 +1235,12 @@ def overlap_check(cfg: Config, store: Store, course_id, assignment_id,
                 text = pair.get(field) or ""
                 for uid, tag in labels.items():
                     if tag and names.get(uid):
-                        text = re.sub(rf"\b{re.escape(tag)}\b", names[uid], text)
+                        text = re.sub(rf"\b{re.escape(tag)}\b", lambda _m, n=names[uid]: n, text)
                 pair[field] = text
         note = out["read"]
         for uid, tag in labels.items():
             if tag and names.get(uid):
-                note = re.sub(rf"\b{re.escape(tag)}\b", names[uid], note)
+                note = re.sub(rf"\b{re.escape(tag)}\b", lambda _m, n=names[uid]: n, note)
         out["read"] = note
 
     _save_overlap(store, course_id, assignment_id, out)
@@ -1461,7 +1463,7 @@ def teaching_read(cfg: Config, store: Store, course_id, assignment_id,
                 names[info["pseudonym"]] = info["name"]
         def unmask(text: str) -> str:
             for tag, name in names.items():
-                text = re.sub(rf"\b{re.escape(tag)}\b", name, text)
+                text = re.sub(rf"\b{re.escape(tag)}\b", lambda _m, n=name: n, text)
             return text
         out["headline"] = unmask(out["headline"])
         out["worked"] = unmask(out["worked"])

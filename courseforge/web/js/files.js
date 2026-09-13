@@ -172,23 +172,34 @@
       runJob('Describing pictures (nothing is uploaded)',
         () => api('/batch/files/describe', { body: b }), r => renderFiles(result, r, false));
     };
+    const upload = b => runJobConfirmed('Upload the fixed files',
+      token => api('/batch/files/push', { body: Object.assign({}, b, { apply: true, confirm: token }) }),
+      r => renderFiles(result, r, false),
+      { title: 'Upload the fixed files to these courses?' });
     $('#fcPush').onclick = () => {
       const b = ask(); if (!b) return;
       /* Repairing gives an undescribed figure a safe placeholder, so a file
          can be structurally valid and still describe nothing. Uploading at
          that point looks like the job is done, which is the worse of the two
          ways to be non-compliant. Say so before the confirm dialog, not in a
-         footnote afterwards. */
+         footnote afterwards. The shell's own modal, not the browser's dialog:
+         the front end contract rules that dialog out, and it escapes the
+         focus trap and cannot be styled like the rest of the tool. */
       const waiting = placeholdersLeft(st().last);
-      if (waiting && !confirm(waiting + ' picture' + (waiting === 1 ? '' : 's')
-        + ' across these courses still hold a placeholder description rather than '
-        + 'a real one.\n\nUploading now gives you files that pass an automated '
-        + 'scanner and tell a blind student nothing. Describe images with Claude '
-        + 'first, or press OK to upload them as they are.')) return;
-      runJobConfirmed('Upload the fixed files',
-        token => api('/batch/files/push', { body: Object.assign({}, b, { apply: true, confirm: token }) }),
-        r => renderFiles(result, r, false),
-        { title: 'Upload the fixed files to these courses?' });
+      if (!waiting) { upload(b); return; }
+      openModal('<h3>Some pictures are still on a placeholder</h3>'
+        + '<p>' + waiting + ' picture' + (waiting === 1 ? '' : 's')
+        + ' across these courses still hold a placeholder description rather than a real one. '
+        + 'Uploading now gives you files that pass an automated scanner and tell a blind '
+        + 'student nothing.</p>'
+        + '<p class="hint">Describe images with Claude first, or upload them as they are. '
+        + 'Nothing has been sent yet.</p>'
+        + '<div class="foot"><span class="spacer"></span>'
+        + '<button class="btn" id="fcWarnClose" type="button">Go back</button>'
+        + '<button class="btn danger" id="fcWarnGo" type="button">Upload them as they are</button>'
+        + '</div>', { label: 'Pictures still on a placeholder' });
+      $('#fcWarnClose').onclick = closeModal;
+      $('#fcWarnGo').onclick = () => { closeModal(); upload(b); };
     };
   }
 
@@ -209,6 +220,13 @@
 
   function cell(k, action) {
     if (!k) return '<td class="num">&mdash;</td>';
+    if (action === 'describe') {
+      // A describe row carries only what was written; reading it as a survey
+      // row printed "0" files for every course that had just been described.
+      const n = k.described || 0;
+      return '<td>' + (n ? '<span class="pill good">' + n + ' described</span>'
+        : '<span class="muted">nothing left to describe</span>') + '</td>';
+    }
     if (action === 'push') {
       const up = k.uploaded != null ? k.uploaded : k.ready;
       return '<td class="num">' + (up || 0) + (k.failed ? ' <span class="pill warn">'
@@ -235,7 +253,9 @@
       return;
     }
     const title = action === 'push' ? (s.applied ? 'Uploaded' : 'Would upload')
-      : action === 'scan' ? 'Scanned and repaired on this computer' : 'What is in these courses';
+      : action === 'scan' ? 'Scanned and repaired on this computer'
+        : action === 'describe' ? 'Described on this computer (nothing uploaded)'
+          : 'What is in these courses';
     host.innerHTML = '<h3>' + (previous ? 'Last run' : title)
       + ' <span class="hint">' + esc((s.ran_at && typeof fmtDate === 'function' ? fmtDate(s.ran_at) : s.ran_at || '')
         + (action === 'push' && !s.applied ? ' (dry run, nothing written)' : '')) + '</span></h3>'

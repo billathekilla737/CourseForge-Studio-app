@@ -27,6 +27,13 @@
       title: 'Alt text, table header rows and heading structure inside .docx files' },
     { id: 'pdf', label: 'PDFs', group: FIX,
       title: 'Tag tree, reading order, OCR, alt text and PDF/UA-1 compliance for .pdf files' },
+    /* Triage is one of docs.js's kinds and the hub links straight to it. Left
+       off this list, opening it made docs.js rebuild the strip from its own
+       list: a seventh tab appeared and the group headers vanished until you
+       left. The strip is the same seven tabs everywhere. pdf.js keeps a copy
+       of this list for the direct #/c/<cid>/pdf route; keep the two the same. */
+    { id: 'triage', label: 'PDF triage', group: FIX,
+      title: 'Which PDFs are worst, before fixing any of them. Reads only.' },
     { id: 'pdf-text', label: 'in PDFs', group: FIND,
       title: 'Change the words inside PDFs -- a retired name, an old course code. '
         + 'Nothing to do with accessibility.' },

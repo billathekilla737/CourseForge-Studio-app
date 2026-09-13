@@ -290,10 +290,19 @@ function missingOpener(label) {
   setStatus(label + ' is not installed in this build', 'err');
   return openCourses();
 }
+const TITLES = {
+  schedule: 'Term schedule · CourseForge Studio', inbox: 'Inbox · CourseForge Studio',
+  reports: 'Reports · CourseForge Studio', batch: 'Batch Course Restyle · CourseForge Studio',
+  files: 'ADA file compliance · CourseForge Studio',
+};
 function route() {
   const r = parseRoute();
   const parts = r.parts;
   S.route = r;
+  // The tab title is whatever the last screen wrote there, so leaving a
+  // course for the list kept the course's name in the tab. Reset it first;
+  // the hub and the areas write their own name over this once they paint.
+  document.title = TITLES[parts[0]] || 'CourseForge Studio';
   let opened;
   if (parts[0] === 'schedule') opened = openSchedule();
   else if (parts[0] === 'batch') {
@@ -567,6 +576,7 @@ document.addEventListener('keydown', ev => {
    The grading workspace is left alone: its roster owns the keyboard. */
 const VIEW_HEADING = {
   picker: '#pickerTitle', schedule: '#schedTitle', hub: '#hubTitle', area: '#areaTitle',
+  inbox: '#viewInbox h2',
 };
 function focusView() {
   if ($('#modalHost').innerHTML) return;             // a dialog has the focus
@@ -577,7 +587,7 @@ function focusView() {
   el.focus({ preventScroll: true });
 }
 function skipToContent() {
-  const view = ['#viewPicker', '#viewSchedule', '#viewHub', '#viewArea', '#viewWork']
+  const view = ['#viewPicker', '#viewSchedule', '#viewHub', '#viewArea', '#viewInbox', '#viewWork']
     .map(s => $(s)).find(el => el && !el.classList.contains('hidden'));
   if (!view) return;
   const heading = VIEW_HEADING[S.view] && $(VIEW_HEADING[S.view]);

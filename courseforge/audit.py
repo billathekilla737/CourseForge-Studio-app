@@ -278,9 +278,41 @@ def verify(root: Path) -> dict:
                         "why": f"This entry is numbered {seq} where {last_seq + 1} "
                                "was expected, so the file is not the one that was written."}
             last_hash, last_seq = row.get("hash"), seq
+    # Cutting the last line off leaves nothing behind it to disagree, so the
+    # walk above cannot see it. The bookmark written with every entry can: if
+    # it remembers more entries than the files hold, the tail was removed.
+    mark = _bookmark(root)
+    if mark and int(mark.get("seq") or 0) > last_seq:
+        gone = int(mark["seq"]) - last_seq
+        where = {"file": "", "seq": last_seq, "at": mark.get("at"),
+                 "sentence": ""}
+        return {"ok": False, "entries": entries, "broke_at": where,
+                "why": (f"The record ends at entry {last_seq} but {mark['seq']} were "
+                        f"written, so the last {gone} "
+                        f"{'entry was' if gone == 1 else 'entries were'} removed.")}
+    # Same count, different fingerprint: the tail was rebuilt. A bookmark that
+    # is BEHIND the file is not that; _save_chain is best effort and may have
+    # missed a write, and the next entry brings it back into step.
+    if mark and last_seq and int(mark.get("seq") or 0) == last_seq \
+            and mark.get("hash") != last_hash:
+        return {"ok": False, "entries": entries,
+                "broke_at": {"file": "", "seq": last_seq, "at": mark.get("at"), "sentence": ""},
+                "why": "The last entry does not match the fingerprint written when it "
+                       "was recorded, so the end of the file was changed."}
     return {"ok": True, "entries": entries, "broke_at": None,
             "why": ("Every entry follows the one before it." if entries
                     else "Nothing has been recorded here yet.")}
+
+
+def _bookmark(root: Path) -> dict | None:
+    """chain.json as written, or None. Unlike `_chain_state` this never rebuilds
+    from the files: a bookmark rebuilt from a shortened file would agree with
+    it, which is the one thing verify must not let happen."""
+    try:
+        raw = json.loads((folder(root) / CHAIN).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return raw if isinstance(raw, dict) and raw.get("hash") else None
 
 
 def summary(root: Path) -> dict:

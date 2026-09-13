@@ -451,7 +451,9 @@ def hub_status(app, course_id) -> dict:
         lines.append(line + ".")
     elif plan and plan.get("writes"):
         lines.append(f"Due dates: {plan['writes']} items would move. Nothing is written yet.")
-        badge = plan["writes"]
+        # Not a badge: this is what a rollover *would* change, not work
+        # waiting on anyone, and the area bar summed it into "24 waiting".
+        badge = None
     elif plan and (plan.get("facts") or {}).get("missing"):
         lines.append("Due dates: tell me the term start, the number of weeks and the end of "
                      "finals, and the week table is computed from them.")

@@ -15,13 +15,24 @@
   Studio.a11yKinds = Studio.a11yKinds || {};
   S.a11y = S.a11y || {};
 
+  const FIX = 'Fix accessibility';
+  const FIND = 'Find and replace';
   const KINDS = [
-    { id: 'html', label: 'HTML' },
-    { id: 'pptx', label: 'PowerPoint' },
-    { id: 'docx', label: 'Word' },
-    { id: 'pdf', label: 'PDFs' },
-    { id: 'pdf-text', label: 'PDF text' },
-    { id: 'office-text', label: 'Office text' },
+    { id: 'html', label: 'Pages', group: FIX,
+      title: 'Pages, assignments, discussions, quiz descriptions and the syllabus: '
+        + 'the course text Canvas stores as HTML' },
+    { id: 'pptx', label: 'PowerPoint', group: FIX,
+      title: 'Alt text, slide titles and table header rows inside .pptx files' },
+    { id: 'docx', label: 'Word', group: FIX,
+      title: 'Alt text, table header rows and heading structure inside .docx files' },
+    { id: 'pdf', label: 'PDFs', group: FIX,
+      title: 'Tag tree, reading order, OCR, alt text and PDF/UA-1 compliance for .pdf files' },
+    { id: 'pdf-text', label: 'in PDFs', group: FIND,
+      title: 'Change the words inside PDFs -- a retired name, an old course code. '
+        + 'Nothing to do with accessibility.' },
+    { id: 'office-text', label: 'in Office files', group: FIND,
+      title: 'The same find and replace inside .docx, .pptx and .xlsx. '
+        + 'Nothing to do with accessibility.' },
   ];
   const LOOKS = [
     { id: 'clean', label: 'Clean', hint: 'No background fills. Navy headings and borders only. Scores 0 use-of-colour advisories in Ally.' },
@@ -79,8 +90,8 @@
       { label: 'Accessibility' },
     ]);
     $('#headerActions').innerHTML = '';
-    areaHead('Accessibility', 'Fetch, restyle, verify, push. Visible text never changes.');
-    areaTabs(KINDS.map(k => ({ id: k.id, label: k.label })), kind, id => {
+    areaHead('Accessibility', 'Two different jobs share this screen. Fix accessibility makes a file usable by a screen reader; Find and replace changes the words inside one. Nothing is pushed until you confirm.');
+    areaTabs(KINDS.map(k => ({ id: k.id, label: k.label, group: k.group, title: k.title })), kind, id => {
       if (id !== kind) location.hash = '#/c/' + cid + '/a11y/' + id;
     });
     const body = $('#areaBody');
@@ -95,7 +106,10 @@
 
   /* --------------------------------------------------------- HTML gateway */
   function openHtml(cid, body) {
-    body.innerHTML = '<div class="a11yVerbs" id="a11yVerbs"></div><div id="a11yGateway"></div>';
+    body.innerHTML = '<p class="docsBlurb">Restyles the course text Canvas stores as HTML: '
+      + 'pages, assignments, discussions, quiz descriptions and the syllabus. A gate proves '
+      + 'the visible words did not change, so this never edits your writing.</p>'
+      + '<div class="a11yVerbs" id="a11yVerbs"></div><div id="a11yGateway"></div>';
     renderVerbs(cid);
     const host = $('#a11yGateway');
     if (!has('renderGateway')) {
@@ -107,7 +121,7 @@
     renderGateway(host, {
       kind: 'html',
       courseId: cid,
-      label: 'HTML bodies',
+      label: 'Pages and other course text',
       endpoints: {
         state: base(cid) + '/state',
         list: base(cid) + '/list',

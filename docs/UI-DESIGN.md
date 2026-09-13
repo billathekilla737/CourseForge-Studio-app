@@ -18,7 +18,7 @@ server with a confirm token and shown as a plain sentence (`askConfirm`).
 | `#/c/<cid>` | **Course hub** (new) | hub.js |
 | `#/c/<cid>/grade` | Assignment list (existing `openCourse`) | grade.js |
 | `#/c/<cid>/a/<aid>` | Grading workspace (existing, untouched) | grade.js |
-| `#/c/<cid>/a11y` and `/a11y/<kind>` | Accessibility: `html` `pptx` `docx` `pdf-text` `office-text` gateways | a11y.js |
+| `#/c/<cid>/a11y` and `/a11y/<kind>` | Accessibility: `html` `pptx` `docx` `pdf-text` `office-text` `triage` gateways, in two named groups | a11y.js |
 | `#/c/<cid>/a11y/pdf`, `/pdf/alt`, `/pdf/prove` | PDF fixer, alt-text grid, compliance census | a11y.js |
 | `#/c/<cid>/build`, `/build/new/<kind>`, `/build/manifest`, `/build/rubrics` | Build content | build.js |
 | `#/c/<cid>/tools/<sub>` | `dates` `export` `import` `clone` `nav` `quiz-backup` `slo` | tools.js |
@@ -62,6 +62,25 @@ saying what the first action does and that nothing is pushed.
 Below the cards: "Install X to enable" cards when a tool is missing, and "What
 changed in this course", the last eight Canvas writes across all areas
 (`GET /api/courses/<cid>/ledger`).
+
+### 1a. Two jobs, named
+
+The Accessibility tab row carries two unrelated jobs, and six flat tabs read as
+six variations on one. `areaTabs` takes a `group` on each tab and paints the
+name once, before the first tab that claims it, folding it into each tab's
+`aria-label` so it is not a sighted-only cue:
+
+| Group | Tabs | Route id |
+|---|---|---|
+| Fix accessibility | Pages, PowerPoint, Word, PDFs | `html` `pptx` `docx` `pdf` |
+| Find and replace | in PDFs, in Office files | `pdf-text` `office-text` |
+
+`Word` (fix a .docx for a screen reader) and `in Office files` (change the
+words inside one) sat adjacent under the old names and read as the same idea
+twice. Every kind's first line now says which job it is doing and which it is
+not. `triage` is reachable but has no tab, because a seventh tab called "PDF
+triage" beside "PDFs" is the confusion this row was untangled from; the PDFs
+screen links to it instead.
 
 ## 3. Shared area shell
 
@@ -122,9 +141,19 @@ Allow/Deny card, a composer (Enter sends, Shift+Enter newline, Send `.btn.ai`,
 Stop, New conversation); a rail with session facts and the "What it changed" ledger.
 
 The rail's first card is Student names: how many of the roster are swapped for
-tags, what the last message swapped, and Re-read the roster. A send that names
-two students at once comes back 409 with a sentence naming both, and the
-composer keeps the text.
+tags, what the last message swapped, and Re-read the roster.
+
+`@` in the composer opens a listbox of the roster above the box (a textarea has
+no caret coordinates without a mirror element). Arrows move, Enter or Tab
+picks, Escape closes; the key handler claims Enter first or picking a name
+would send the message.
+
+A send the server will not guess at comes back 409 carrying `near`,
+`ambiguous` and `can_send_anyway`, and the composer keeps the text and shows an
+inline card rather than the red banner that means something broke: one button
+per candidate name, plus Send as typed when the refusal is a near miss. A
+misspelling is repaired over whichever neighbouring words the suggested name
+already accounts for, or "Jordan Vancc" becomes "Jordan Jordan Vance".
 
 Allow/Deny card: headline by kind; **What:** the gate's own sentence (never the
 model's description); "Claude describes it as" muted; "Why it asks"; on a call
@@ -212,7 +241,7 @@ writes use full-size buttons.
 | Batch | `POST /api/batch/a11y {course_ids, look, apply, confirm}` |
 | Record | `GET /api/record/{cid}`, `GET .../file?month=`, `POST .../verify`, `POST .../sync`, `POST .../setting {to_canvas}` |
 | Tools | `POST /api/tools/install {tools: [...]}` (a job; installs the optional binaries) |
-| Assistant | `POST /api/assistant/{cid}/names/refresh` (re-read the roster for tagging) |
+| Assistant | `POST /api/assistant/{cid}/names/refresh` (re-read the roster for tagging); `GET /api/assistant/{cid}/roster` (the @ picker's list) |
 
 Long operations return `{job}`; confirm refusals keep the 409 shape
 (`needs_confirm, summary, detail, confirm`) so `postConfirmed` and

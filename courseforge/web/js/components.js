@@ -99,10 +99,24 @@
     items = items || [];
     host.hidden = !items.length;
     if (!items.length) { host.innerHTML = ''; return; }
+    /* A tab may name the job it belongs to. Where two tabs do different things
+       to the same file type -- fix a Word file's accessibility, replace a word
+       inside one -- the labels alone cannot carry that, and a row of six
+       reads as six variations on one theme. The group name is painted once,
+       before the first tab that claims it, and folded into each tab's
+       accessible name so it is not a sighted-only cue. */
+    let group = null;
     host.innerHTML = items.map(t => {
       const on = t.id === activeId;
-      return `<button class="subTab" role="tab" type="button" id="tab-${esc(t.id)}"
+      let lead = '';
+      if (t.group && t.group !== group) {
+        group = t.group;
+        lead = `<span class="subTabGroup" aria-hidden="true">${esc(t.group)}</span>`;
+      }
+      const name = t.group ? `${t.group}: ${t.label}` : t.label;
+      return lead + `<button class="subTab" role="tab" type="button" id="tab-${esc(t.id)}"
         aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-controls="areaBody"
+        aria-label="${esc(name)}"
         data-tab="${esc(t.id)}"${t.title ? ` title="${esc(t.title)}"` : ''}>${esc(t.label)}${
         (t.badge == null || t.badge === 0 || t.badge === '') ? '' : `<span class="n">${esc(t.badge)}</span>`}</button>`;
     }).join('');

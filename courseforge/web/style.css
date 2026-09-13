@@ -1410,3 +1410,15 @@ a.card,a.card:visited,a.acrossCard,a.acrossCard:visited{color:var(--ink);text-de
 .recTbl td .pill{margin:0 4px 3px 0}
 .recTbl tr.warnRow td{background:var(--warn-soft)}
 .recTbl .nowrap{white-space:nowrap}
+
+/* A tab row that carries two different jobs names each one, once, before the
+   first tab that belongs to it. Without this, "Word" (fix its accessibility)
+   and "Office text" (change the words in it) sat side by side reading as two
+   spellings of the same idea. */
+.subTabGroup{align-self:center;margin:0 2px 0 14px;padding-left:14px;
+  border-left:1px solid var(--line);font-size:11px;font-weight:600;
+  letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
+  white-space:nowrap;user-select:none}
+.subTabGroup:first-child{margin-left:0;padding-left:0;border-left:0}
+.pdfTriageLink{margin-left:8px;color:var(--zone);font-weight:600;white-space:nowrap}
+

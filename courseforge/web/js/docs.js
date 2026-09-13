@@ -18,37 +18,67 @@
   DocsStudio.a11yKinds = DocsStudio.a11yKinds || {};
   S.docs = S.docs || {};
 
+  /* Two jobs share this screen and they are not variations on each other.
+     Some tabs make a file usable by a screen reader; two change the words
+     inside a file and have nothing to do with accessibility. Left ungrouped,
+     "Word" and "Office text" sat next to each other looking like the same
+     idea twice -- which is how it read to the person who built it. So each
+     kind names its job, and the first line of every screen says which job it
+     is doing and which it is not. */
+  const FIX = 'Fix accessibility';
+  const FIND = 'Find and replace';
+
   const DOCS_KINDS = [
     {
       id: 'pptx', label: 'PowerPoint', one: 'deck', many: 'PowerPoint files', alt: true,
-      blurb: 'Alt text, slide titles and table header rows in the decks in this course.',
+      group: FIX,
+      title: 'Alt text, slide titles and table header rows inside .pptx files',
+      blurb: 'Makes the PowerPoint files in this course readable by a screen reader: '
+        + 'alt text, slide titles, table header rows. It never changes the wording. '
+        + 'To do that, use Find and replace.',
       empty: 'Refresh the list reads the file names from Canvas. Fetch & scan downloads a '
         + 'copy of each deck and reads it for missing alt text, untitled slides and tables '
         + 'without a header row. Nothing is uploaded.',
     },
     {
       id: 'docx', label: 'Word', one: 'document', many: 'Word documents', alt: true,
-      blurb: 'Alt text, table header rows and opt-in heading promotions in the Word files here.',
+      group: FIX,
+      title: 'Alt text, table header rows and heading structure inside .docx files',
+      blurb: 'Makes the Word files in this course readable by a screen reader: alt text, '
+        + 'table header rows, real headings. It never changes the wording. To do that, '
+        + 'use Find and replace.',
       empty: 'Refresh the list reads the file names from Canvas. Fetch & scan downloads a '
         + 'copy of each document and reads it for missing alt text, tables without a header '
         + 'row and paragraphs that look like headings. Nothing is uploaded.',
     },
     {
-      id: 'pdf-text', label: 'PDF text', one: 'PDF', many: 'PDF files', map: true,
-      blurb: 'Find and replace text inside PDFs -- an old course code, a retired name.',
+      id: 'pdf-text', label: 'in PDFs', one: 'PDF', many: 'PDF files', map: true,
+      group: FIND,
+      title: 'Change the words inside PDFs. Nothing to do with accessibility.',
+      blurb: 'Changes the words inside PDFs: a retired name, an old course code, a dead '
+        + 'link. This is not an accessibility fix. For tagging, OCR and alt text, use '
+        + 'PDFs under Fix accessibility.',
       empty: 'Type what to look for, then Fetch & scan reads every page of every PDF for it. '
         + 'Nothing is uploaded, and nothing is replaced until you write the replacement yourself.',
     },
     {
-      id: 'office-text', label: 'Office text', one: 'file', many: 'Office files', map: true,
-      blurb: 'The same find and replace inside .docx, .pptx and .xlsx files.',
+      id: 'office-text', label: 'in Office files', one: 'file', many: 'Office files', map: true,
+      group: FIND,
+      title: 'The same find and replace inside .docx, .pptx and .xlsx. '
+        + 'Nothing to do with accessibility.',
+      blurb: 'The same find and replace, inside .docx, .pptx and .xlsx. This is not an '
+        + 'accessibility fix. For alt text and headings, use Word or PowerPoint under '
+        + 'Fix accessibility.',
       empty: 'Type what to look for, then Fetch & scan reads the text of every Office file '
         + 'for it. Nothing is uploaded, and nothing is replaced until you write the '
         + 'replacement yourself.',
     },
     {
       id: 'triage', label: 'PDF triage', one: 'PDF', many: 'PDF files', report: true,
-      blurb: 'Which PDFs are hurting the Ally score, worst first. Detection only.',
+      group: FIX,
+      title: 'Which PDFs are worst, before fixing any of them. Reads only.',
+      blurb: 'Which PDFs are hurting the Ally score, worst first. Detection only: it never '
+        + 'changes a file.',
       empty: 'Fetch & scan downloads a copy of each PDF and classifies it: scanned image, '
         + 'untagged text, or tagged. It never changes a file and never uploads one.',
     },
@@ -80,7 +110,7 @@
     ]);
     $('#headerActions').innerHTML = '';
     areaHead('Documents', 'Fetch, scan, fix, verify, upload. The originals are kept here.');
-    areaTabs(DOCS_KINDS.map(k => ({ id: k.id, label: k.label })), kindId,
+    areaTabs(DOCS_KINDS.map(k => ({ id: k.id, label: k.label, group: k.group, title: k.title })), kindId,
       id => { location.hash = '#/c/' + courseId + '/docs/' + id; });
     return docsOpenKind(courseId, kindId, rest.slice(1));
   }

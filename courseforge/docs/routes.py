@@ -11,7 +11,11 @@
     /api/a11y/{cid}/<kind>/picture?file=&hash=   GET   PNG for the alt grid
     /api/a11y/{cid}/<kind>/file/{fid}/report     GET   everything the review pane needs
 
-kind is one of pptx, docx, pdf-text, office-text, triage. Each kind gets its
+kind is one of pptx, docx, pdf-text, office-text, triage. Two jobs, not five
+variations on one: pptx, docx and triage make a file usable by a screen
+reader; pdf-text and office-text change the words inside a file and have
+nothing to do with accessibility. The UI groups them under those two names.
+Each kind gets its
 own literal route so `/api/a11y/{cid}/html/...` (the HTML gateway, another
 area) is never shadowed by a `{kind}` wildcard.
 """

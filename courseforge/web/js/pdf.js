@@ -19,10 +19,24 @@
 
   const has = name => typeof window[name] === 'function';
   const base = cid => '/pdf/' + encodeURIComponent(cid);
+  const FIX = 'Fix accessibility';
+  const FIND = 'Find and replace';
   const KINDS = [
-    { id: 'html', label: 'HTML' }, { id: 'pptx', label: 'PowerPoint' },
-    { id: 'docx', label: 'Word' }, { id: 'pdf', label: 'PDFs' },
-    { id: 'pdf-text', label: 'PDF text' }, { id: 'office-text', label: 'Office text' },
+    { id: 'html', label: 'Pages', group: FIX,
+      title: 'Pages, assignments, discussions, quiz descriptions and the syllabus: '
+        + 'the course text Canvas stores as HTML' },
+    { id: 'pptx', label: 'PowerPoint', group: FIX,
+      title: 'Alt text, slide titles and table header rows inside .pptx files' },
+    { id: 'docx', label: 'Word', group: FIX,
+      title: 'Alt text, table header rows and heading structure inside .docx files' },
+    { id: 'pdf', label: 'PDFs', group: FIX,
+      title: 'Tag tree, reading order, OCR, alt text and PDF/UA-1 compliance for .pdf files' },
+    { id: 'pdf-text', label: 'in PDFs', group: FIND,
+      title: 'Change the words inside PDFs -- a retired name, an old course code. '
+        + 'Nothing to do with accessibility.' },
+    { id: 'office-text', label: 'in Office files', group: FIND,
+      title: 'The same find and replace inside .docx, .pptx and .xlsx. '
+        + 'Nothing to do with accessibility.' },
   ];
   const SUBS = [
     { id: '', label: 'Files' },
@@ -84,7 +98,7 @@
     if (!S.pdf.viaA11y && has('areaHead')) {
       areaHead('Accessibility', 'Back up, repair, describe, prove, upload. The originals stay on this computer.');
       if (has('areaTabs')) {
-        areaTabs(KINDS.map(k => ({ id: k.id, label: k.label })), 'pdf', id => {
+        areaTabs(KINDS.map(k => ({ id: k.id, label: k.label, group: k.group, title: k.title })), 'pdf', id => {
           if (id !== 'pdf') location.hash = '#/c/' + cid + '/a11y/' + id;
         });
       }
@@ -131,7 +145,15 @@
     body.innerHTML = ''
       + '<div id="pdfNeeds"></div>'
       + '<div class="pdfVerbs" id="pdfVerbs"></div>'
-      + '<p class="hint pdfSummary">' + esc(st.summary || '') + '</p>'
+      + '<p class="hint pdfSummary">' + esc(st.summary || '')
+      /* PDF triage has a screen and no way in: it is not one of the kind tabs,
+         because a seventh tab reading "PDF triage" next to "PDFs" is the very
+         confusion this row was just untangled from. It belongs here instead,
+         where somebody is looking at a long file list wondering where to
+         start. */
+      + ' <a class="pdfTriageLink" href="#/c/' + esc(cid) + '/a11y/triage"'
+      + ' title="Ranks the PDFs worst first and changes nothing">'
+      + 'Not sure where to start? Rank them worst first.</a></p>'
       + '<div id="pdfStats"></div>'
       + '<nav class="pdfSub" aria-label="PDF views">' + SUBS.map(s =>
         '<a class="subTab" href="' + hashFor(cid, s.id) + '"'

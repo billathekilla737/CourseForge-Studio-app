@@ -18,7 +18,7 @@ Open a course and you get six areas. Use any of them alone.
 | Area | What it is for |
 |---|---|
 | **Grade** | Pulls an assignment's rubric and submissions, drafts a rubric-aligned grade and a two-sentence comment for every student with Claude, and gives you a side-by-side review before a single point reaches Canvas. Insights, curves, overlap check, a teaching read, quiz settings and accommodations, the term schedule. The manual is [docs/GRADING.md](docs/GRADING.md). |
-| **Accessibility** | Brings an existing course up to ADA / Ally: restyles every page, assignment, discussion, quiz description and the syllabus with a gate that proves the visible text did not change, then pushes in place. Fixes PowerPoint and Word files (alt text, slide titles, header rows). Fixes PDFs with a PDF/UA-1 engine (OCR layer, tag tree, title and language, fonts) validated with veraPDF, describes figures with Claude, and uploads over the originals so links keep working. Edits text inside PDFs and Office files (a former instructor's name in every handout). |
+| **Accessibility** | Brings an existing course up to ADA / Ally: restyles every page, assignment, discussion, quiz description and the syllabus with a gate that proves the visible text did not change, then pushes in place. Fixes PowerPoint and Word files (alt text, slide titles, header rows). Fixes PDFs with a PDF/UA-1 engine (OCR layer, tag tree, title and language, fonts) validated with veraPDF, describes figures with Claude, and uploads over the originals so links keep working. Edits text inside PDFs and Office files (a former instructor's name in every handout). Two jobs, named as such on the tab row: **Fix accessibility** (Pages, PowerPoint, Word, PDFs) makes a file usable by a screen reader; **Find and replace** (in PDFs, in Office files) changes the words inside one and has nothing to do with accessibility. |
 | **Build** | Drafts a page, syllabus, assignment, graded discussion, quiz or study guide in the school's Canvas-safe template, checks it against the style rules, and places it in the module you choose, unpublished by default. Project manifests for whole modules. Rubrics. |
 | **Tools** | Export a course to `.imscc`, import a cartridge, copy a course into a sandbox. Roll due dates to a new term from the academic calendar with a week-by-week table to approve. Trim the left navigation. Back up a quiz before rewriting it. Cross-reference the course against the state learning outcomes for its program. |
 | **Assistant** | A Claude Code session for the course, in the browser. Say what you want in plain English. It drives the same verbs as the buttons, and every time it wants to change Canvas a card appears asking you to Allow or Deny. No answer means no. |
@@ -38,8 +38,10 @@ Three rules hold everywhere:
   `Student-1` in the Assistant -- and swapped back on the way to your screen.
   The list of who is who never leaves your computer. Every area except grading
   works through a Canvas client that cannot reach submissions, grades or
-  rosters at all. The details, and the one thing this does not cover, are in
-  [docs/NAMES.md](docs/NAMES.md).
+  rosters at all. Type `@` in the Assistant for the roster, so the spelling is
+  never yours to get wrong, and a name typed a keystroke off is stopped and
+  queried rather than sent as written. The details, and the one thing this
+  does not cover, are in [docs/NAMES.md](docs/NAMES.md).
 - **What it did is written down.** Every Canvas write goes into a chained,
   tamper-evident record kept in your own Canvas files, with accommodations and
   grades named by student. See [docs/RECORD.md](docs/RECORD.md).

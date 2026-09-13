@@ -672,6 +672,33 @@ class ReaderTextTests(unittest.TestCase):
             self.assertFalse(restyle.same_reader_text(before, after), after)
 
 
+class BatchFilesDescribes(unittest.TestCase):
+    """The cross-course screen had Survey, Scan and Upload but no Describe, so
+    the fastest route to "done" was also the one that produced the worst files:
+    repairing gives an undescribed figure a safe placeholder, and uploading at
+    that point ships a document that passes an automated scanner while telling
+    a blind student nothing."""
+
+    def test_the_step_exists(self):
+        from courseforge.a11y import batch_files
+        self.assertTrue(callable(getattr(batch_files, "describe", None)))
+
+    def test_it_has_a_route_and_uploads_nothing(self):
+        from courseforge.routing import ROUTER
+        paths = [r.pattern for r in ROUTER.routes if "/api/batch/files" in r.pattern]
+        self.assertIn("/api/batch/files/describe", paths)
+
+    def test_a_row_carries_what_is_still_on_a_placeholder(self):
+        """Without this count the screen cannot warn before an upload, and the
+        warning is the whole point of having noticed."""
+        from courseforge.a11y import batch_files
+        import inspect
+        src = inspect.getsource(batch_files._pdf_row)
+        self.assertIn("alt_todo", src)
+        self.assertIn("alt_todo", inspect.getsource(batch_files._docs_row))
+
+
+
 if __name__ == "__main__":
     unittest.main()
 

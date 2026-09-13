@@ -107,9 +107,11 @@
       + '<section><div class="a11yVerbs">'
       + '<button class="btn" id="fcSurvey">Survey</button>'
       + '<button class="btn primary" id="fcScan">Scan and repair</button>'
+      + '<button class="btn ai" id="fcDescribe" title="Write real descriptions for the '
+      + 'pictures the repair could only stub. Uploads nothing.">Describe images with Claude</button>'
       + '<button class="btn danger" id="fcPush">Upload the fixed files</button>'
-      + '<span class="hint">Survey and Scan never change Canvas. Repairs are written '
-      + 'on this computer and stay here until you upload them.</span>'
+      + '<span class="hint">Survey, Scan and Describe never change Canvas. Repairs and '
+      + 'descriptions are written on this computer and stay here until you upload them.</span>'
       + '</div><div id="fcResult"></div></section></div>';
 
     const pickedIds = () => Array.from(new Set(
@@ -165,13 +167,42 @@
       runJob('Scan and repair (nothing is uploaded)',
         () => api('/batch/files/scan', { body: b }), r => renderFiles(result, r, false));
     };
+    $('#fcDescribe').onclick = () => {
+      const b = ask(); if (!b) return;
+      runJob('Describing pictures (nothing is uploaded)',
+        () => api('/batch/files/describe', { body: b }), r => renderFiles(result, r, false));
+    };
     $('#fcPush').onclick = () => {
       const b = ask(); if (!b) return;
+      /* Repairing gives an undescribed figure a safe placeholder, so a file
+         can be structurally valid and still describe nothing. Uploading at
+         that point looks like the job is done, which is the worse of the two
+         ways to be non-compliant. Say so before the confirm dialog, not in a
+         footnote afterwards. */
+      const waiting = placeholdersLeft(st().last);
+      if (waiting && !confirm(waiting + ' picture' + (waiting === 1 ? '' : 's')
+        + ' across these courses still hold a placeholder description rather than '
+        + 'a real one.\n\nUploading now gives you files that pass an automated '
+        + 'scanner and tell a blind student nothing. Describe images with Claude '
+        + 'first, or press OK to upload them as they are.')) return;
       runJobConfirmed('Upload the fixed files',
         token => api('/batch/files/push', { body: Object.assign({}, b, { apply: true, confirm: token }) }),
         r => renderFiles(result, r, false),
         { title: 'Upload the fixed files to these courses?' });
     };
+  }
+
+  /* How many pictures across the last scan are still on a placeholder. Read
+     from whatever the last run reported; zero when nothing has been scanned,
+     because a warning about a number nobody has measured is just noise. */
+  function placeholdersLeft(last) {
+    let n = 0;
+    for (const row of ((last && last.rows) || [])) {
+      for (const k of Object.values(row.kinds || {})) {
+        n += +(k.alt_todo || k.needs_alt || 0) || 0;
+      }
+    }
+    return n;
   }
 
   const KIND_LABEL = { pdf: 'PDFs', pptx: 'PowerPoint', docx: 'Word' };
@@ -193,6 +224,8 @@
 
   function renderFiles(host, s, previous) {
     if (!host) return;
+    // Whatever ran last is what the upload warning reads its counts from.
+    if (s && s.rows) st().last = s;
     const rows = (s && s.rows) || [];
     const kinds = (s && s.kinds) || [];
     const action = (s && s.action) || 'survey';

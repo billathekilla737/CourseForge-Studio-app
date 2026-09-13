@@ -99,6 +99,10 @@ def _pdf_row(ctx, cid) -> dict:
         "needs_person": len(st.get("queue") or []),
         "ready": sum(1 for f in files if f.get("state") in ("fixed", "verified")),
         "uploaded": sum(1 for f in files if f.get("state") == "uploaded"),
+        # Figures still holding the placeholder the repair wrote. Carried so
+        # the screen can say what uploading now would actually ship: a file
+        # that passes a scanner and describes nothing.
+        "alt_todo": int((st.get("counts") or {}).get("alt_waiting") or 0),
         "listed_at": st.get("listed_at"),
         "needs": st.get("needs") or [],
     }
@@ -117,10 +121,19 @@ def _docs_row(ctx, cid, kind_id) -> dict:
         except Exception:  # noqa: BLE001
             summary = {}
         issues += int(summary.get("issues") or summary.get("problems") or 0)
+    alt_todo = 0
+    if kind.has_alt:
+        for it in scanned:
+            try:
+                from ..docs.describe import alt_todo as _todo
+                alt_todo += len(_todo(it.report, it.fixes) or [])
+            except Exception:  # noqa: BLE001
+                pass
     return {
         "files": len(rows),
         "scanned": len(scanned),
         "issues": issues,
+        "alt_todo": alt_todo,
         "listed_at": listed.get("listed_at"),
         "needs": gateway.tool_needs(ctx, kind),
     }
@@ -203,6 +216,59 @@ def scan(ctx, course_ids, kinds=None, log=None, fix_pdfs: bool = True) -> dict:
             _log(log, "%s: %s" % (cid, row["error"]), n, total)
     summary = {"ran_at": now_iso(), "action": "scan", "kinds": kinds, "applied": False,
                "course_ids": course_ids, "rows": rows, "totals": totals(rows, kinds)}
+    return _save(ctx, summary)
+
+
+# ---------------------------------------------------------------- describe
+
+def describe(ctx, course_ids, kinds=None, log=None, model: str | None = None) -> dict:
+    """Write real descriptions for the pictures the repair could only stub.
+
+    This step was missing from the cross-course screen, and its absence was
+    worse than an inconvenience. Repairing a PDF gives every undescribed figure
+    a safe placeholder so the file is structurally valid; uploading at that
+    point ships a document that passes an automated scanner while telling a
+    blind student nothing. The per-course screens had this step and said so.
+    The batch path quietly did not, so the faster route to "done" was also the
+    one that produced worse files.
+
+    Nothing is uploaded here. Descriptions are written into the local copies
+    and go out with the next Upload, like every other repair.
+    """
+    from ..docs import describe as docs_describe
+
+    course_ids = _clean_courses(course_ids)
+    kinds = _clean_kinds(kinds)
+    rows, total = [], len(course_ids)
+    described, cost = 0, 0.0
+    for n, cid in enumerate(course_ids, 1):
+        row = {"course": cid, "name": "", "kinds": {}, "error": ""}
+        rows.append(row)
+        try:
+            row["name"] = course_label(ctx, cid)
+            for kind_id in kinds:
+                label = "%s: %s" % (row["name"], KIND_LABEL[kind_id])
+                if kind_id == "pdf":
+                    _log(log, "%s: describing figures" % label, n, total)
+                    out = course_pdfs.describe(ctx, cid, model=model) or {}
+                elif gateway.KINDS[kind_id].has_alt:
+                    _log(log, "%s: describing pictures" % label, n, total)
+                    out = docs_describe.describe(ctx, cid, gateway.KINDS[kind_id],
+                                                 model=model) or {}
+                else:
+                    continue
+                got = int(out.get("described") or 0)
+                cost += float(out.get("cost_usd") or 0.0)
+                described += got
+                row["kinds"][kind_id] = {"described": got}
+        except Exception as exc:  # noqa: BLE001
+            row["error"] = "%s: %s" % (type(exc).__name__, exc)
+            _log(log, "%s: %s" % (cid, row["error"]), n, total)
+
+    summary = {"ran_at": now_iso(), "action": "describe", "kinds": kinds,
+               "applied": False, "course_ids": course_ids, "rows": rows,
+               "described": described, "cost_usd": round(cost, 4),
+               "totals": totals(rows, kinds)}
     return _save(ctx, summary)
 
 

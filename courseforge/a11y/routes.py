@@ -578,6 +578,22 @@ def batch_files_scan(req):
     return req.job("a11y.files.scan", job)
 
 
+@route("POST", "/api/batch/files/describe", AREA)
+def batch_files_describe(req):
+    """Real descriptions for the pictures the repair could only stub.
+
+    Uploads nothing. Without this step the batch path ships files that pass a
+    scanner while describing nothing, which is the worse of the two ways to be
+    non-compliant because it looks like the job is done.
+    """
+    course_ids, kinds = _file_args(req)
+    model = (req.body or {}).get("model") or None
+
+    def job(log):
+        return batch_files.describe(req.app, course_ids, kinds, log=log, model=model)
+    return req.job("a11y.files.describe", job)
+
+
 @route("POST", "/api/batch/files/push", AREA)
 def batch_files_push(req):
     course_ids, kinds = _file_args(req)

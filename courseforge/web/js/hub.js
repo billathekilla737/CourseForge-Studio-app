@@ -227,6 +227,11 @@
              <span class="m">PDFs, slide decks and Word documents across several
                courses. Survey first; nothing is uploaded until you say so.</span></span></a>`
         : off('ADA file compliance', 'Not installed in this build.')}
+      <a class="acrossItem" href="#/extensions"><span class="ic record"></span>
+        <span><span class="t">Deadline extensions</span>
+        <span class="m">A student was ill or bereaved: give them longer on the work
+          that fell during the absence, in every course they are in. Nobody else's
+          dates move.</span></span></a>
       <a class="acrossItem" href="#/reports"><span class="ic record"></span>
         <span><span class="t">Reports</span>
         <span class="m">An accessibility score with a before and an after, and every

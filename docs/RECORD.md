@@ -31,6 +31,7 @@ practice:
 | Accessibility | Pages, documents and PDFs restyled, fixed or uploaded, with counts. |
 | Build | Content placed in the course. |
 | Tools | Due dates moved, exports, imports, navigation changes, quiz backups. Term-schedule changes are recorded against the course they touched, not as one line about "the schedule". |
+| Extensions | A deadline moved for one student and not the rest of the class: who, which assignment, the date before and the date after, how many days, the absence it was for, and which date it was measured from. Canvas refusing one is recorded the same way. |
 | Tests | Quiz settings: what changed, on which quiz. |
 | Messages | Private Canvas messages to students who have turned nothing in: who was written to, the subject, and who could not be reached. |
 | Assistant | Each Allow you clicked, and what it allowed. |

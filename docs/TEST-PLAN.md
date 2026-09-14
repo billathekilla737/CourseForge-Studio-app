@@ -307,3 +307,58 @@ plan can take a few seconds the first time).
 
 `/api/inbox?scope=` accepts only an empty value, `unread`, `archived` or `sent`;
 anything else is a 400 by design.
+
+## Deadline extensions
+
+A student was ill or bereaved and needs longer on the work that fell during the
+absence, in every course they are in. Reached from the picker, under *Across
+your courses*, or at `#/extensions`.
+
+Nothing here writes to Canvas until step 8. Steps 1 to 7 are safe on a live
+course.
+
+1. Open `#/extensions`. The tab should say **Deadline extensions**, and the
+   student list should fill within a few seconds. Each student shows the
+   courses Canvas has them in.
+2. Type part of a name in the search box. The list narrows **and the box keeps
+   focus** — you can keep typing without clicking back into it.
+3. Click a student. A chip appears above the search box, the row highlights,
+   and the button at the bottom enables and counts them.
+4. Set the absence window to a stretch when work was actually due, leave
+   *Extend by* at 3, and leave *Which courses* on the term.
+5. Press **Show me what would move**. The job log names each course it reads
+   and how many items were due in the window. Expect one line per course.
+6. Read the dry run. Check, on at least one row:
+   * **Due now** is the date the student really has, not always the class date;
+   * **Would become** is exactly that date plus the days, with the *same
+     time of day*;
+   * **Measured from** says where the starting date came from.
+7. Check the callout naming the timezone the dates were worked out in. On a
+   machine without the `tzdata` package it will say *this PC* and explain why.
+   If the course is in a different timezone from the machine, that sentence
+   matters — install `tzdata` before trusting the dates.
+8. Untick a row. The count on the button drops. **This is the check that
+   matters**: the confirmation you get in step 9 must name the number you see
+   here, not the original number.
+9. Press **Move N dates in Canvas…**. It is refused once, and a dialog lists
+   each change as *was → becomes*. Cancel it. Nothing should have changed in
+   Canvas.
+10. Press it again and confirm. Then, in Canvas, open one of those assignments
+    and look at its dates: there should be an override titled
+    **Extension: <student name>** for that student alone, and the class date
+    should be untouched.
+11. Open **Record** on that course. There should be one line per date moved,
+    naming the student and both dates.
+12. Run the same extension again with the same days. The second run should
+    *update* the override it made rather than adding a second one — the student
+    ends up with one override, further out, not two.
+
+Expected refusals, each of which should be a readable sentence rather than an
+error:
+
+* a student who is in none of the courses in scope — the page should name the
+  courses Canvas *does* have them in, and suggest ticking courses by hand;
+* an assignment whose date for that student comes from an override shared with
+  other students — left alone, and said so;
+* an assignment with no due date for them at all;
+* 0 days, or more than 90.

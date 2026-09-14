@@ -1666,3 +1666,84 @@ a.acrossItem,a.acrossItem:visited{color:var(--ink)}
 .rpGaps{margin-top:18px}
 .rpGaps h3{margin:0 0 8px;font-size:14px;font-weight:650}
 .rpGaps ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.7}
+
+
+/* ----------------------------------------------------- deadline extensions */
+/* Two panels side by side -- who, and when -- then the dry run underneath at
+   full width, because the dry run is the part that has to be readable. */
+.exGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  gap:16px;margin:14px 0 4px}
+.exPanel{border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.exPanel h3{margin:0 0 10px;font-size:13px}
+.exPanel h4{margin:16px 0 7px;font-size:11px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--muted)}
+.exPanel input[type=search],.exPanel input[type=date],.exPanel input[type=number]{
+  font:inherit;padding:6px 9px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--card);color:var(--ink)}
+.exPanel input[type=search]{width:100%}
+
+.exChosen{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
+.exChip{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+  padding:3px 8px;border-radius:99px;border:1px solid var(--ai);
+  background:var(--ai-soft);color:var(--ai);cursor:pointer}
+.exChip .exX{font-size:14px;line-height:1;opacity:.75}
+.exChip:hover{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+
+.exPool{display:flex;flex-direction:column;gap:3px;margin-top:9px;
+  max-height:260px;overflow-y:auto}
+.exPick{display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  text-align:left;padding:6px 9px;border:1px solid transparent;
+  border-radius:var(--radius);background:none;color:var(--ink);cursor:pointer;
+  font:inherit;width:100%}
+.exPick:hover{background:var(--bg);border-color:var(--line)}
+.exPick.on{background:var(--ai-soft);border-color:var(--ai)}
+.exPick b{font-weight:600;font-size:12.5px}
+.exPick span{font-size:11px;color:var(--muted)}
+.exMore{font-size:11px;padding:6px 9px}
+
+.exRow{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.exRow label{display:flex;flex-direction:column;gap:4px;font-size:11px;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.exUnit{font-size:12.5px;color:var(--muted);padding-bottom:7px}
+.exNote{font-size:11.5px;line-height:1.6;margin:6px 0 2px}
+.exRadio{display:block;font-size:12.5px;margin:5px 0;cursor:pointer}
+.exRadio.exSub{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.exCourses{display:flex;flex-direction:column;gap:3px;margin:7px 0 2px 20px;
+  max-height:190px;overflow-y:auto}
+.exCourse{font-size:12.5px;cursor:pointer}
+
+.exActions{display:flex;align-items:center;gap:12px;margin:16px 0 4px}
+
+/* ---- the dry run ---- */
+.exPlan{margin-top:22px;padding-top:18px;border-top:2px solid var(--rule)}
+.exPlan h3{margin:0 0 4px;font-size:14px}
+.exZone{background:var(--bg);border-color:var(--line);color:var(--muted)}
+.exTable{width:100%;border-collapse:collapse;font-size:12.5px;margin:4px 0 18px}
+.exTable caption{text-align:left;font-weight:600;font-size:12px;
+  padding:10px 0 6px;color:var(--ink)}
+.exTable th{text-align:left;font-size:11px;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--muted);font-weight:600;
+  border-bottom:1px solid var(--line);padding:0 8px 6px}
+.exTable td{padding:7px 8px;border-bottom:1px solid var(--line);
+  vertical-align:top}
+.exTable tbody tr{cursor:default}
+.exTable tbody tr:hover{background:transparent}
+.exTick{width:26px}
+.exDate{font:12px var(--mono);white-space:nowrap}
+.exNew{font-weight:600;color:var(--accent)}
+.exArrow{color:var(--muted);width:18px;text-align:center}
+.exFrom{font-size:11.5px;line-height:1.5}
+.exLock{font-size:11px}
+/* An unticked row stays legible: it is evidence that something was considered
+   and left, not a disabled control. */
+.exOffRow td{opacity:.45}
+.exOffRow .exNew{color:var(--muted);font-weight:400;text-decoration:line-through}
+
+.exSkipped{margin:0 0 16px;font-size:12.5px}
+.exSkipped summary{cursor:pointer;color:var(--muted)}
+.exSkipped ul{margin:8px 0 0;padding-left:20px;line-height:1.7;color:var(--muted)}
+.exSkipped b{color:var(--ink)}
+.exFoot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:6px}
+.exFoot .muted{font-size:11.5px;max-width:46ch;line-height:1.55}
+.pill.sm{font-size:9.5px;padding:1px 6px}
+.exFix{margin-top:8px;font-size:12px;opacity:.9}

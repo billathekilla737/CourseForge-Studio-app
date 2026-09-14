@@ -410,6 +410,81 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
             "POST", f"/courses/{course_id}/assignments/{assignment_id}/overrides",
             fields)
 
+    def update_override(self, course_id: int | str, assignment_id: int | str,
+                        override_id: int | str, dates: dict | None = None,
+                        student_ids: list | None = None,
+                        title: str | None = None) -> dict:
+        """Change an override that already exists.
+
+        A second extension for the same student on the same assignment has to
+        come here rather than to create_override: Canvas allows a student into
+        only one ad-hoc override per assignment, so creating a second one is a
+        conflict rather than a longer deadline.
+
+        A date passed as None is cleared; a date left out of `dates` entirely is
+        left as Canvas has it. The two are different and the caller means them
+        differently, which is why this does not take **kwargs.
+        """
+        fields: list[tuple[str, str]] = []
+        if title is not None:
+            fields.append(("assignment_override[title]", title))
+        if student_ids is not None:
+            ids = [str(int(u)) for u in student_ids if str(u).strip()]
+            if not ids:
+                raise ValueError("an override needs at least one student; "
+                                 "delete it instead of emptying it")
+            fields += [("assignment_override[student_ids][]", u) for u in ids]
+        for name in self.DATE_FIELDS:
+            if dates and name in dates:
+                fields.append((f"assignment_override[{name}]", dates[name] or ""))
+        if not fields:
+            raise ValueError("update_override called with nothing to change")
+        return self._form(
+            "PUT",
+            f"/courses/{course_id}/assignments/{assignment_id}/overrides/{override_id}",
+            fields)
+
+    def delete_override(self, course_id: int | str, assignment_id: int | str,
+                        override_id: int | str) -> dict:
+        """Remove an override, putting its students back on the class date."""
+        payload, _ = self._request(
+            "DELETE",
+            f"{self.base}/api/v1/courses/{course_id}/assignments/"
+            f"{assignment_id}/overrides/{override_id}")
+        return payload or {}
+
+    def students_with_sections(self, course_id: int | str) -> list[dict]:
+        """The roster, each student carrying the sections they are enrolled in.
+
+        Which section somebody is in decides which of an assignment's dates
+        they are actually held to, so an extension cannot be measured from the
+        right date without this. It is one extra include on a call the Studio
+        already makes, not an extra round trip per student.
+        """
+        return list(self.paged(
+            f"/courses/{course_id}/users", enrollment_type=["student"],
+            enrollment_state=["active"], include=["enrollments"]))
+
+    def submitted_pairs(self, course_id: int | str, student_ids: list,
+                        assignment_ids: list) -> set:
+        """{(assignment_id, user_id)} for work already handed in.
+
+        One call for the whole course rather than one per assignment. Canvas
+        counts a row as a submission even when nothing was uploaded, so the
+        test is an actual submitted_at rather than the workflow state.
+        """
+        ids = [str(u) for u in student_ids if str(u).strip()]
+        aids = [str(a) for a in assignment_ids if str(a).strip()]
+        if not ids or not aids:
+            return set()
+        out = set()
+        for row in self.paged(f"/courses/{course_id}/students/submissions",
+                              student_ids=ids, assignment_ids=aids,
+                              per_page=100):
+            if row.get("submitted_at"):
+                out.add((str(row.get("assignment_id")), str(row.get("user_id"))))
+        return out
+
     def create_announcement(self, course_id: int | str, title: str, message: str,
                             delayed_post_at: str | None = None) -> dict:
         """Post a course announcement. Students see it as soon as it is live."""

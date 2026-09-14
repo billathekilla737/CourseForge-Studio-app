@@ -294,6 +294,7 @@ const TITLES = {
   schedule: 'Term schedule · CourseForge Studio', inbox: 'Inbox · CourseForge Studio',
   reports: 'Reports · CourseForge Studio', batch: 'Batch Course Restyle · CourseForge Studio',
   files: 'ADA file compliance · CourseForge Studio',
+  extensions: 'Deadline extensions · CourseForge Studio',
 };
 function route() {
   const r = parseRoute();
@@ -314,6 +315,9 @@ function route() {
   } else if (parts[0] === 'files') {
     opened = typeof openFileCompliance === 'function'
       ? openFileCompliance() : missingOpener('ADA file compliance');
+  } else if (parts[0] === 'extensions') {
+    opened = typeof openExtensions === 'function'
+      ? openExtensions() : missingOpener('Deadline extensions');
   } else if (parts[0] === 'c' && parts[2] === 'a' && parts[3]) {
     rememberAssignment(parts[1], parts[3]);
     opened = openAssignment(parts[1], parts[3], { arriving: true });

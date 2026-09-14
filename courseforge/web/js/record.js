@@ -15,6 +15,7 @@
     grade: 'Grade', a11y: 'Accessibility', docs: 'Accessibility', pdf: 'Accessibility',
     build: 'Build', content: 'Build', courseops: 'Tools', tools: 'Tools',
     assistant: 'Assistant', accommodations: 'Accommodations',
+    extend: 'Extensions',
   };
 
   function base(cid) { return '/record/' + encodeURIComponent(cid); }

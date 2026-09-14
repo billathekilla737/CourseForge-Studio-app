@@ -125,6 +125,14 @@ class Config:
     # either way; this only decides whether Canvas gets one.
     audit_to_canvas: bool = True
     audit_sync_s: int = 180
+    # Where the launcher looks for a newer version, and whether it looks at
+    # all. A token is only needed while the source repository is private; the
+    # point of the feature is that a colleague needs no GitHub account, so a
+    # public source is what makes it work for them.
+    check_updates: bool = True
+    update_repo: str = "billathekilla737/CourseForge-Studio"
+    update_branch: str = "main"
+    update_token: str = ""
     # The Assistant: a Claude Code session per course with an Allow/Deny gate.
     assistant_enabled: bool = True
     assistant_model: str = ""           # empty = Claude Code's default

@@ -65,6 +65,44 @@ Three rules hold everywhere:
   `python -m courseforge tools --install --yes` does the install, and
   `python -m courseforge tools --ask-again` brings the first-run offer back.
 
+## Updating
+
+The launcher window checks once, in the background, each time it starts. If
+there is a newer version it shows an **Update** button beside the title; if
+there is not, the version line just says *up to date*. Nothing downloads, and
+nothing changes, until that button is pressed.
+
+Pressing it shows what changed since your copy, and **Update now** fetches the
+new version and writes it into the install folder. Then **Restart now** starts
+a fresh copy, because the running one is still using the code it loaded at
+startup.
+
+What an update never touches:
+
+* `config.json` — your port, models and settings;
+* `data/` — every draft, extracted submission and record;
+* your Canvas token, which lives outside the folder entirely;
+* `.git`, if this copy is a checkout.
+
+It also refuses to run at all on a checkout with uncommitted changes, and says
+which files are in the way. Use `git pull` there instead.
+
+If the update source is unreachable — no network, or the repository is private
+and this copy has no credential — the window says so on the version line and
+carries on. The check never blocks startup and never raises.
+
+### Settings
+
+| Key | Default | What it does |
+|---|---|---|
+| `check_updates` | `true` | Whether the launcher looks at all |
+| `update_repo` | `billathekilla737/CourseForge-Studio` | Where it looks |
+| `update_branch` | `main` | Which branch counts as current |
+| `update_token` | `""` | Only needed while the source repository is private |
+
+A colleague who was handed a folder needs none of this: as long as the source
+is public, the button works with no GitHub account, no git, and no terminal.
+
 ## Setup
 
 ```bash

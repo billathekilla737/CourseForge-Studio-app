@@ -150,7 +150,7 @@ def write_stamp(root: Path, revision: str, version: str = __version__) -> None:
 
 # ----------------------------------------------------------------- the check
 def _repo(cfg) -> str:
-    return (getattr(cfg, "update_repo", "") or "billathekilla737/CourseForge-Studio").strip("/")
+    return (getattr(cfg, "update_repo", "") or "billathekilla737/CourseForge-Studio-app").strip("/")
 
 
 def _branch(cfg) -> str:

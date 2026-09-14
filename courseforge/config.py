@@ -130,7 +130,7 @@ class Config:
     # point of the feature is that a colleague needs no GitHub account, so a
     # public source is what makes it work for them.
     check_updates: bool = True
-    update_repo: str = "billathekilla737/CourseForge-Studio"
+    update_repo: str = "billathekilla737/CourseForge-Studio-app"
     update_branch: str = "main"
     update_token: str = ""
     # The Assistant: a Claude Code session per course with an Allow/Deny gate.

@@ -96,20 +96,43 @@ carries on. The check never blocks startup and never raises.
 | Key | Default | What it does |
 |---|---|---|
 | `check_updates` | `true` | Whether the launcher looks at all |
-| `update_repo` | `billathekilla737/CourseForge-Studio` | Where it looks |
+| `update_repo` | `billathekilla737/CourseForge-Studio-app` | Where it looks |
 | `update_branch` | `main` | Which branch counts as current |
 | `update_token` | `""` | Only needed while the source repository is private |
 
-A colleague who was handed a folder needs none of this: as long as the source
-is public, the button works with no GitHub account, no git, and no terminal.
+A colleague who was handed a folder needs none of this: the source is public,
+so the button works with no GitHub account, no git, and no terminal.
+
+### Publishing a new version
+
+Development happens in the private repository; the public one at
+[billathekilla737/CourseForge-Studio-app](https://github.com/billathekilla737/CourseForge-Studio-app) is what
+every install checks. They share one history, so publishing is one push:
+
+```bash
+git push public main
+```
+
+Until that runs, nobody's launcher sees the change. Nothing else is needed --
+no tags, no release notes, no uploaded files: the button reads the commit
+subjects between the user's version and the branch head.
+
+The public repository must never carry student data, and neither must its
+history. `config.json`, `data/` and every token are gitignored, which is what
+keeps that true.
 
 ## Setup
 
 ```bash
-git clone https://github.com/billathekilla737/CourseForge-Studio
-cd CourseForge-Studio
+git clone https://github.com/billathekilla737/CourseForge-Studio-app
+cd CourseForge-Studio-app
 pip install -e .[pdf]
 ```
+
+Someone who does not use git can instead take
+[the latest zip](https://github.com/billathekilla737/CourseForge-Studio-app/archive/refs/heads/main.zip),
+unpack it anywhere, and run `CourseForge Studio.vbs`. Every update after that
+is the button in the launcher window.
 
 Copy the example config (only `base_url` needs changing if you are not at MGCCC):
 

@@ -423,6 +423,29 @@ def trace_event(line: str) -> dict | list | None:
     return None
 
 
+def rate_limit_notice(info: dict) -> str | None:
+    """A line for the transcript only when Claude actually refused the turn.
+
+    The CLI emits `rate_limit_event` on every turn. `allowed` and
+    `allowed_warning` mean the request ran; `allowed_warning` is "you are
+    getting close", not "you are out". Treating anything other than `allowed`
+    as exhausted put a false "usage limit has been reached" on the page while
+    answers kept arriving. `resetsAt` on a warning is the window's end, often
+    midnight, which made the lie look specific.
+    """
+    status = str((info or {}).get("status") or "").strip().lower()
+    if not status or status.startswith("allowed"):
+        return None
+    txt = "Your Claude usage limit has been reached"
+    when = (info or {}).get("resetsAt")
+    if when:
+        try:
+            txt += "; it resets at %s" % time.strftime("%I:%M %p", time.localtime(when))
+        except Exception:  # noqa: BLE001
+            pass
+    return txt + "."
+
+
 # ------------------------------------------------------------- the session
 
 class Session:
@@ -656,16 +679,9 @@ class Session:
                 self._emit({"kind": "init", "session_id": ev.get("session_id"),
                             "model": ev.get("model")})
         elif t == "rate_limit_event":
-            info = ev.get("rate_limit_info") or {}
-            if info.get("status") and info.get("status") != "allowed":
-                when = info.get("resetsAt")
-                txt = "Your Claude usage limit has been reached"
-                if when:
-                    try:
-                        txt += "; it resets at %s" % time.strftime("%I:%M %p", time.localtime(when))
-                    except Exception:  # noqa: BLE001
-                        pass
-                self._emit({"kind": "notice", "text": txt + "."})
+            txt = rate_limit_notice(ev.get("rate_limit_info") or {})
+            if txt:
+                self._emit({"kind": "notice", "text": txt})
 
 
 # --------------------------------------------------------------- quick jobs

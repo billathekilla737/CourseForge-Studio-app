@@ -219,11 +219,12 @@ def install_plan(cfg=None) -> dict:
 
 
 def install(cfg=None, yes: bool = False, say=print) -> int:
-    """Install what a package manager can, and print the rest.
+    """Install optional tools: winget/pip for most, a hashed veraPDF download.
 
-    Only ever runs a package manager the machine already trusts. This never
-    downloads an executable itself: a tool that fetches and runs binaries is a
-    worse thing to have on a machine than the inconvenience it saves.
+    Winget and pip are the package managers the machine already trusts. veraPDF
+    has no package anywhere, so that one row fetches the project's own
+    installer, checks it against a known hash, and runs it into the user
+    folder. Nothing else is downloaded.
     """
     plan = install_plan(cfg)
     if not plan["rows"]:

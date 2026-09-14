@@ -992,17 +992,24 @@ def _done_sentence(app, cid, kind: Kind, n: int) -> str:
 
 
 def restore_plan(app, cid, kind: Kind, file_ids=None) -> dict:
-    rows = []
+    rows, suspect = [], []
     for it in items(app, cid, kind, file_ids):
-        if it.push and it.original.is_file():
-            rows.append({"file_id": it.id, "name": it.meta.get("display_name"),
-                         "folder_id": it.meta.get("folder_id"), "size": it.original.stat().st_size,
-                         "pushed_at": it.push.get("at")})
+        if not (it.push and it.original.is_file()):
+            continue
+        actual = it.original.stat().st_size
+        recorded = it.meta.get("size")
+        if recorded not in (None, "") and int(recorded) != actual:
+            suspect.append({"file_id": it.id, "name": it.meta.get("display_name"),
+                            "recorded": recorded, "actual": actual})
+            continue
+        rows.append({"file_id": it.id, "name": it.meta.get("display_name"),
+                     "folder_id": it.meta.get("folder_id"), "size": actual,
+                     "pushed_at": it.push.get("at")})
     n = len(rows)
     sentence = (f"Put the original {kind.singular if n == 1 else kind.plural} back over "
                 f"{'the fixed one' if n == 1 else f'the {n} fixed ones'} in {course_name(app, cid)}. "
                 "Names, folders and links stay the same; the fixed copies stay on this computer.")
-    return {"rows": rows, "count": n, "sentence": sentence,
+    return {"rows": rows, "count": n, "suspect": suspect, "sentence": sentence,
             "fingerprint": {"course_id": str(cid), "kind": kind.id, "restore": sorted(r["file_id"] for r in rows)}}
 
 

@@ -187,6 +187,17 @@ class PolicyGapsTests(unittest.TestCase):
     def test_account_reports(self):
         self.assertFalse(_content_ok("/accounts/1/reports/grade_export_csv"))
 
+    def test_file_listing_with_uploader_include_is_allowed(self):
+        """include[]=user on a file is the uploader, not a roster."""
+        self.assertTrue(_content_ok("/courses/1/files?include[]=user"))
+        self.assertTrue(_content_ok("/courses/1/files"))
+
+    def test_file_listing_with_users_include_is_still_refused(self):
+        self.assertFalse(_content_ok("/courses/1/files?include[]=users"))
+
+    def test_file_download_leaf_is_allowed(self):
+        self.assertTrue(_content_ok("/files/123/download"))
+
 
 # ------------------------------------------------------------------- server
 class SameOriginTests(unittest.TestCase):
@@ -380,6 +391,38 @@ class LaunchFilesTests(unittest.TestCase):
     def test_vbs_launches_the_launcher_module(self):
         text = (ROOT / "CourseForge Studio.vbs").read_text(encoding="utf-8", errors="replace")
         self.assertIn("-m courseforge.launcher", text)
+        self.assertIn("config.example.json", text)
+        self.assertIn("courseforge gui", text)
+
+    def test_not_logged_in_accepts_a_message(self):
+        err = claude_cli.NotLoggedIn("ANTHROPIC_API_KEY is not set.")
+        self.assertIn("ANTHROPIC_API_KEY", str(err))
+
+    def test_packaged_version_matches_pyproject(self):
+        import re as _re
+        from courseforge import __version__
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        m = _re.search(r'(?m)^version = "([^"]+)"', text)
+        self.assertEqual(__version__, m.group(1))
+
+    def test_persist_writes_audit_to_canvas(self):
+        from courseforge.config import Config
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text("{}", encoding="utf-8")
+            cfg = Config.load(path)
+            cfg.persist(audit_to_canvas=False)
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            self.assertFalse(raw["audit_to_canvas"])
+            cfg2 = Config.load(path)
+            self.assertFalse(cfg2.audit_to_canvas)
+
+    def test_launcher_can_build_a_restart_argv(self):
+        import inspect
+        from courseforge import launcher
+        self.assertTrue(hasattr(launcher, "Path"))
+        src = inspect.getsource(launcher.Launcher.restart)
+        self.assertIn("Path(exe)", src)
 
 
 if __name__ == "__main__":

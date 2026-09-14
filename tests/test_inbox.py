@@ -241,6 +241,19 @@ class OneTagPerPerson(Base):
         self.assertNotIn("Jordan", body)
         self.assertIn("Student-24", body)
 
+    def test_a_classmate_named_in_account_level_mail_is_swapped(self):
+        """Account-level threads only listed participants; a third student
+        mentioned in the body used to go out as written."""
+        self._cached_map("734975", "Student-24", 101, "Jordan Alvarez")
+        self._cached_map("734736", "Student-2", 205, "Dana Wu")
+        identity.forget()
+        row = dict(THREAD, context_code="account_11")
+        t = inbox.Thread(self.app, row, me_id=9)
+        body = t.mask(THREAD["messages"][1]["body"])
+        self.assertNotIn("Dana", body)
+        self.assertNotIn("Wu", body)
+        self.assertIn("Student-2", body)
+
 
 class ReadingChangesNothing(Base):
     def test_opening_a_thread_does_not_mark_it_read(self):

@@ -483,7 +483,9 @@ def verify(original, fixed, fixes=None, workdir=None):
     finally:
         if tmp:
             shutil.rmtree(tmp, ignore_errors=True)
-    ok = all(checks.values())
+    if remaining:
+        problems.append("%d hard Ally issue(s) still present" % len(remaining))
+    ok = all(checks.values()) and not remaining
     return {"ok": ok, "checks": checks, "problems": problems,
             "remaining": remaining, "remaining_hard": len(remaining),
             "report_only": report_only}

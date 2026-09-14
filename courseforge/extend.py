@@ -132,6 +132,18 @@ def shift(value, days: int, tz_name: str | None = None) -> str | None:
     return moved.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def touches_window(assignment: dict, overrides: list[dict], user_ids,
+                   sections: dict, start, end, tz_name: str | None = None) -> bool:
+    """True if the class date or any selected student's effective date is in the window."""
+    if day_in_window(assignment.get("due_at"), start, end, tz_name):
+        return True
+    for uid in user_ids:
+        eff = effective(assignment, overrides, uid, sections.get(str(uid)) or [])
+        if day_in_window(eff.get("due_at"), start, end, tz_name):
+            return True
+    return False
+
+
 def day_in_window(value, start, end, tz_name: str | None = None) -> bool:
     """Is this instant's local calendar day inside [start, end]?
 

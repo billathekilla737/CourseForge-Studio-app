@@ -295,6 +295,7 @@ const TITLES = {
   reports: 'Reports · CourseForge Studio', batch: 'Batch Course Restyle · CourseForge Studio',
   files: 'ADA file compliance · CourseForge Studio',
   extensions: 'Deadline extensions · CourseForge Studio',
+  roster: 'Accommodation roster · CourseForge Studio',
 };
 function route() {
   const r = parseRoute();
@@ -318,6 +319,11 @@ function route() {
   } else if (parts[0] === 'extensions') {
     opened = typeof openExtensions === 'function'
       ? openExtensions() : missingOpener('Deadline extensions');
+  } else if (parts[0] === 'roster') {
+    opened = Promise.resolve(openCourses()).then(() => {
+      if (typeof openRoster === 'function') return openRoster();
+      return missingOpener('the accommodations roster');
+    });
   } else if (parts[0] === 'c' && parts[2] === 'a' && parts[3]) {
     rememberAssignment(parts[1], parts[3]);
     opened = openAssignment(parts[1], parts[3], { arriving: true });

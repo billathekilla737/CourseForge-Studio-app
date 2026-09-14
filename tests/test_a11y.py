@@ -438,6 +438,21 @@ class PushApplyTests(A11yBase):
         self.assertNotIn("page_start-here", result["keys"])
         self.assertEqual(self.client._find("page", "start-here")["body"], UNSTRUCTURED)
 
+    def test_excluding_a_failing_item_lets_the_rest_push(self):
+        self.fetch_restyle_verify("clean")
+        m = load_manifest(self.wd)
+        target = next(it for it in m["items"] if it.get("styled_file"))
+        key = restyle.item_key(target)
+        report = json.loads((self.wd / "verify-report.json").read_text(encoding="utf-8"))
+        for rec in report:
+            if str(rec.get("styled_file")) == str(target.get("styled_file")):
+                rec["ok"] = False
+                break
+        (self.wd / "verify-report.json").write_text(json.dumps(report), encoding="utf-8")
+        p = push.plan(self.wd, exclude=[key])
+        self.assertNotIn(key, {r["key"] for r in p["rows"]})
+        self.assertTrue(p["rows"], "the rest of the course should still be pushable")
+
 
 class BoldStructureTests(unittest.TestCase):
     def test_classification(self):

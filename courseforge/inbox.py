@@ -97,6 +97,13 @@ class Thread:
         missing = [p for p in people if not self.names.tag_for(p.get("id"))]
         if missing:
             self.names.absorb(missing)
+        # Account-level mail has no course map. Seed every student already
+        # tagged on this machine so a classmate named in the body is swapped
+        # too, not only the people Canvas listed as participants.
+        if not self.course_id:
+            for uid, hit in identity.known_all(app).items():
+                if not self.names.tag_for(uid):
+                    self.names.adopt(hit["tag"], hit["row"])
         self.people = people
 
     def tag(self, user_id) -> str:

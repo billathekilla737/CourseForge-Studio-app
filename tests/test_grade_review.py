@@ -19,7 +19,8 @@ import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
-from courseforge import confirm, handoff
+from courseforge import confirm, curve, grader, handoff
+from courseforge.pseudonym import Pseudonymizer
 from courseforge.server import App
 from courseforge.store import Store
 
@@ -83,6 +84,89 @@ class EditStudentKeepsTheCurvedTotalInStep(unittest.TestCase):
         self.assertEqual(entry["total"], 10)
         self.assertEqual(entry["final_total"], 12)
         self.assertEqual(entry["comment"], "see me")
+
+    def test_ticking_a_comment_does_not_count_as_a_regrade(self):
+        entry = self.app.edit_student("1", "2", "7", {"post_comment": True})
+        self.assertTrue(entry["post_comment"])
+        self.assertEqual(entry["source"], "claude")
+        self.assertEqual(entry["total"], 10)
+
+
+class ATypedCanvasTotalKeepsItsCurve(unittest.TestCase):
+    def test_final_total_does_not_sum_empty_rubric_cells(self):
+        entry = {"total": 85, "total_only": True, "scores": {},
+                 "curve": {"flat": 5, "by_criterion": {}}}
+        rubric = [{"id": "c1", "label": "Form", "points": 100}]
+        self.assertEqual(curve.earned_total(entry, rubric), 85)
+        self.assertEqual(curve.final_total(entry, rubric, 100), 90)
+
+
+class PushSendsOnlyTickedComments(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.app = bare_app(self.tmp)
+        self.app.store.save_draft("1", "2", {
+            "rubric": RUBRIC, "points_possible": 20,
+            "students": {
+                "7": {"user_id": "7", "source": "claude",
+                      "scores": {"c1": 8, "c2": 8}, "total": 16,
+                      "comment": "Tighten the silhouette.", "post_comment": True},
+                "8": {"user_id": "8", "source": "claude",
+                      "scores": {"c1": 5, "c2": 5}, "total": 10,
+                      "comment": "Add a backrest."},
+            }})
+
+    def plan(self, mode):
+        return self.app.push("1", "2", dry_run=True, comment_mode=mode)
+
+    def test_selected_writes_only_the_ticked_comment(self):
+        out = self.plan("selected")
+        by = {p["user_id"]: p for p in out["would_post"]}
+        self.assertEqual(by["7"]["comment"], "Tighten the silhouette.")
+        self.assertEqual(by["8"]["comment"], "")
+        self.assertEqual(out["comment_mode"], "selected")
+        self.assertEqual(out["comments_n"], 1)
+
+    def test_none_writes_no_comments(self):
+        out = self.plan("none")
+        self.assertTrue(all(not p["comment"] for p in out["would_post"]))
+        self.assertEqual(out["comments_n"], 0)
+
+    def test_all_writes_every_comment(self):
+        out = self.plan("all")
+        by = {p["user_id"]: p for p in out["would_post"]}
+        self.assertEqual(by["7"]["comment"], "Tighten the silhouette.")
+        self.assertEqual(by["8"]["comment"], "Add a backrest.")
+        self.assertEqual(out["comments_n"], 2)
+
+
+class NamesDoNotLeaveOnAGrade(unittest.TestCase):
+    def test_build_prompt_does_not_contain_the_roster_name(self):
+        students = [{"id": 7, "name": "Jordan Alvarez"},
+                    {"id": 8, "name": "Dana Wu"}]
+        pseud = Pseudonymizer(students, enabled=True)
+        entry = {
+            "user_id": "7", "name": "Jordan Alvarez", "pseudonym": "S-001",
+            "status": "submitted",
+            "body_text": "Signed, Jordan Alvarez.",
+            "text": "Signed, Jordan Alvarez.",
+            "filenames": ["Jordan Alvarez essay.docx"],
+            "discussion": {
+                "post": {"text": "hello from Jordan Alvarez", "words": 4},
+                "replies": [{"to": "Dana Wu", "to_id": "8",
+                             "to_excerpt": "Dana Wu said wait",
+                             "text": "thanks Dana Wu", "words": 3}],
+            },
+        }
+        prompt = grader.build_prompt(
+            {"name": "Essay", "points_possible": 10, "description": "<p>x</p>"},
+            [{"id": "c1", "label": "Form", "points": 10, "detail": "", "ratings": []}],
+            entry, "", "S-001", pseud=pseud)
+        for secret in ("Jordan", "Alvarez", "Dana Wu"):
+            self.assertNotIn(secret, prompt, secret)
+        self.assertIn("S-001", prompt)
+        self.assertIn("S-002", prompt)
 
 
 class FakeFiles:
@@ -206,6 +290,45 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
 
     def test_the_schedule_footer_is_fed_seconds_by_name(self):
         self.assertIn("agoSeconds(sc.age_s)", self.src)
+
+    def test_a_flagged_roster_row_has_a_review_menu(self):
+        self.assertIn("function openRosterMenu(", self.src)
+        self.assertIn("function onRosterContext(", self.src)
+        self.assertIn("function runSelectionAction(", self.src)
+        self.assertIn("function selectionItems(", self.src)
+        self.assertIn("Mark as reviewed", self.src)
+        self.assertIn("Push grade to Canvas", self.src)
+        self.assertIn("doMarkReviewed(reviewed, only)", self.src)
+        self.assertIn("openPush(st.ids)", self.src)
+        # Bulk bar and context menu share one action list, so a new verb cannot
+        # land on shift-click and be missing from right-click (or the reverse).
+        self.assertIn("selectionItems(st)", self.src)
+        self.assertIn("js/grade.js?v=remind-1",
+                      (WEB / "index.html").read_text(encoding="utf-8"))
+
+    def test_remind_missing_is_wired_in_the_header(self):
+        """The Send group paints Remind missing when the deadline has passed.
+        Without an onclick it sits there dead; the per-student button is a
+        different id and is not this check."""
+        self.assertIn('id="btnRemind"', self.src)
+        self.assertIn("$('#btnRemind')", self.src)
+        self.assertIn(
+            "rm.onclick = () => openRemind(S.ids.courseId, S.ids.assignmentId)",
+            self.src)
+
+    def test_the_student_panel_has_a_comment_tick(self):
+        self.assertIn('id="postCmt"', self.src)
+        self.assertIn("Only comments I ticked on the student panel", self.src)
+        self.assertIn("comments: $('#pushComments').value", self.src)
+
+    def test_the_schedule_tiles_follow_the_course_chips(self):
+        """The five numbers used to come from the server for the whole term,
+        so turning courses off left the tiles lying."""
+        self.assertIn("function scheduleStats(", self.src)
+        self.assertIn("function schedPicked(", self.src)
+        self.assertIn("Still due this term", self.src)
+        self.assertIn("Waiting to grade", self.src)
+        self.assertNotIn("Master Schedule", self.src)
 
     def test_the_announcement_dialog_tolerates_no_schedule(self):
         body = self.src[self.src.index("function openAnnounce("):]

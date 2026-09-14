@@ -130,30 +130,13 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
         Submission attachment URLs are already signed and redirect to S3 or
         CloudFront, which rejects the request with 401 if a bearer token also
         rides along. So try unauthenticated first, then fall back to the token
-        for plain /api/v1/files/:id/download URLs that do need it.
+        for plain /api/v1/files/:id/download URLs that do need it. A tokened
+        request never follows the redirect: the Canvas token must not land on
+        AWS.
         """
         dest.parent.mkdir(parents=True, exist_ok=True)
-        errors: list[str] = []
-        tries = (False, True) if canvas_policy.same_host(self.base, url) else (False,)
-        for use_token in tries:
-            req = urllib.request.Request(url)
-            req.add_header("User-Agent", USER_AGENT)
-            if use_token:
-                canvas_policy.assert_token_host(self.base, url, self.allowed_hosts)
-                req.add_header("Authorization", f"Bearer {self.token}")
-            try:
-                with urllib.request.urlopen(req, timeout=max(self.timeout, 120)) as resp:
-                    payload = resp.read()
-                if not payload:
-                    errors.append("empty response")
-                    continue
-                dest.write_bytes(payload)
-                return dest
-            except urllib.error.HTTPError as exc:
-                errors.append(f"HTTP {exc.code}{' with token' if use_token else ''}")
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"{type(exc).__name__}: {exc}")
-        raise RuntimeError(f"could not download attachment ({'; '.join(errors)})")
+        dest.write_bytes(self._fetch_bytes(url, timeout=max(self.timeout, 120)))
+        return dest
 
     # --------------------------------------------------------------- reading
     def whoami(self) -> dict:
@@ -607,6 +590,48 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             return None
 
+    def _open_url(self, url: str, use_token: bool, timeout: int):
+        """GET a URL. Tokened requests do not follow redirects, so a 302 to S3
+        cannot take the Canvas bearer token with it."""
+        req = urllib.request.Request(url)
+        req.add_header("User-Agent", USER_AGENT)
+        if use_token:
+            canvas_policy.assert_token_host(self.base, url, self.allowed_hosts)
+            req.add_header("Authorization", f"Bearer {self.token}")
+            return urllib.request.build_opener(self._NoRedirect).open(req, timeout=timeout)
+        return urllib.request.urlopen(req, timeout=timeout)
+
+    def _fetch_bytes(self, url: str, timeout: int) -> bytes:
+        """Download file bytes. Signed S3 URLs go without a token; Canvas
+        /files/:id/download URLs that 302 to storage are followed without it."""
+        if canvas_policy.same_host(self.base, url):
+            canvas_policy.check_scope(self.scope, "GET", url)
+        errors: list[str] = []
+        tries = (False, True) if canvas_policy.same_host(self.base, url) else (False,)
+        for use_token in tries:
+            try:
+                with self._open_url(url, use_token, timeout) as resp:
+                    data = resp.read()
+                if data:
+                    return data
+                errors.append("empty response")
+            except urllib.error.HTTPError as exc:
+                loc = exc.headers.get("Location") if exc.code in (301, 302, 303, 307, 308) else ""
+                if use_token and loc:
+                    try:
+                        with self._open_url(loc, False, timeout) as resp:
+                            data = resp.read()
+                        if data:
+                            return data
+                        errors.append("empty response after redirect")
+                    except Exception as follow:  # noqa: BLE001
+                        errors.append(f"{type(follow).__name__}: {follow}")
+                else:
+                    errors.append(f"HTTP {exc.code}{' with token' if use_token else ''}")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{type(exc).__name__}: {exc}")
+        raise RuntimeError(f"could not download attachment ({'; '.join(errors)})")
+
     def upload_user_file(self, name: str, payload: bytes,
                          folder: str = "canvas-grader",
                          content_type: str = "application/octet-stream") -> dict:
@@ -668,25 +693,10 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
     def read_file_bytes(self, url: str) -> bytes:
         """Fetch a Canvas file's content. Signed URLs refuse a bearer token, so
         try without one first and fall back, exactly as `download` does."""
-        errors: list[str] = []
-        tries = (False, True) if canvas_policy.same_host(self.base, url) else (False,)
-        for use_token in tries:
-            req = urllib.request.Request(url)
-            req.add_header("User-Agent", USER_AGENT)
-            if use_token:
-                canvas_policy.assert_token_host(self.base, url, self.allowed_hosts)
-                req.add_header("Authorization", f"Bearer {self.token}")
-            try:
-                with urllib.request.urlopen(req, timeout=max(self.timeout, 300)) as resp:
-                    data = resp.read()
-                if data:
-                    return data
-                errors.append("empty response")
-            except urllib.error.HTTPError as exc:
-                errors.append(f"HTTP {exc.code}{' with token' if use_token else ''}")
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"{type(exc).__name__}: {exc}")
-        raise RuntimeError(f"could not read the file ({'; '.join(errors)})")
+        try:
+            return self._fetch_bytes(url, timeout=max(self.timeout, 300))
+        except RuntimeError as exc:
+            raise RuntimeError(str(exc).replace("attachment", "file", 1)) from exc
 
     def delete_file(self, file_id: int | str) -> dict:
         payload, _ = self._request("DELETE", f"{self.base}/api/v1/files/{file_id}")

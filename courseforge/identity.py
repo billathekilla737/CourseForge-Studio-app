@@ -457,10 +457,11 @@ def for_course(app, course_id, refresh: bool = False) -> NameMap:
     cid = str(course_id)
     with _LOCK:
         nm = _CACHE.get(cid)
+        enabled = bool(getattr(app.cfg, "pseudonymize", True))
         if nm is not None and not refresh:
+            nm.enabled = enabled
             return nm
         path = Path(app.course_dir(cid)) / FILE
-        enabled = bool(getattr(app.cfg, "pseudonymize", True))
         nm = nm or NameMap(cid, path=path, enabled=enabled)
         nm.enabled = enabled
         if not nm.by_tag:
@@ -501,10 +502,19 @@ def known(app, user_id) -> tuple[str, dict] | None:
     uid = str(user_id or "").strip()
     if not uid:
         return None
+    hit = known_all(app).get(uid)
+    return (hit["tag"], hit["row"]) if hit else None
+
+
+def known_all(app) -> dict:
+    """Every student already tagged on this machine, keyed by Canvas user id.
+
+    Account-level Inbox threads have no course, so a classmate named in the
+    body is not a participant and would otherwise go out as written.
+    """
     if not _KNOWN:
         _build_known(app)
-    hit = _KNOWN.get(uid)
-    return (hit["tag"], hit["row"]) if hit else None
+    return dict(_KNOWN)
 
 
 def _build_known(app) -> None:

@@ -152,6 +152,15 @@ class TheGuardOnALocalCheckout(Base):
 
 
 class WhatSurvivesAnUpdate(Base):
+    def test_the_token_file_is_not_replaced(self):
+        (self.tmp / "canvas.token").write_text("mine", encoding="utf-8")
+        self.serve(archive(files={
+            "courseforge/__init__.py": "x\n", "courseforge/server.py": "x\n",
+            "courseforge/launcher.py": "x\n", "canvas.token": "theirs"}))
+        out = update.apply(self.cfg, self.ready(), root=self.tmp)
+        self.assertTrue(out["ok"], out["message"])
+        self.assertEqual((self.tmp / "canvas.token").read_text(), "mine")
+
     def test_the_config_is_not_replaced(self):
         (self.tmp / "config.json").write_text('{"port": 8900}', encoding="utf-8")
         self.serve(archive(files={

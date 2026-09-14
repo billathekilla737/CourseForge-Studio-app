@@ -334,7 +334,9 @@ The rationale is written for you, one per criterion. The comment is written to t
 student and is capped at two sentences and 45 words: what cost the points, and the
 one thing to do differently. No opening praise, no recap of what they submitted, no
 sign-off. A student reads two sentences and skims anything longer, so a long comment
-is a wasted one.
+is a wasted one. Comments stay on this machine unless you tick **Include this
+comment when pushing** on that student, then choose **Only comments I ticked**
+(or **Every student's comment**) on the push dialog. The default is scores only.
 
 ### House style
 
@@ -410,8 +412,17 @@ success.
 ## Term schedule
 
 **Term schedule** on the courses screen lists every dated assignment across the
-term's courses, grouped by week, the way a printed master schedule would. It
-reads straight from Canvas.
+term's courses, grouped by week. It reads straight from Canvas. The five tiles
+at the top follow the course chips (and the Tests &amp; exams / Waiting to grade
+filters): two courses selected is the stats for those two courses.
+
+| Tile | What it counts |
+|---|---|
+| **Still due this term** | Dated items not yet due |
+| **Due in the next 7 days** | Those still due inside a week |
+| **Tests & exams remaining** | Tests, exams and finals still due |
+| **Waiting to grade** | Submissions Canvas says are waiting, including past due |
+| **Dated items this term** | Every dated item in the selection, past and upcoming |
 
 Courses are labelled by **name**, not catalogue code — "Game Theory and
 Mechanics", not "IMT 1213". A Canvas course name is mostly filing:

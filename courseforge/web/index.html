@@ -20,7 +20,10 @@
 <button class="skip" id="skipLink" type="button">Skip to content</button>
 
 <header>
-  <div class="brand">CourseForge Studio <small id="hostLine">local · not connected</small></div>
+  <div class="brand">
+    <a href="#/" class="brandHome" aria-label="CourseForge Studio home">CourseForge Studio</a>
+    <small id="hostLine">local · not connected</small>
+  </div>
   <div class="crumbs" id="crumbs" aria-label="Where you are"></div>
   <div class="spacer"></div>
   <!-- The inbox count. Its own slot rather than #headerActions, which every
@@ -64,7 +67,7 @@
 <section id="viewSchedule" class="hidden">
   <div class="schedHead bandHead">
     <div class="wrap">
-      <h1 id="schedTitle">Master Schedule</h1>
+      <h1 id="schedTitle">Term schedule</h1>
       <p class="schedSub" id="schedSub"></p>
       <div class="schedStats" id="schedStats"></div>
     </div>
@@ -146,7 +149,7 @@
      shrugs off; its hub card says "Not installed". -->
 <script src="js/core.js"></script>
 <script src="js/components.js"></script>
-<script src="js/grade.js"></script>
+<script src="js/grade.js?v=remind-1"></script>
 <script src="js/hub.js"></script>
 <script src="js/a11y.js"></script>
 <script src="js/files.js"></script>

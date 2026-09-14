@@ -120,6 +120,8 @@ class Config:
     java_path: str = ""
     # Alt text and other image descriptions: sonnet sees well and costs less.
     describe_model: str = "sonnet"
+    # College-specific syllabus statements. Empty = courseforge/knowledge/syllabus-policies.json.
+    syllabus_policies_path: str = ""
     # The account of what the Studio did (audit.py), kept in your own Canvas
     # user files so it outlives this laptop. The chained local copy is written
     # either way; this only decides whether Canvas gets one.

@@ -83,12 +83,12 @@ class ClaudeError(RuntimeError):
 
 
 class NotLoggedIn(ClaudeError):
-    def __init__(self):
-        super().__init__(
+    def __init__(self, message: str | None = None):
+        super().__init__(message or (
             "The Claude CLI is not logged in.\n"
             "Open a terminal and run:  claude  then  /login\n"
             "Then re-run this tool from that same terminal."
-        )
+        ))
 
 
 @dataclass

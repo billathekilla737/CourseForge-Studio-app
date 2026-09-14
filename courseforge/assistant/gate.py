@@ -172,6 +172,7 @@ _TOKEN = re.compile(r"canvas\.token|CANVAS_TOKEN|\.token\.enc\b|\btoken-[\w.-]+\
 # pseudonym map or the draft grades. "graded discussion" is content and passes.
 _GRADING = re.compile(
     r"\bgrades?\b|\bgrading\b|\bgradebook\b|\bmap\.json\b|\bdraft\.json\b|"
+    r"\bnames\.json\b|"
     r"proposed-grades|[\\/]data[\\/]\d+[\\/]\d+(?=[\\/\s\"']|$)|"
     r"\baccommodations\.json\b|\bextracted\.json\b|\bsubmission",
     re.I)
@@ -615,6 +616,12 @@ def _segment_problem(seg, cwd):
         u = _urls_problem(s)
         if u:
             return (u, "egress")
+        for tok in _path_like(args):
+            if _GRADING.search(tok):
+                return ("%s: grading data" % head, "student-data")
+            prob = _read_path_problem(tok, cwd)
+            if prob:
+                return ("%s: %s" % (head, prob), "read")
         return _nested_problem(s, cwd)
 
     return ("%s is not on the Assistant's list of read-only commands" % head, "run")

@@ -101,7 +101,8 @@ def _git(root: Path, *args) -> str:
     try:
         out = subprocess.run(["git", "-C", str(root), *args], capture_output=True,
                              text=True, timeout=15, encoding="utf-8",
-                             errors="replace")
+                             errors="replace",
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.SubprocessError):
         return ""
     return out.stdout if out.returncode == 0 else ""
@@ -339,7 +340,8 @@ def _unsafe(name: str, top: str) -> bool:
 
 
 # The updater never touches these, whatever an archive happens to contain.
-KEEP = {"config.json", "config.local.json", "secrets.json", STAMP}
+KEEP = {"config.json", "config.local.json", "secrets.json", STAMP,
+        "canvas.token", "canvas.token.enc", "canvas.token.txt"}
 KEEP_DIRS = {".git", "data", "__pycache__", ".venv", "venv"}
 
 

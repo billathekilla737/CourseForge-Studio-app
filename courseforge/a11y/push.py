@@ -71,14 +71,19 @@ def _status(exc) -> int | None:
 
 # ------------------------------------------------------------------ gates
 
-def check_report(wd, manifest: dict) -> dict:
+def check_report(wd, manifest: dict, exclude=None) -> dict:
     """The verify report must be passing and match the styled files on disk.
     Returns the report keyed by styled_file, or raises PushRefused."""
     report = load_report(wd)
     if report is None:
         raise PushRefused("There is no verify report for this course yet. Restyle and "
                           "verify first; nothing is pushed without a passing verify.")
-    failed = [r for r in report if not r.get("ok")]
+    excluded_files = set()
+    for it in (manifest or {}).get("items") or []:
+        if restyle.item_key(it) in set(exclude or []):
+            excluded_files.add(str(it.get("styled_file") or ""))
+    failed = [r for r in report if not r.get("ok")
+              and str(r.get("styled_file") or "") not in excluded_files]
     if failed:
         names = ", ".join((r.get("name") or str(r.get("id")))[:40] for r in failed[:5])
         raise PushRefused("The verify report has %d failing item(s) (%s%s). Fix them or "
@@ -119,9 +124,9 @@ def plan(wd, kinds=None, exclude=None) -> dict:
     m = load_manifest(wd)
     if not m or not m.get("items"):
         raise PushRefused("Nothing has been fetched for this course yet. Fetch first.")
-    check_report(wd, m)
     kinds = set(k.lower() for k in kinds) if kinds else None
     exclude = set(exclude or [])
+    check_report(wd, m, exclude=exclude)
     rows, skipped = [], []
     for it in m["items"]:
         key = restyle.item_key(it)

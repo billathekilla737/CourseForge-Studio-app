@@ -22,5 +22,10 @@ if not exist config.json (
 
 REM The status window owns the server, reads the port from config.json and
 REM opens the browser itself.
-python -m courseforge gui
+where python >nul 2>&1
+if errorlevel 1 (
+  py -3 -m courseforge gui
+) else (
+  python -m courseforge gui
+)
 pause

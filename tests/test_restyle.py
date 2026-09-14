@@ -284,6 +284,18 @@ def test_unicode_is_entity_encoded():
         shutil.rmtree(wd, ignore_errors=True)
 
 
+def test_instructional_background_text_is_not_eaten():
+    html = ('<p>Set background: #fff on the body. Then save.</p>'
+            '<p style="background: #061e3f; color: #fff">Hero</p>')
+    out, n = R.strip_fills(html)
+    check("Set background: #fff on the body" in out,
+          "instructional CSS in the body is not a style to strip")
+    style = R.re.search(r'style="([^"]*)"', out)
+    check(style is not None and "background:" not in style.group(1).lower(),
+          "style-attribute fills are still stripped")
+    check(n >= 1, "counted the style-attribute fill")
+
+
 def test_brand_config_is_honoured():
     """brand.json must actually drive emitted colour, or it is decoration."""
     check(R.NAVY == R.C["navy"] and R.GOLD == R.C["gold"],
@@ -304,6 +316,7 @@ def main():
     test_verify_report_carries_digests()
     test_empty_body_skipped()
     test_unicode_is_entity_encoded()
+    test_instructional_background_text_is_not_eaten()
     test_brand_config_is_honoured()
     print("-" * 60)
     if FAILURES:

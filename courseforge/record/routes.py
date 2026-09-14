@@ -111,7 +111,7 @@ def setting(req):
         raise HTTPError(400, "Say what to change: to_canvas is missing.")
     req.app.cfg.audit_to_canvas = bool(body["to_canvas"])
     try:
-        req.app.cfg.persist()
+        req.app.cfg.persist(audit_to_canvas=bool(body["to_canvas"]))
     except Exception as exc:  # noqa: BLE001
         raise HTTPError(500, "Changed for this run, but config.json could not be "
                              "written, so it goes back on restart: %s" % exc)

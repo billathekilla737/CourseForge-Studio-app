@@ -332,8 +332,7 @@ def strip_fills(h):
         orphaned gold-on-white is a hard CONTRAST failure)
       - links (<a>) keep their color (house style pairs it with underline)
     Borders are never touched (headings + borders are Ally-exempt)."""
-    n = len(re.findall(r"background(?:-color)?\s*:", h, re.I))
-    h = re.sub(r"background(?:-color)?\s*:\s*[^;\"']+;?", "", h, flags=re.I)
+    n = 0
 
     def per_tag(m):
         tag, attrs = m.group(1).lower(), m.group(2)
@@ -341,7 +340,10 @@ def strip_fills(h):
             return m.group(0)
 
         def per_style(sm):
+            nonlocal n
             s = sm.group(1)
+            n += len(re.findall(r"background(?:-color)?\s*:", s, re.I))
+            s = re.sub(r"background(?:-color)?\s*:\s*[^;\"']+;?", "", s, flags=re.I)
             if tag in ("h2", "h3"):
                 s = COLOR_DECL.sub("", s).rstrip().rstrip(";") + ";color:" + NAVY
             elif tag != "a":

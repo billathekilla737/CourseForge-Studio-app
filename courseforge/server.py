@@ -347,6 +347,9 @@ class App:
             applied[key] = value
         if applied:
             self.cfg.persist(**applied)
+            if "pseudonymize" in applied:
+                from . import identity
+                identity.forget()
         return {"ok": True, "applied": applied, "model": self.cfg.model,
                 "models": self.cfg.models,
                 "vision_model": getattr(self.cfg, "vision_model", "") or self.cfg.model,
@@ -566,6 +569,21 @@ class App:
         """A score as the record says it, so "None" never appears in a sentence."""
         return "not graded" if value is None else str(value)
 
+    @staticmethod
+    def _push_comment(entry: dict, mode: str) -> str:
+        """The student-facing comment this push will write, or empty.
+
+        `none` writes scores only. `all` writes every comment. `selected`
+        writes only the comments ticked on the student panel — the default
+        for a new Claude draft is off, so a push cannot dump every AI
+        comment unless someone asked.
+        """
+        if mode == "none":
+            return ""
+        if mode == "selected" and not entry.get("post_comment"):
+            return ""
+        return (entry.get("comment") or "").strip()
+
     def edit_student(self, course_id, assignment_id, user_id, body: dict) -> dict:
         """A hand edit from the review pane: sliders and the comment."""
         before = ((self.store.draft(course_id, assignment_id).get("students") or {})
@@ -573,7 +591,12 @@ class App:
         was_total, was_source = before.get("total"), before.get("source")
         was_comment = before.get("comment") or ""
         changes = {k: v for k, v in body.items() if k != "user_id"}
-        changes.setdefault("source", "human")
+        if "post_comment" in changes:
+            changes["post_comment"] = bool(changes["post_comment"])
+        # Ticking "include this comment" is not a regrade.
+        flag_only = set(changes) <= {"post_comment"}
+        if not flag_only:
+            changes.setdefault("source", "human")
         if "scores" in changes:
             changes["total"] = round(sum(float(v or 0) for v in changes["scores"].values()), 2)
             # A rubric score by hand replaces a breakdown-less total pulled
@@ -592,7 +615,9 @@ class App:
                 draft = self.store.update_student(course_id, assignment_id, user_id,
                                                   final_total=want)
                 entry = draft["students"][str(user_id)]
-        if was_total != entry.get("total") or was_comment != (entry.get("comment") or ""):
+        if (not flag_only
+                and (was_total != entry.get("total")
+                     or was_comment != (entry.get("comment") or ""))):
             name = (self.store.extracted(course_id, assignment_id)
                     .get(str(user_id), {}).get("name", ""))
             what = []
@@ -1936,7 +1961,7 @@ class App:
     def push(self, course_id, assignment_id, dry_run: bool = True,
              only: list[str] | None = None, include_comments: bool = False,
              show: bool = False, log=lambda _m: None,
-             confirm_token: str | None = None) -> dict:
+             confirm_token: str | None = None, comment_mode: str | None = None) -> dict:
         draft = self.store.draft(course_id, assignment_id)
         extracted = self.store.extracted(course_id, assignment_id)
         entries = draft.get("students", {})
@@ -1950,6 +1975,8 @@ class App:
         # else. _ensure_manual_posting is what makes that answer true.
         landing = ("visible to students as soon as they land" if show
                    else "hidden from students until you make them live")
+        mode = comment_mode if comment_mode in ("none", "selected", "all") else (
+            "all" if include_comments else "none")
 
         planned, skipped = [], []
         for uid, entry in targets:
@@ -1969,7 +1996,19 @@ class App:
                 earned = curve.earned_total(entry, rubric)
                 score = curve.final_total(entry, rubric, possible)
                 item = {"user_id": uid, "name": name, "score": score,
-                        "comment": entry.get("comment", "") if include_comments else ""}
+                        "comment": self._push_comment(entry, mode)}
+                if not entry.get("total_only"):
+                    scores = entry.get("scores") or {}
+                    rationales = entry.get("rationales") or {}
+                    item["rubric"] = {
+                        str(c.get("id")): {
+                            "points": scores.get(str(c.get("id"))),
+                            "comments": rationales.get(str(c.get("id"))) or "",
+                        }
+                        for c in rubric
+                        if c.get("id") not in (None, "", "_overall")
+                        and scores.get(str(c.get("id"))) is not None
+                    }
                 if round(score - earned, 2):
                     item["earned"] = earned
                     item["curved_by"] = round(score - earned, 2)
@@ -1977,13 +2016,15 @@ class App:
 
         if dry_run:
             n_curved = sum(1 for p in planned if p.get("curved_by"))
+            n_comments = sum(1 for p in planned if p.get("comment"))
             log(f"dry run: would push {len(planned)} score(s)"
-                + (" with comments" if include_comments else ", scores only")
+                + (f", {n_comments} with a comment" if n_comments else ", scores only")
                 + f", skip {len(skipped)}"
                 + (f"; {n_curved} include a curve" if n_curved else "")
                 + f"; grades land {landing}")
             return {"dry_run": True, "would_post": planned, "skipped": skipped,
-                    "include_comments": include_comments,
+                    "include_comments": mode != "none", "comment_mode": mode,
+                    "comments_n": n_comments,
                     "show": bool(show), "landing": landing}
 
         # `show` is deliberately not part of what the token is bound to. Both
@@ -2000,7 +2041,7 @@ class App:
                     # the dialog was shown has to ask again, as promised.
                     "comments": (sorted([str(i["user_id"]), i.get("comment") or ""]
                                         for i in planned)
-                                 if include_comments else False)},
+                                 if mode != "none" else False)},
                    f"Write {len(planned)} grade(s) to Canvas. The assignment is "
                    "set to manual posting first, so nothing shows to students "
                    "until you make it live.",
@@ -2016,7 +2057,8 @@ class App:
             log(f"pushing {index}/{len(planned)}: {item['name']}")
             try:
                 sub = self.client.post_grade(course_id, assignment_id, item["user_id"],
-                                             score=item["score"], comment=item["comment"] or None)
+                                             score=item["score"], comment=item["comment"] or None,
+                                             rubric=item.get("rubric") or None)
                 posted.append(item)
                 now = datetime.now().isoformat(timespec="seconds")
                 # The baseline for the next pull: Canvas and this machine agree
@@ -2092,7 +2134,8 @@ class App:
                 result="failed" if failed and not posted else "ok",
                 url=f"{self.cfg.base_url}/courses/{course_id}/gradebook",
                 detail={"assignment_id": str(assignment_id),
-                        "comments": bool(include_comments),
+                        "comments": mode,
+                        "comments_n": sum(1 for i in posted if i.get("comment")),
                         "shown": shown, "hidden": n_hidden,
                         "failed": [{"user_id": f.get("user_id"),
                                     "error": str(f.get("error"))[:200]} for f in failed]})
@@ -2974,11 +3017,13 @@ def make_handler(app: App):
                     if action == "push":
                         dry = bool(body.get("dry_run", True))
                         only = body.get("only") or None
-                        comments = bool(body.get("include_comments", False))
+                        mode = body.get("comments")
+                        if mode not in ("none", "selected", "all"):
+                            mode = "all" if body.get("include_comments") else "none"
                         show = bool(body.get("show", False))
                         job = app.jobs.start("push", lambda log: app.push(
-                            cid, aid, dry, only, comments, show, log,
-                            body.get("confirm")))
+                            cid, aid, dry, only, mode != "none", show, log,
+                            body.get("confirm"), comment_mode=mode))
                         return self._json({"job": job})
 
                 return self._json({"error": "unknown endpoint"}, 404)

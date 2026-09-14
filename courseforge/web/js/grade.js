@@ -1383,6 +1383,14 @@ function refreshSchedule(blocking) {
   });
 }
 
+function schedPicked(it) {
+  const f = S.schedFilter;
+  if (f.off.has(it.course_code)) return false;
+  if (f.examOnly && !it.exam) return false;
+  if (f.gradeOnly && !it.needs_grading) return false;
+  return true;
+}
+
 function schedRows() {
   const sc = S.sched, f = S.schedFilter;
   const now = Date.now();
@@ -1390,34 +1398,63 @@ function schedRows() {
     const when = new Date(it.due_at);
     return { ...it, when, past: when.getTime() < now };
   }).filter(it => {
-    if (f.off.has(it.course_code)) return false;
+    if (!schedPicked(it)) return false;
     // "Waiting to grade" is a work queue, not a calendar, and most of the
     // backlog is behind you: asking for it overrides hiding past due, or the
     // list would show a handful of items while 200 sat unseen.
     if (f.hidePast && it.past && !f.gradeOnly) return false;
-    if (f.examOnly && !it.exam) return false;
-    if (f.gradeOnly && !it.needs_grading) return false;
     return true;
   });
+}
+
+function scheduleStats(items) {
+  /* Same arithmetic as schedule.stats in Python: remaining / next 7 / exams
+     are still-due; waiting to grade includes the past-due backlog. */
+  const now = Date.now();
+  const soon = now + 7 * DAY_MS;
+  let remaining = 0, upcoming = 0, exams_left = 0, waiting = 0;
+  for (const it of items) {
+    const t = new Date(it.due_at).getTime();
+    const past = !isNaN(t) && t < now;
+    if (!past) {
+      remaining++;
+      if (!isNaN(t) && t <= soon) upcoming++;
+      if (it.exam) exams_left++;
+    }
+    waiting += (+it.needs_grading || 0);
+  }
+  return { total: items.length, remaining, next_7_days: upcoming,
+           exams_left, needs_grading: waiting };
 }
 
 function renderSchedule() {
   const sc = S.sched;
   const f = S.schedFilter;
-  const st = sc.stats || {};
-  $('#schedTitle').textContent = 'Master Schedule';
-  $('#schedSub').innerHTML = `${esc(sc.term || 'all terms')} ·
-    every dated assignment across ${(sc.courses || []).length} courses ·
+  const picked = (sc.items || []).filter(schedPicked);
+  const st = scheduleStats(picked);
+  const nAll = (sc.courses || []).length;
+  const nOn = (sc.courses || []).filter(c => !f.off.has(c.code)).length;
+  const term = sc.term || 'this term';
+  const where = nAll === 0 ? 'no courses'
+    : nOn === nAll ? (nAll === 1 ? '1 course' : nAll + ' courses')
+    : nOn + ' of ' + nAll + ' courses';
+  $('#schedTitle').textContent = 'Term schedule';
+  $('#schedSub').innerHTML = `${esc(term)} · dated assignments in ${esc(where)} ·
     times in your local timezone`;
 
   $('#schedStats').innerHTML = [
-    [st.remaining, 'Items remaining'],
-    [st.next_7_days, 'Due next 7 days'],
-    [st.exams_left, 'Tests &amp; exams left'],
-    [st.needs_grading, 'Submissions waiting'],
-    [st.total, 'Total dated items'],
-  ].map(([n, label]) => `<div class="schedStat"><b>${n == null ? '—' : n}</b>
-    <span>${label}</span></div>`).join('');
+    [st.remaining, 'Still due this term',
+     'Dated items not yet due, in the courses selected below'],
+    [st.next_7_days, 'Due in the next 7 days',
+     'Still-due items in the next seven days, in the courses selected below'],
+    [st.exams_left, 'Tests &amp; exams remaining',
+     'Tests, exams and finals still due in the courses selected below'],
+    [st.needs_grading, 'Waiting to grade',
+     'Submissions Canvas says are waiting, including past due, in the courses selected below'],
+    [st.total, 'Dated items this term',
+     'Every dated item in the courses selected below, past and upcoming'],
+  ].map(([n, label, hint]) => `<div class="schedStat" title="${hint}"><b>${
+      n == null ? '—' : n}</b><span>${label}</span></div>`).join('');
 
   $('#schedControls').innerHTML = `
     <div class="schedChips">
@@ -1653,10 +1690,9 @@ async function openCourses(refresh) {
   $('#pickerResume').innerHTML = '';
   $('#btnRefresh').onclick = () => openCourses(true);
   $('#headerActions').innerHTML =
-    '<button class="btn" id="btnSchedule">Term schedule</button>'
+    '<a class="btn" href="#/schedule">Term schedule</a>'
     + '<button class="btn" id="btnToken" title="Replace the saved Canvas token">'
     + 'Canvas token…</button>';
-  $('#btnSchedule').onclick = () => { location.hash = '#/schedule'; };
   $('#btnToken').onclick = () => openSetup();
 
   let picked;
@@ -1700,8 +1736,6 @@ async function openCourses(refresh) {
 
   renderStorage();
   $('#selTerm').onchange = ev => { S.term = ev.target.value; openCourses(false); };
-  $('#pickerBody').querySelectorAll('.pickRow:not(.off)').forEach(b =>
-    b.onclick = () => { location.hash = '#/c/' + b.dataset.id; });
 }
 
 function courseCount(list, resume) {
@@ -1726,14 +1760,14 @@ function courseRow(c) {
   else right.push('<span class="pill ok">nothing waiting</span>');
   if (c.touched_at) right.push(`<span class="pill">${esc(ago(c.touched_at))}</span>`);
 
-  return `<button class="pickRow ${c.excluded ? 'off' : ''}" type="button"
-      data-id="${esc(c.id)}"${c.excluded ? ' disabled' : ''}
-      title="${esc(c.name)}">
-    <span class="pickCode">${esc(c.code || '')}</span>
+  const inner = `<span class="pickCode">${esc(c.code || '')}</span>
     <span><span class="nm">${esc(c.title || c.name)}</span>
       <span class="sub">${esc(bits.join(' · '))}</span></span>
-    <span class="rt">${right.join('')}</span>
-  </button>`;
+    <span class="rt">${right.join('')}</span>`;
+  if (c.excluded) {
+    return `<div class="pickRow off" title="${esc(c.name)}">${inner}</div>`;
+  }
+  return `<a class="pickRow" href="#/c/${esc(c.id)}" title="${esc(c.name)}">${inner}</a>`;
 }
 
 /* Where you left off, or nothing at all. A band that said "no recent work"
@@ -1753,16 +1787,12 @@ function renderResume(r) {
       <p>${esc(where)}${where ? ' · ' : ''}${esc(what)}, ${esc(r.ago || 'earlier')}.</p>
     </div>
     <div class="go">
-      <button class="btn primary" type="button" id="resumeGo">Carry on grading</button>
-      <button class="btn" type="button" id="resumeOpen">Open the course</button>
+      <a class="btn primary" href="${r.assignment_id
+        ? `#/c/${esc(r.course_id)}/a/${esc(r.assignment_id)}`
+        : `#/c/${esc(r.course_id)}/grade`}">Carry on grading</a>
+      <a class="btn" href="#/c/${esc(r.course_id)}">Open the course</a>
     </div>
   </section>`;
-  $('#resumeOpen').onclick = () => { location.hash = '#/c/' + r.course_id; };
-  $('#resumeGo').onclick = () => {
-    location.hash = r.assignment_id
-      ? `#/c/${r.course_id}/a/${r.assignment_id}`
-      : `#/c/${r.course_id}/grade`;
-  };
 }
 
 /* "5 hours ago". The hub says the same thing about the same timestamps; this
@@ -1809,13 +1839,14 @@ async function openCourse(courseId, refresh) {
   const waiting = S.assignments.reduce((a, x) => a + (+x.needs_grading || 0), 0);
   $('#pickerHint').textContent = `${S.assignments.length} assignments`
     + (waiting ? ` · ${waiting} submission${waiting === 1 ? '' : 's'} waiting to grade` : '');
-  $('#pickerBody').innerHTML = `<table><thead><tr>
+  $('#pickerBody').innerHTML = `<table class="asgTable"><thead><tr>
       <th>Assignment</th><th>Due</th><th class="tg">To grade</th>
       <th style="text-align:right">Points</th>
       <th>Rubric</th><th>State</th></tr></thead><tbody>` +
-    S.assignments.map(a => `<tr data-id="${a.id}">
-        <td><b>${esc(a.name)}</b>${a.is_discussion ? ' <span class="pill">discussion</span>' : ''}
-            ${a.published ? '' : ' <span class="pill warn">unpublished</span>'}</td>
+    S.assignments.map(a => `<tr>
+        <td><a class="asgLink" href="#/c/${esc(courseId)}/a/${esc(a.id)}">
+          <b>${esc(a.name)}</b>${a.is_discussion ? ' <span class="pill">discussion</span>' : ''}
+          ${a.published ? '' : ' <span class="pill warn">unpublished</span>'}</a></td>
         <td style="color:var(--muted)">${esc(fmtDate(a.due_at) || '—')}</td>
         <td class="tg">${a.needs_grading
       ? `<span class="tgBadge" title="${a.needs_grading} submission(s) Canvas says are waiting">${
@@ -1827,8 +1858,6 @@ async function openCourse(courseId, refresh) {
       : a.synced_at ? '<span class="pill">synced</span>' : ''}
             ${a.has_instructions ? ' <span class="pill">notes</span>' : ''}</td>
       </tr>`).join('') + '</tbody></table>';
-  $('#pickerBody').querySelectorAll('tbody tr').forEach(tr =>
-    tr.onclick = () => { location.hash = `#/c/${courseId}/a/${tr.dataset.id}`; });
 }
 
 /* ------------------------------------------------------------------ handoff */
@@ -2127,6 +2156,8 @@ Where every submission has images, this is the model that grades the whole class
   $('#btnWork').onclick = toggleWork;
   $('#btnExport').onclick = doExport;
   $('#btnPush').onclick = openPush;
+  const rm = $('#btnRemind');
+  if (rm) rm.onclick = () => openRemind(S.ids.courseId, S.ids.assignmentId);
 }
 
 /* ------------------------------------------------------------------ setup */
@@ -3128,17 +3159,24 @@ function openPush(only) {
   const stillHidden = Object.values(S.ws.extracted || {})
     .filter(s => s.canvas_score != null && !s.canvas_posted_at
       && (!inScope || inScope.has(String(s.user_id))));
+  const nTicked = Object.entries((S.ws.draft && S.ws.draft.students) || {})
+    .filter(([uid, e]) => e && e.post_comment && (e.comment || '').trim()
+      && (!inScope || inScope.has(String(uid)))).length;
   host.innerHTML = `<div class="modalBack"><div class="modal">
       <h3>Push grades to Canvas${scope ? ` — ${scope.length} selected` : ''}</h3>
       <div class="sub">This writes into your gradebook. The plan below is worked
         out read-only and changes nothing; nothing reaches Canvas until you press
         <b>Post for real</b> and confirm.${scope
           ? ' Only the students you selected are included.' : ''}</div>
-      <label class="tick" style="margin:12px 0">
-        <input type="checkbox" id="pushComments">
-        also post the written comments to students
-        <span style="color:var(--muted)">(off by default: read them first, they are AI drafts)</span>
-      </label>
+      <label class="fieldLabel" for="pushComments" style="margin:12px 0 6px">Comments to Canvas</label>
+      <select id="pushComments" style="margin-bottom:12px">
+        <option value="none" selected>Don't post comments (scores only)</option>
+        <option value="selected">Only comments I ticked on the student panel${
+          nTicked ? ` (${nTicked})` : ''}</option>
+        <option value="all">Every student's comment</option>
+      </select>
+      <p class="hint" style="margin:-6px 0 12px">Claude's comments stay off unless you tick
+        them on a student. "Every student's comment" is the old all-or-nothing dump.</p>
       <div class="log" id="pushLog">Working out what would be written…</div>
       ${stillHidden.length ? `<div class="callout pushHidden">
         <b>${esc(stillHidden.length)} grade${stillHidden.length === 1 ? '' : 's'} already in
@@ -3169,8 +3207,7 @@ function openPush(only) {
     log.textContent = 'Working out what would be written…';
     try {
       const { job } = await api(`/a/${courseId}/${assignmentId}/push`,
-        { body: { dry_run: true, include_comments: $('#pushComments').checked,
-                  only: scope } });
+        { body: { dry_run: true, comments: $('#pushComments').value, only: scope } });
       const poll = async () => {
         const info = await api('/jobs/' + job);
         const box = $('#pushLog');
@@ -3185,14 +3222,18 @@ function openPush(only) {
         // arithmetic, because writing a number the instructor never saw would
         // be the worst surprise of the lot.
         box.textContent = [
-          (r.include_comments ? 'SCORES + COMMENTS' : 'SCORES ONLY (no comments)'),
+          (r.comment_mode === 'all' ? 'SCORES + ALL COMMENTS'
+            : r.comment_mode === 'selected'
+              ? `SCORES + ${r.comments_n || 0} SELECTED COMMENT${(r.comments_n || 0) === 1 ? '' : 'S'}`
+              : 'SCORES ONLY (no comments)'),
           `WILL WRITE ${write.length} · HELD BACK ${held.length}`,
           held.length ? '\nHELD BACK - nothing is written for these:\n'
             + held.map(s => `  ${s.name}: ${s.why}`).join('\n') : '',
           write.length ? '\nWILL WRITE:\n'
             + write.map(s => `  ${s.name}: ${s.score}`
               + (s.curved_by ? `   (${s.earned} earned ${s.curved_by > 0 ? '+' : ''}${
-                  s.curved_by} curve)` : '')).join('\n') : '',
+                  s.curved_by} curve)` : '')
+              + (s.comment ? '   + comment' : '')).join('\n') : '',
         ].filter(Boolean).join('\n');
         $('#pushGo').disabled = !write.length;
       };
@@ -3207,7 +3248,7 @@ function openPush(only) {
   plan();
 
   $('#pushGo').onclick = () => {
-    const withComments = $('#pushComments').checked;
+    const commentMode = ($('#pushComments') || {}).value || 'none';
 
     // The write runs as a job, and the server refuses the first attempt from
     // inside that job -- so the refusal arrives on the finished job, not on the
@@ -3218,7 +3259,7 @@ function openPush(only) {
     runJobConfirmed(
       scope ? `Pushing ${scope.length} grade(s) to Canvas` : 'Pushing grades to Canvas',
       (token, show) => api(`/a/${courseId}/${assignmentId}/push`,
-        { body: { dry_run: false, include_comments: withComments, only: scope,
+        { body: { dry_run: false, comments: commentMode, only: scope,
                   show: !!show, confirm: token } }),
       async r => {
         const n = (r.posted || []).length, bad = (r.failed || []).length;
@@ -3237,7 +3278,8 @@ function openPush(only) {
       },
       { title: scope ? `Push grades for ${scope.length} student(s)?`
                      : 'Push these grades to Canvas?',
-        note: (withComments ? 'Comments will be written as well.'
+        note: (commentMode === 'all' ? 'Every student comment will be written as well.'
+              : commentMode === 'selected' ? 'Only comments you ticked on the student panel will be written.'
                             : 'Scores only, no comments.')
               + ' Push hidden puts them in the gradebook where only you can see them,'
               + ' and you can show them later from this same dialog.'
@@ -3373,8 +3415,134 @@ function students() {
 }
 
 /* ------------------------------------------------------------- selection */
+function closeRosterMenu() {
+  const m = $('#rosterMenu');
+  if (m) m.remove();
+  document.removeEventListener('pointerdown', _rosterMenuAway, true);
+  document.removeEventListener('keydown', _rosterMenuKey, true);
+}
+function _rosterMenuAway(ev) {
+  const m = $('#rosterMenu');
+  if (m && !m.contains(ev.target)) closeRosterMenu();
+}
+function _rosterMenuKey(ev) {
+  if (ev.key === 'Escape') { ev.preventDefault(); closeRosterMenu(); }
+}
+function menuIdsFor(uid) {
+  const key = String(uid);
+  if (S.picked.size > 1 && S.picked.has(key)) return pickedIds();
+  return [key];
+}
+function selectionState(ids) {
+  ids = (ids || []).map(String);
+  const n = ids.length;
+  const entries = ids.map(uid => entryOf(uid)).filter(Boolean);
+  const canAI = !(S.health && S.health.claude && S.health.claude.logged_in === false);
+  const allOk = n > 0 && entries.length === n && entries.every(e => e && e.human_ok);
+  return {
+    ids, n, entries, canAI, allOk,
+    flagged: entries.filter(e => e && e.needs_human && !e.human_ok).length,
+    clashes: entries.filter(e => e && e.conflict).length,
+  };
+}
+function selectionItems(st) {
+  /* One list for the bulk bar and the right-click menu, so a new action cannot
+     land on shift-click and be missing from the context menu (or the other way
+     around). `label` is the menu wording; `bar` is the shorter bulk-bar label. */
+  const one = st.n === 1;
+  const items = [];
+  if (st.clashes) {
+    items.push({ id: 'takeCanvas', label: 'Take Canvas score', bar: 'Take Canvas',
+                 title: 'Replace the local score with what Canvas holds, for these students in conflict' });
+    items.push({ id: 'keepMine', label: 'Keep my score', bar: 'Keep mine',
+                 title: 'Keep the local score for these; the next push overwrites Canvas' });
+    items.push({ sep: true });
+  }
+  items.push({ id: 'regrade',
+               label: one ? 'Re-grade this student' : 'Re-grade ' + st.n + ' students',
+               bar: 'Re-grade', cls: 'ai', disabled: !st.canAI,
+               title: 'Re-grade just these students' });
+  items.push({ id: 'review',
+               label: st.allOk ? 'Un-mark reviewed' : 'Mark as reviewed',
+               bar: st.allOk ? 'Un-mark reviewed' : 'Mark reviewed',
+               title: st.allOk ? 'Put the review flag back on these'
+                               : 'Clears the review block so these can be pushed to Canvas' });
+  items.push({ id: 'insights', label: 'Insights',
+               title: 'Charts and a written read for just these students' });
+  items.push({ id: 'overlap', label: 'Overlap check',
+               disabled: !(st.canAI && st.n >= 2),
+               title: st.n >= 2 ? 'Compare what these students wrote for shared wording'
+                                : 'Pick at least two students' });
+  items.push({ id: 'curve', label: 'Curve…',
+               title: 'Curve just these students' });
+  items.push({ sep: true });
+  items.push({ id: 'push',
+               label: one ? 'Push grade to Canvas…' : 'Push ' + st.n + ' grades to Canvas…',
+               bar: 'Push…', danger: true,
+               title: 'Push only these students to Canvas. Asks first, and lets you choose whether they can see the grades' });
+  return items;
+}
+function runSelectionAction(name, ids) {
+  closeRosterMenu();
+  const st = selectionState(ids);
+  if (name === 'takeCanvas') return resolveConflicts(st.ids, 'canvas');
+  if (name === 'keepMine') return resolveConflicts(st.ids, 'mine');
+  if (name === 'regrade') return doGrade(st.ids);
+  if (name === 'review') return doMarkReviewed(!st.allOk, st.ids);
+  if (name === 'insights') {
+    S.picked = new Set(st.ids);
+    S.insightsScope = 'selection'; S.view = 'insights';
+    renderHeaderActions(); render();
+    return;
+  }
+  if (name === 'overlap') return doOverlap(st.ids);
+  if (name === 'curve') return openCurve(st.ids);
+  if (name === 'push') return openPush(st.ids);
+}
+function onRosterContext(ev) {
+  const row = ev.target.closest && ev.target.closest('#roster .rrow');
+  if (!row || !row.dataset.uid) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+  openRosterMenu(ev, menuIdsFor(row.dataset.uid));
+}
+function openRosterMenu(ev, ids) {
+  closeRosterMenu();
+  const st = selectionState(ids);
+  const items = selectionItems(st);
+  const one = st.n === 1;
+  const head = one
+    ? esc(((Object.values(S.ws.extracted || {}).find(s => String(s.user_id) === st.ids[0]) || {}).name) || st.ids[0])
+    : esc(st.n + ' students');
+  const menu = document.createElement('div');
+  menu.id = 'rosterMenu';
+  menu.className = 'rosterMenu';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = `<div class="rosterMenuHead">${head}</div>` + items.map(it => {
+    if (it.sep) return '<div class="sep"></div>';
+    return `<button type="button" role="menuitem" data-act="${it.id}"${
+      it.disabled ? ' disabled' : ''}${it.danger ? ' class="danger"' : ''}${
+      it.title ? ` title="${esc(it.title)}"` : ''}>${esc(it.label)}</button>`;
+  }).join('');
+  document.body.appendChild(menu);
+  const pad = 8;
+  const x = Math.min(ev.clientX, window.innerWidth - menu.offsetWidth - pad);
+  const y = Math.min(ev.clientY, window.innerHeight - menu.offsetHeight - pad);
+  menu.style.left = Math.max(pad, x) + 'px';
+  menu.style.top = Math.max(pad, y) + 'px';
+  menu.querySelectorAll('[data-act]').forEach(btn => {
+    btn.onclick = () => { if (!btn.disabled) runSelectionAction(btn.dataset.act, st.ids); };
+  });
+  const first = menu.querySelector('[data-act]:not([disabled])');
+  if (first) first.focus();
+  setTimeout(() => {
+    document.addEventListener('pointerdown', _rosterMenuAway, true);
+    document.addEventListener('keydown', _rosterMenuKey, true);
+  }, 0);
+}
+
 function pickedIds() { return [...S.picked]; }
-function pickedEntries() { return pickedIds().map(uid => entryOf(uid)).filter(Boolean); }
 
 /* Shift-click takes a range, ctrl/cmd-click toggles one, a plain click goes back
    to single-student review. The range runs over the rows as currently filtered,
@@ -3413,65 +3581,39 @@ function renderBulkBar() {
   const n = S.picked.size;
   if (!n) {
     bar.className = 'bulkBar';
-    bar.innerHTML = `<span class="bulkHint">Shift-click for a range, ctrl-click to add one.</span>`;
+    bar.innerHTML = `<span class="bulkHint">Shift-click for a range, ctrl-click to add one. Right-click a name for the same actions, including push.</span>`;
     return;
   }
-  const canAI = !(S.health.claude && S.health.claude.logged_in === false);
-  const entries = pickedEntries();
-  // Everything already approved? Then the useful action is the reverse.
-  const allOk = entries.length === n && entries.every(e => e && e.human_ok);
-  const flagged = entries.filter(e => e && e.needs_human && !e.human_ok).length;
-  const clashes = entries.filter(e => e && e.conflict).length;
+  const st = selectionState(pickedIds());
+  const acts = selectionItems(st).filter(it => !it.sep);
   bar.className = 'bulkBar show';
   bar.innerHTML = `
     <div class="bulkHead">
       <b>${n} selected</b>
-      ${flagged ? `<span class="bulkNote">${flagged} flagged for review</span>` : ''}
-      ${clashes ? `<span class="bulkNote">${clashes} in conflict with Canvas</span>` : ''}
+      ${st.flagged ? `<span class="bulkNote">${st.flagged} flagged for review</span>` : ''}
+      ${st.clashes ? `<span class="bulkNote">${st.clashes} in conflict with Canvas</span>` : ''}
       <button class="btn sm" id="bulkAll">Select all shown</button>
       <button class="btn sm" id="bulkNone">Clear</button>
     </div>
-    <div class="bulkActs">
-      ${clashes ? `<button class="btn sm" id="bulkTakeCanvas"
-        title="Replace the local score with what Canvas holds, for the selected students in conflict">Take Canvas</button>
-      <button class="btn sm" id="bulkKeepMine"
-        title="Keep the local score for these; the next push overwrites Canvas">Keep mine</button>` : ''}
-      <button class="btn sm ai" id="bulkGrade" ${canAI ? '' : 'disabled'}
-        title="Re-grade just these students">Re-grade</button>
-      <button class="btn sm" id="bulkReview"
-        title="${allOk ? 'Put the review flag back on these'
-                       : 'Clears the review block so these can be pushed to Canvas'}">
-        ${allOk ? 'Un-mark reviewed' : 'Mark reviewed'}</button>
-      <button class="btn sm" id="bulkInsights"
-        title="Charts and a written read for just these students">Insights</button>
-      <button class="btn sm" id="bulkOverlap" ${(canAI && n >= 2) ? '' : 'disabled'}
-        title="${n >= 2 ? 'Compare what these students wrote for shared wording'
-                        : 'Pick at least two students'}">Overlap check</button>
-      <button class="btn sm" id="bulkCurve"
-        title="Curve just these students">Curve…</button>
-      <button class="btn sm danger" id="bulkPush"
-        title="Push only these students to Canvas. Asks first, and lets you choose whether they can see the grades">Push…</button>
-    </div>`;
+    <div class="bulkActs">${acts.map(it =>
+      `<button type="button" class="btn sm${it.cls ? ' ' + it.cls : ''}${
+        it.danger ? ' danger' : ''}" data-act="${it.id}"${
+        it.disabled ? ' disabled' : ''}${
+        it.title ? ` title="${esc(it.title)}"` : ''}>${esc(it.bar || it.label)}</button>`
+    ).join('')}</div>`;
   $('#bulkAll').onclick = selectAllShown;
   $('#bulkNone').onclick = clearPicked;
-  const tc = $('#bulkTakeCanvas'); if (tc) tc.onclick = () => resolveConflicts(pickedIds(), 'canvas');
-  const km = $('#bulkKeepMine'); if (km) km.onclick = () => resolveConflicts(pickedIds(), 'mine');
-  $('#bulkGrade').onclick = () => doGrade(pickedIds());
-  $('#bulkReview').onclick = () => doMarkReviewed(!allOk);
-  $('#bulkInsights').onclick = () => {
-    S.insightsScope = 'selection'; S.view = 'insights';
-    renderHeaderActions(); render();
-  };
-  $('#bulkOverlap').onclick = doOverlap;
-  $('#bulkCurve').onclick = () => openCurve(pickedIds());
-  $('#bulkPush').onclick = () => openPush(pickedIds());
+  bar.querySelectorAll('[data-act]').forEach(btn => {
+    btn.onclick = () => { if (!btn.disabled) runSelectionAction(btn.dataset.act, st.ids); };
+  });
 }
 
-async function doMarkReviewed(reviewed) {
+async function doMarkReviewed(reviewed, only) {
   const { courseId, assignmentId } = S.ids;
+  const ids = (only && only.length) ? only.map(String) : pickedIds();
   try {
     const r = await api(`/a/${courseId}/${assignmentId}/review`,
-      { body: { only: pickedIds(), reviewed } });
+      { body: { only: ids, reviewed } });
     S.ws = await api(`/a/${courseId}/${assignmentId}`);
     const n = (r.marked || []).length;
     let msg = reviewed
@@ -3488,15 +3630,16 @@ async function doMarkReviewed(reviewed) {
   } catch (err) { setStatus('could not mark: ' + err.message, 'err'); }
 }
 
-function doOverlap() {
+function doOverlap(only) {
   const { courseId, assignmentId } = S.ids;
-  const only = pickedIds();
+  only = (only && only.length) ? only.map(String) : pickedIds();
   runJob(`Overlap check on ${only.length} submissions`,
     () => api(`/a/${courseId}/${assignmentId}/overlap`, { body: { only } }),
     report => { $('#modalHost').innerHTML = ''; openOverlapReport(report); });
 }
 
 function renderRoster() {
+  closeRosterMenu();
   const list = students(), host = $('#roster'), keep = host.scrollTop;
   host.innerHTML = '';
   list.forEach((s, i) => {
@@ -3515,7 +3658,9 @@ function renderRoster() {
           : (e && e.needs_human ? 'needs review' : (lateText(s) || `${s.words || 0} words`));
     const picked = S.picked.has(String(s.user_id));
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'rrow' + (picked ? ' picked' : '');
+    b.dataset.uid = String(s.user_id);
     b.setAttribute('aria-current', String(i === S.sel));
     b.setAttribute('aria-pressed', String(picked));
     const ok = e && e.human_ok ? '<span class="okTick" title="marked reviewed">✓</span>' : '';
@@ -3533,7 +3678,9 @@ function renderRoster() {
       : s.canvas_posted_at
         ? '<span class="postMark live" title="in Canvas, visible to the student">●</span>'
         : '<span class="postMark hidden" title="in Canvas, hidden from the student">◌</span>';
-    b.innerHTML = `<span><span class="nm">${dot}${esc(s.name)}${ok}${clash}${vidMark}</span><span class="sub">${esc(sub)}</span></span>
+    const cmtMark = e && e.post_comment && (e.comment || '').trim()
+      ? '<span class="cmtMark" title="this comment will be included on the next push">cmt</span>' : '';
+    b.innerHTML = `<span><span class="nm">${dot}${esc(s.name)}${ok}${clash}${vidMark}${cmtMark}</span><span class="sub">${esc(sub)}</span></span>
                    <span class="sc">${postMark}${curveMark}${total}</span>`;
     b.onclick = ev => onRowClick(ev, i, s.user_id);
     host.appendChild(b);
@@ -4033,8 +4180,12 @@ function renderDetail() {
   });
 
   html += `<label class="fieldLabel" for="cmt">Comment to student
-      <span class="hint">— posted to Canvas with the grade</span></label>
+      <span class="hint">— stays here unless you tick the box</span></label>
     <textarea class="comment" id="cmt">${esc(e.comment || '')}</textarea>
+    <label class="tick" style="margin-top:8px">
+      <input type="checkbox" id="postCmt"${e.post_comment ? ' checked' : ''}>
+      Include this comment when pushing to Canvas
+    </label>
     <div class="actionRow" style="margin-top:16px">
       <button class="btn" id="prevS">← Previous</button>
       <button class="btn" id="nextS">Next →</button>
@@ -4054,6 +4205,16 @@ function renderDetail() {
     });
   });
   $('#cmt').addEventListener('input', () => queueSave(s.user_id));
+  const postCmt = $('#postCmt');
+  if (postCmt) postCmt.addEventListener('change', () => {
+    const on = !!postCmt.checked;
+    api(`/a/${S.ids.courseId}/${S.ids.assignmentId}/student/${s.user_id}`,
+      { body: { post_comment: on } }).then(r => {
+        if (r && r.student) S.ws.draft.students[String(s.user_id)] = r.student;
+        setStatus(on ? 'this comment will be pushed' : 'this comment stays here', 'ok');
+        renderRoster();
+      }).catch(err => setStatus('save failed: ' + err.message, 'err'));
+  });
   $('#prevS').onclick = () => { S.sel = Math.max(0, S.sel - 1); render(); };
   $('#nextS').onclick = () => { S.sel = Math.min(list.length - 1, S.sel + 1); render(); };
   $('#btnWorkInline').onclick = toggleWork;
@@ -4062,13 +4223,7 @@ function renderDetail() {
   if (remindOne) remindOne.onclick = () =>
     openRemind(S.ids.courseId, S.ids.assignmentId, [String(s.user_id)]);
   const one = $('#btnReviewOne');
-  if (one) one.onclick = async () => {
-    const keep = new Set(S.picked);
-    S.picked = new Set([String(s.user_id)]);
-    await doMarkReviewed(!e.human_ok);
-    S.picked = keep;
-    render();
-  };
+  if (one) one.onclick = () => doMarkReviewed(!e.human_ok, [String(s.user_id)]);
   $('#btnAsk').onclick = () => openAsk(s);
   const cfC = $('#cfCanvas'); if (cfC) cfC.onclick = () => resolveConflicts([String(s.user_id)], 'canvas');
   const cfM = $('#cfMine'); if (cfM) cfM.onclick = () => resolveConflicts([String(s.user_id)], 'mine');
@@ -4150,9 +4305,10 @@ async function saveStudent(uid) {
     scores[el.dataset.cid] = el.dataset.tiers ? +el.dataset.tiers.split(',')[+el.value] : +el.value;
   });
   const comment = ($('#cmt') || {}).value || '';
+  const postComment = !!($('#postCmt') || {}).checked;
   try {
     const r = await api(`/a/${S.ids.courseId}/${S.ids.assignmentId}/student/${uid}`,
-      { body: { scores, comment, source: 'human' } });
+      { body: { scores, comment, post_comment: postComment, source: 'human' } });
     S.ws.draft.students[String(uid)] = r.student;
     setStatus('saved', 'ok');
     renderRoster();
@@ -4531,6 +4687,8 @@ function setFilter(name) {
   const known = [...$('#filters').querySelectorAll('.chip')].some(c => c.dataset.f === saved);
   if (known) setFilter(saved);
 })();
+
+document.addEventListener('contextmenu', onRosterContext, true);
 
 document.addEventListener('keydown', ev => {
   if (/^(INPUT|TEXTAREA)$/.test(ev.target.tagName)) return;

@@ -23,6 +23,8 @@
 
   "_pseudonymize": "Swap student names for tags before any text is sent to Claude: S-001 while grading, Student-1 in the Assistant, where a name you type is swapped out and swapped back on your screen. The lists of who is who stay in data/<course>/ and never leave this machine. See docs/NAMES.md.",
   "pseudonymize": true,
+  "_syllabus_policies_path": "Optional. A JSON file of the statements every syllabus must mention (ADA, integrity, attendance, Title IX). Empty uses courseforge/knowledge/syllabus-policies.json.",
+  "syllabus_policies_path": "",
   "_audit_to_canvas": "Keep the record of what the Studio did in your own Canvas user files (Files / courseforge-studio/record), so it outlives this PC. The chained local copy under data/<course>/audit/ is written either way. See docs/RECORD.md.",
   "audit_to_canvas": true,
   "_audit_sync_s": "How often the background upload checks for a month that has changed.",

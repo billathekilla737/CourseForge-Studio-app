@@ -56,7 +56,7 @@ _ALLOW_LEAF = re.compile(
     r"content_exports|content_migrations|migration_issues|progress|rubrics|"
     r"rubric_associations|announcements|outcome_groups|outcomes|terms|settings|"
     r"features|blueprint_templates|content_licenses|usage_rights|todo|"
-    r"course_nicknames|media_objects|by_path|duplicate|reorder|relock|"
+    r"course_nicknames|media_objects|by_path|duplicate|reorder|relock|download|"
     r"bulk_update|select_content|syllabus|flags|enabled|public_url|"
     r"\d+|[^/]*[.\-][^/]*)$")
 # And the path has to be about one of these things at all.
@@ -67,7 +67,7 @@ _ALLOW_ROOT = re.compile(
 # Query parameters that pull people into an otherwise harmless listing:
 # ?include[]=students on a section, ?include[]=assessments on a rubric.
 _QUERY_DENY = re.compile(
-    r"^(students?|users?|user_ids?|enrollments?|assessments|submissions?|"
+    r"^(students?|users|user_ids?|enrollments?|assessments|submissions?|"
     r"graded_submissions_exist|observed_users|current_grading_period_scores|"
     r"total_scores|peer_reviews|assignee_ids?)$", re.I)
 

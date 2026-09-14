@@ -190,6 +190,16 @@ def verify_file(out, mappings):
     left = {k: v for k, v in residual.items() if v}
     if left:
         problems.append("text still present: " + ", ".join("%r x%d" % kv for kv in list(left.items())[:6]))
+    name = os.path.basename(str(out)).lower()
+    try:
+        if name.endswith(".docx"):
+            from docx import Document
+            Document(str(out))
+        elif name.endswith(".pptx"):
+            from pptx import Presentation
+            Presentation(str(out))
+    except Exception as exc:  # noqa: BLE001
+        problems.append("file does not open as an Office document: %s" % exc)
     return {"ok": not problems, "zip_ok": bad_entry is None, "residual": residual,
             "problems": problems}
 

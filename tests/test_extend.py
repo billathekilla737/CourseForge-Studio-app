@@ -231,6 +231,23 @@ class TheSentenceSomebodyHasToAgreeTo(unittest.TestCase):
         self.assertNotEqual(extend.batches(rows), extend.batches(rows[:1]))
 
 
+class TheWindowLooksAtTheStudentsDate(unittest.TestCase):
+    def test_a_section_override_inside_the_window_counts(self):
+        """Class due is outside the absence; the section date is inside it."""
+        overrides = [{"id": 5, "course_section_id": 100,
+                      "due_at": "2026-09-11T04:59:00Z"}]
+        a = target(due_at="2026-09-20T04:59:00Z", overrides=overrides)
+        self.assertTrue(extend.touches_window(
+            a, overrides, ["7"], {"7": ["100"]},
+            "2026-09-10", "2026-09-12", TZ))
+        self.assertFalse(extend.day_in_window(a["due_at"], "2026-09-10", "2026-09-12", TZ))
+
+    def test_class_date_inside_the_window_still_counts(self):
+        a = target()
+        self.assertTrue(extend.touches_window(
+            a, [], ["7"], {"7": ["100"]}, "2026-09-08", "2026-09-08", TZ))
+
+
 class TheTitleItWritesOnCanvas(unittest.TestCase):
     def test_it_names_the_student(self):
         self.assertEqual(extend.title_for("Jane Doe", 7), "Extension: Jane Doe")

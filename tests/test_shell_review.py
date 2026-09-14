@@ -24,6 +24,16 @@ def _bash(cmd):
     return gate.classify("Bash", {"command": cmd}, CWD)
 
 
+class ShellReadsStayInsideTheWorkspace(unittest.TestCase):
+    def test_get_content_of_names_json_is_a_question(self):
+        v = _bash(r"Get-Content ..\names.json")
+        self.assertEqual(v["decision"], "ask", v)
+
+    def test_cat_of_a_workspace_file_is_still_allowed(self):
+        v = _bash(r"Get-Content .\notes.md")
+        self.assertEqual(v["decision"], "allow", v)
+
+
 class GateAppliesThroughAVariable(unittest.TestCase):
     """--apply hidden in something the shell expands later. Every one of these
     reached the verb as a live Canvas write while the gate read a dry run."""

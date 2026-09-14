@@ -156,7 +156,9 @@ class TheGradingDecisionsAreRecorded(unittest.TestCase):
     def test_an_edit_that_changed_nothing_writes_no_entry(self):
         """Sliders fire on every drag. Only a real change is worth a line."""
         s = (self.src / "server.py").read_text(encoding="utf-8")
-        self.assertIn('if was_total != entry.get("total") or was_comment', s)
+        self.assertIn("not flag_only", s)
+        self.assertIn('was_total != entry.get("total")', s)
+        self.assertIn('was_comment != (entry.get("comment") or "")', s)
 
 
 if __name__ == "__main__":

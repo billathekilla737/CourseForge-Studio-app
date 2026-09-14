@@ -141,7 +141,9 @@ def final_total(entry: dict, rubric: list[dict], possible: float | None = None) 
         return round(min(base, float(possible)) if possible else base, 2)
 
     scores = entry.get("scores") or {}
-    if rubric:
+    # A typed Canvas total with no rubric cells must not be rebuilt from zeros
+    # plus the curve; that posts the delta as the grade.
+    if rubric and not entry.get("total_only"):
         total = 0.0
         for crit in rubric:
             cid = str(crit.get("id"))

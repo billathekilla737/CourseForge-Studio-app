@@ -22,13 +22,18 @@
   };
 
   const key = r => `${r.course_id}:${r.assignment_id}:${r.user_id}`;
-  const iso = d => d.toISOString().slice(0, 10);
+  function ymd(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
 
   function defaultWindow() {
     const today = new Date();
-    const week = new Date(today.getTime() - 6 * 86400000);
-    S.start = S.start || iso(week);
-    S.end = S.end || iso(today);
+    const week = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6);
+    S.start = S.start || ymd(week);
+    S.end = S.end || ymd(today);
   }
 
   /* ------------------------------------------------------------ the screen */

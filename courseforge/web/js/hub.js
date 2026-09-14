@@ -210,11 +210,11 @@
         <span><span class="t">Term schedule</span>
         <span class="m">Every dated assignment in the term, week by week, with
           reminders and announcements.</span></span></a>
-      <button class="acrossItem" type="button" id="acrossRoster">
+      <a class="acrossItem" href="#/roster">
         <span class="ic grade"></span>
         <span><span class="t">Accommodations roster</span>
         <span class="m">Standing extra time and attempts, applied to any quiz in
-          any course.</span></span></button>
+          any course.</span></span></a>
       ${batchOn
         ? `<a class="acrossItem" href="#/batch"><span class="ic a11y"></span>
              <span><span class="t">Batch Course Restyle</span>
@@ -237,11 +237,6 @@
         <span class="m">An accessibility score with a before and an after, and every
           syllabus checked against the statements your college requires.</span></span></a>
     </section>`;
-    const roster = host.querySelector('#acrossRoster');
-    if (roster) roster.onclick = () => {
-      if (typeof openRoster === 'function') openRoster();
-      else setStatus('the roster is not available', 'err');
-    };
   }
 
   document.addEventListener('studio:picker', ev => renderAcross(ev.detail && ev.detail.host));

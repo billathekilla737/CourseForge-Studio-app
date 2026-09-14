@@ -49,4 +49,4 @@ Issues = "https://github.com/billathekilla737/CourseForge-Studio/issues"
 include = ["courseforge*"]
 
 [tool.setuptools.package-data]
-courseforge = ["web/**/*", "scripts/*.py", "knowledge/*.md", "brand.json", "pdf/assets/*.xml"]
+courseforge = ["web/**/*", "scripts/*.py", "knowledge/*", "brand.json", "pdf/assets/*.xml"]

@@ -80,6 +80,28 @@ class TheShellNamesWhereYouAre(unittest.TestCase):
         self.assertIn('rel="icon"', html)
         self.assertTrue((WEB / "favicon.svg").is_file())
 
+    def test_the_home_list_is_real_links(self):
+        """Middle-click / open-in-new-tab only works if the row is an <a href>,
+        not a button that assigns location.hash."""
+        grade = (WEB / "js" / "grade.js").read_text(encoding="utf-8")
+        self.assertIn('href="#/c/${esc(c.id)}"', grade)
+        self.assertNotIn(".pickRow:not(.off)", grade)
+        self.assertIn('class="asgLink"', grade)
+        self.assertIn('href="#/c/${esc(courseId)}/a/${esc(a.id)}"', grade)
+        self.assertIn('href="#/schedule"', grade)
+        hub = (WEB / "js" / "hub.js").read_text(encoding="utf-8")
+        self.assertIn('href="#/roster"', hub)
+        core = (WEB / "js" / "core.js").read_text(encoding="utf-8")
+        self.assertIn("parts[0] === 'roster'", core)
+
+    def test_the_wordmark_goes_home(self):
+        """The product name in the header is how you leave a course for the list."""
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="#/"', html)
+        self.assertIn('class="brandHome"', html)
+        css = (WEB / "style.css").read_text(encoding="utf-8")
+        self.assertIn("a.brandHome", css)
+
     def test_every_route_resets_the_tab_title(self):
         """Leaving a course for the list kept the course name in the tab."""
         src = (WEB / "js" / "core.js").read_text(encoding="utf-8")

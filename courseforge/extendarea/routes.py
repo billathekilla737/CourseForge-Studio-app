@@ -153,17 +153,17 @@ def _targets(app, args, log) -> tuple[list[dict], list[dict], set]:
                            "error": str(exc)[:160]})
             continue
 
-        in_window = [a for a in assignments
-                     if extend.day_in_window(a.get("due_at"), args["start"],
-                                             args["end"], tz_name)]
-        log(f"{index}/{total} {label}: {len(in_window)} due in the window",
-            index, total)
-        for a in in_window:
+        kept = 0
+        for a in assignments:
             aid = str(a.get("id"))
             try:
                 overrides = app.client.assignment_overrides(cid, aid)
             except CanvasError:
                 overrides = []
+            if not extend.touches_window(a, overrides, here, sections,
+                                         args["start"], args["end"], tz_name):
+                continue
+            kept += 1
             out.append({
                 "course_id": cid, "course_label": label, "time_zone": tz_name,
                 "assignment_id": aid, "title": a.get("name") or "",
@@ -172,6 +172,8 @@ def _targets(app, args, log) -> tuple[list[dict], list[dict], set]:
                 "html_url": a.get("html_url") or "",
                 "overrides": overrides, "enrolled": enrolled, "sections": sections,
             })
+        log(f"{index}/{total} {label}: {kept} due in the window",
+            index, total)
     return out, failed, seen
 
 

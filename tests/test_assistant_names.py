@@ -144,5 +144,31 @@ class Inbound(Base):
                          "Four pages were restyled.")
 
 
+class AWarningIsNotTheLimit(unittest.TestCase):
+    """Claude CLI sends rate_limit_event on every turn. allowed_warning means
+    the request ran; the page used to say the limit was reached anyway."""
+
+    def notice(self, status, resets=None):
+        from courseforge.assistant.session import rate_limit_notice
+        info = {"status": status}
+        if resets is not None:
+            info["resetsAt"] = resets
+        return rate_limit_notice(info)
+
+    def test_allowed_is_silent(self):
+        self.assertIsNone(self.notice("allowed"))
+
+    def test_allowed_warning_is_silent(self):
+        self.assertIsNone(self.notice("allowed_warning", resets=0))
+
+    def test_rejected_says_the_limit_was_reached(self):
+        text = self.notice("rejected")
+        self.assertIn("usage limit has been reached", text)
+        import time
+        midnight = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1))
+        timed = self.notice("rejected", resets=midnight)
+        self.assertIn("12:00 AM", timed)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

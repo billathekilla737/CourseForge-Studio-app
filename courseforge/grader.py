@@ -329,6 +329,7 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
                  "words": p.words, "text": p.text, "path": p.path, "data": p.data}
                 for p in parsed.parts
             ],
+            "body_text": parsed.text,
             "text": parsed.text,
             "words": parsed.words,
             "unreadable": [p.label for p in parsed.unreadable],
@@ -353,7 +354,7 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
         entry = {
             "user_id": uid, "name": student.get("name", ""), "pseudonym": pseud.tag(uid),
             "status": "unsubmitted", "submitted_at": None, "late": False,
-            "filenames": [], "parts": [], "text": "", "words": 0,
+            "filenames": [], "parts": [], "body_text": "", "text": "", "words": 0,
             "unreadable": [], "images": [], "videos": [],
             "sheets": [], "models": [],
             "_files_dir": str(adir / "files"),
@@ -415,7 +416,8 @@ def _discussion_by_user(view: dict, names: dict[str, str]) -> dict[str, dict]:
             "text": text, "words": len(text.split()), "created_at": entry.get("created_at"),
         }
     for entry in entries:
-        parent_name = names.get(str(entry.get("user_id")), "a classmate")
+        parent_id = str(entry.get("user_id") or "")
+        parent_name = names.get(parent_id, "a classmate")
         parent_text = html_to_text(entry.get("message"))
         for reply in (entry.get("replies") or []):
             if not reply.get("user_id") or reply.get("deleted"):
@@ -423,6 +425,7 @@ def _discussion_by_user(view: dict, names: dict[str, str]) -> dict[str, dict]:
             text = html_to_text(reply.get("message"))
             slot(reply["user_id"])["replies"].append({
                 "to": parent_name,
+                "to_id": parent_id,
                 "to_excerpt": parent_text[:400],
                 "text": text, "words": len(text.split()),
                 "created_at": reply.get("created_at"),
@@ -430,26 +433,54 @@ def _discussion_by_user(view: dict, names: dict[str, str]) -> dict[str, dict]:
     return out
 
 
-def _discussion_text(entry: dict) -> str:
+def _discussion_text(entry: dict, pseud: Pseudonymizer | None = None) -> str:
+    """Discussion as one block. With `pseud`, names become tags for a model."""
+    def _out(text: str, own_name: str = "") -> str:
+        if pseud is None or not text:
+            return text or ""
+        return pseud.scrub(pseud.scrub_roster(text), own_name=own_name)
+
     chunks = []
     post = entry.get("post")
     if post:
-        chunks.append(f"--- ORIGINAL POST ({post['words']} words) ---\n{post['text']}")
+        chunks.append(f"--- ORIGINAL POST ({post['words']} words) ---\n"
+                      f"{_out(post['text'])}")
     else:
         chunks.append("--- ORIGINAL POST ---\n(none: this student never posted)")
     for reply in entry.get("replies") or []:
+        if pseud is not None and reply.get("to_id"):
+            to = pseud.tag(reply["to_id"])
+        else:
+            to = reply.get("to") or "a classmate"
+        excerpt = _out(reply.get("to_excerpt") or "", own_name=reply.get("to") or "")
+        body = _out(reply.get("text") or "")
         chunks.append(
-            f"--- REPLY to {reply['to']} ({reply['words']} words) ---\n"
-            f"[they were replying to: {reply['to_excerpt']}]\n{reply['text']}"
+            f"--- REPLY to {to} ({reply['words']} words) ---\n"
+            f"[they were replying to: {excerpt}]\n{body}"
         )
     if not entry.get("replies"):
         chunks.append("--- REPLY ---\n(none: this student never replied to a classmate)")
     return "\n\n".join(chunks)
 
 
+def _work_for_model(entry: dict, pseud: Pseudonymizer) -> str:
+    """The copy of a submission that may leave the machine: tags, no PII."""
+    work = entry.get("body_text")
+    if work is None:
+        work = entry.get("text") or ""
+        if entry.get("discussion"):
+            return pseud.scrub(pseud.scrub_roster(work),
+                               own_name=entry.get("name") or "")
+    if entry.get("discussion"):
+        work = (work + "\n\n" + _discussion_text(entry["discussion"], pseud)).strip()
+    return pseud.scrub(pseud.scrub_roster(work or ""),
+                       own_name=entry.get("name") or "")
+
+
 # ------------------------------------------------------------------ prompts
 def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
-                 instructions: str, label: str) -> str:
+                 instructions: str, label: str,
+                 pseud: Pseudonymizer | None = None) -> str:
     lines: list[str] = []
     lines.append(f"# Assignment: {assignment.get('name','(untitled)')}")
     lines.append(f"Points possible: {assignment.get('points_possible')}")
@@ -481,7 +512,10 @@ def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
             "do not score it, do not mention it in the comment, do not suggest "
             "improving it. Excluding something from the rubric and then advising "
             "the student to fix it is the same mistake made twice.")
-        lines.append(instructions.strip())
+        noted = instructions.strip()
+        if pseud is not None:
+            noted = pseud.scrub_roster(noted)
+        lines.append(noted)
         lines.append("")
 
     lines.append(f"## Student {label}")
@@ -492,7 +526,10 @@ def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
         meta.append("LATE")
     meta.append(f"word count: {entry.get('words', 0)}")
     if entry.get("filenames"):
-        meta.append("files: " + ", ".join(entry["filenames"]))
+        files = list(entry["filenames"])
+        if pseud is not None:
+            files = [pseud.scrub(f, own_name=entry.get("name") or "") for f in files]
+        meta.append("files: " + ", ".join(files))
     lines.append(" | ".join(meta))
     if entry.get("unreadable"):
         lines.append("NOTE - these parts could not be converted to text: "
@@ -510,7 +547,8 @@ def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
             "criteria are waiting on it.")
     lines.append("")
     lines.append("## The student's work")
-    work = entry.get("text") or ""
+    work = (_work_for_model(entry, pseud) if pseud is not None
+            else (entry.get("text") or ""))
     if len(work) > MAX_WORK_CHARS:
         work = work[:MAX_WORK_CHARS] + "\n\n[...truncated for length...]"
     lines.append(work if work.strip() else "(nothing submitted)")
@@ -578,7 +616,8 @@ def _num(value) -> str:
 
 # ------------------------------------------------------------------ grading
 def grade_one(cfg: Config, assignment: dict, rubric: list[dict], entry: dict,
-              instructions: str, progress: Progress = _noop) -> dict:
+              instructions: str, progress: Progress = _noop,
+              students: list | None = None) -> dict:
     """Grade a single student. Returns a draft entry; never raises."""
     uid = entry["user_id"]
     label = entry.get("pseudonym") if cfg.pseudonymize else entry.get("name", uid)
@@ -625,7 +664,8 @@ def grade_one(cfg: Config, assignment: dict, rubric: list[dict], entry: dict,
 
     _item(progress, label, "reading the submission",
           _brief(len(entry.get("text") or "")))
-    prompt = build_prompt(assignment, rubric, entry, instructions, label)
+    prompt = build_prompt(assignment, rubric, entry, instructions, label,
+                          pseud=Pseudonymizer(students or [], enabled=cfg.pseudonymize))
 
     # Our contact sheet first, then up to a few of the student's own screenshots.
     images: list[Path] = []
@@ -805,9 +845,14 @@ def ask_about(cfg: Config, store: Store, course_id, assignment_id, user_id: str,
     lines.append("## Rubric criteria")
     for crit in rubric:
         lines.append(f"- [{crit['id']}] {crit['label']} (max {crit['points']})")
+    roster = store.students(course_id)
+    pseud = Pseudonymizer(roster or [], enabled=cfg.pseudonymize)
     instructions = store.instructions(course_id, assignment_id)
     if instructions.strip():
-        lines += ["", "## Instructor's custom grading instructions", instructions.strip()]
+        noted = instructions.strip()
+        if cfg.pseudonymize:
+            noted = pseud.scrub_roster(noted)
+        lines += ["", "## Instructor's custom grading instructions", noted]
 
     lines += ["", f"## Student {label}",
               f"status: {entry.get('status')} | words: {entry.get('words', 0)}"
@@ -819,15 +864,21 @@ def ask_about(cfg: Config, store: Store, course_id, assignment_id, user_id: str,
     if entry.get("unreadable"):
         lines.append("NOTE - not converted to text: " + "; ".join(entry["unreadable"]))
 
-    work = entry.get("text") or "(nothing submitted)"
+    work = _work_for_model(entry, pseud) or "(nothing submitted)"
     if len(work) > MAX_WORK_CHARS:
         work = work[:MAX_WORK_CHARS] + "\n\n[...truncated for length...]"
     lines += ["", "## The student's work", work, ""]
 
     for turn in (history or [])[-6:]:
         role = "Instructor asked" if turn.get("role") == "user" else "You answered"
-        lines.append(f"## {role}\n{turn.get('text','')}")
-    lines += ["", "## The instructor's question", question.strip()]
+        text = turn.get("text") or ""
+        if cfg.pseudonymize:
+            text = pseud.scrub_roster(text)
+        lines.append(f"## {role}\n{text}")
+    asked = question.strip()
+    if cfg.pseudonymize:
+        asked = pseud.scrub_roster(asked)
+    lines += ["", "## The instructor's question", asked]
 
     result = llm.run("\n".join(lines), model=cfg.model,
                             timeout_s=cfg.claude_timeout_s, system=ASK_SYSTEM,
@@ -1030,10 +1081,11 @@ def grade_assignment(cfg: Config, store: Store, course_id, assignment_id,
     progress(f"grading {_plural(total, 'student')} with {cfg.model} ({lane}){swap}",
              0, total)
 
+    roster = store.students(course_id)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(grade_one, cfg, assignment, rubric, extracted[uid],
-                        instructions, progress): uid
+                        instructions, progress, roster): uid
             for uid in targets
         }
         for future in concurrent.futures.as_completed(futures):
@@ -1204,6 +1256,8 @@ def overlap_check(cfg: Config, store: Store, course_id, assignment_id,
 
     # Only the strongest pairs go to the model, and only as pseudonyms.
     progress(f"asking {cfg.model} to read {_plural(len(notable), 'pair')}")
+    pair_pseud = Pseudonymizer(store.students(course_id) or [],
+                               enabled=cfg.pseudonymize)
     lines = [f"# Assignment: {assignment.get('name','(untitled)')}", "",
              f"Overlap was measured on {overlap.DEFAULT_K}-word windows after "
              "removing every window the whole group shares (the prompt, the rubric, "
@@ -1218,7 +1272,10 @@ def overlap_check(cfg: Config, store: Store, course_id, assignment_id,
                      f"{pair['containment']:.0%} of the shorter submission's "
                      f"distinctive windows appear in the other.")
         for passage in pair["passages"][:3]:
-            lines.append(f'- ({passage["words"]} words) "{passage["text"][:600]}"')
+            quoted = passage["text"][:600]
+            if cfg.pseudonymize:
+                quoted = pair_pseud.scrub_roster(quoted)
+            lines.append(f'- ({passage["words"]} words) "{quoted}"')
         lines.append("")
     ids = ", ".join(f'"{index}"' for index in range(1, len(notable) + 1))
     lines.append(
@@ -1406,9 +1463,14 @@ def teaching_read(cfg: Config, store: Store, course_id, assignment_id,
                      "in a Canvas comment:")
         for band in voice["by_category"]:
             lines.append(f"- {band['count']} × {band['label']}")
+        voice_pseud = Pseudonymizer(store.students(course_id) or [],
+                                    enabled=cfg.pseudonymize)
         for person in voice["students"][:14]:
             for item in person["items"]:
-                lines.append(f'  - ({item["category"]}) "{item["text"]}"')
+                quoted = item["text"]
+                if cfg.pseudonymize:
+                    quoted = voice_pseud.scrub_roster(quoted)
+                lines.append(f'  - ({item["category"]}) "{quoted}"')
         lines.append("")
     else:
         lines.append("## What students said")

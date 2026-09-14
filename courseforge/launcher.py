@@ -14,6 +14,7 @@ import sys
 import threading
 import tkinter as tk
 import webbrowser
+from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import messagebox
 

@@ -53,8 +53,29 @@ class Pseudonymizer:
         for pattern, repl in PATTERNS:
             out = pattern.sub(repl, out)
         if self.enabled and own_name:
-            out = _strip_name(out, own_name)
+            out = _replace_name(out, own_name, "[NAME]")
         return out
+
+    def scrub_roster(self, text: str) -> str:
+        """Replace every roster name with that student's tag, then structured PII.
+
+        Longest names first so "Jordan Alvarez" is not left as "S-001 Alvarez"
+        after a shorter token already matched. Classmates in a discussion or a
+        quoted filename have to become tags too, not only the author.
+        """
+        if not text:
+            return text
+        out = text
+        if self.enabled:
+            people = sorted(self.identities.values(),
+                            key=lambda row: len(row.get("name") or ""), reverse=True)
+            for row in people:
+                name = row.get("name") or ""
+                uid = row.get("user_id")
+                tag = self.by_user.get(str(uid), "")
+                if name and tag:
+                    out = _replace_name(out, name, tag)
+        return self.scrub(out)
 
     def map_json(self) -> dict:
         return {
@@ -63,9 +84,17 @@ class Pseudonymizer:
         }
 
 
-def _strip_name(text: str, name: str) -> str:
-    """Replace the student's own name tokens with [NAME], case-insensitively."""
+def _replace_name(text: str, name: str, repl: str) -> str:
+    """Replace a person's name tokens, case-insensitively."""
+    if not name or not text:
+        return text
+    text = re.sub(rf"\b{re.escape(name)}\b", repl, text, flags=re.IGNORECASE)
     tokens = {t.strip(",.") for t in re.split(r"[\s,]+", name) if len(t.strip(",.")) >= 3}
     for token in sorted(tokens, key=len, reverse=True):
-        text = re.sub(rf"\b{re.escape(token)}\b", "[NAME]", text, flags=re.IGNORECASE)
+        text = re.sub(rf"\b{re.escape(token)}\b", repl, text, flags=re.IGNORECASE)
     return text
+
+
+def _strip_name(text: str, name: str) -> str:
+    """Replace the student's own name tokens with [NAME], case-insensitively."""
+    return _replace_name(text, name, "[NAME]")

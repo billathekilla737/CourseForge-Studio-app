@@ -87,7 +87,7 @@ class FilesOps:
     # ---------------------------------------------------------------- list
     def course_files(self, course_id) -> list[dict]:
         """Every file in the course. Filter on the caller's side (see file_ext)."""
-        return list(self.paged(f"/courses/{course_id}/files", **{"include": ["user"]}))
+        return list(self.paged(f"/courses/{course_id}/files"))
 
     def course_documents(self, course_id, exts: set[str] | None = None) -> list[dict]:
         exts = exts or DOC_EXT
@@ -119,16 +119,21 @@ class FilesOps:
         dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".part")
+        if canvas_policy.same_host(self.base, url):
+            canvas_policy.check_scope(self.scope, "GET", url)
         attempts = [False] + ([True] if canvas_policy.same_host(self.base, url) else [])
         errors: list[str] = []
         for use_token in attempts:
-            req = urllib.request.Request(url)
-            req.add_header("User-Agent", self.user_agent())
-            if use_token:
-                canvas_policy.assert_token_host(self.base, url, getattr(self, "allowed_hosts", None))
-                req.add_header("Authorization", f"Bearer {self.token}")
             try:
-                with urllib.request.urlopen(req, timeout=max(self.timeout, 300)) as resp:
+                try:
+                    resp = self._open_url(url, use_token, max(self.timeout, 300))
+                except urllib.error.HTTPError as exc:
+                    loc = exc.headers.get("Location") if exc.code in (301, 302, 303, 307, 308) else ""
+                    if use_token and loc:
+                        resp = self._open_url(loc, False, max(self.timeout, 300))
+                    else:
+                        raise
+                with resp:
                     declared = resp.headers.get("Content-Length")
                     total = 0
                     with open(part, "wb") as fh:

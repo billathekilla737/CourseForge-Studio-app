@@ -243,7 +243,7 @@
   function renderFiles(host, s, previous) {
     if (!host) return;
     // Whatever ran last is what the upload warning reads its counts from.
-    if (s && s.rows) st().last = s;
+    if (s && s.rows && (s.action !== 'describe' || placeholdersLeft(s))) st().last = s;
     const rows = (s && s.rows) || [];
     const kinds = (s && s.kinds) || [];
     const action = (s && s.action) || 'survey';

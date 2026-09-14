@@ -101,3 +101,6 @@ htmlcov/
 Thumbs.db
 desktop.ini
 *.rtf
+
+# Written by the in-app updater; records which revision this folder is running.
+installed.json

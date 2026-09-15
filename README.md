@@ -104,17 +104,16 @@ so the button works with no GitHub account, no git, and no terminal.
 
 ### Publishing a new version
 
-Development happens in the private repository; the public one at
-[billathekilla737/CourseForge-Studio-app](https://github.com/billathekilla737/CourseForge-Studio-app) is what
-every install checks. They share one history, so publishing is one push:
+The source is the public repository at
+[billathekilla737/CourseForge-Studio-app](https://github.com/billathekilla737/CourseForge-Studio-app).
+That is what every install checks. Pushing `main` publishes:
 
 ```bash
-git push public main
+git push origin main
 ```
 
-Until that runs, nobody's launcher sees the change. Nothing else is needed --
-no tags, no release notes, no uploaded files: the button reads the commit
-subjects between the user's version and the branch head.
+Nothing else is needed -- no tags, no release notes, no uploaded files: the
+button reads the commit subjects between the user's version and the branch head.
 
 The public repository must never carry student data, and neither must its
 history. `config.json`, `data/` and every token are gitignored, which is what

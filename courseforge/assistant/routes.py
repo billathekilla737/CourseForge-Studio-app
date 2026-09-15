@@ -8,6 +8,7 @@
     POST /api/assistant/{cid}/names/refresh      re-read the roster for tagging
     POST /api/assistant/{cid}/stop
     POST /api/assistant/{cid}/new
+    POST /api/assistant/{cid}/mode {mode}        plan | ask | auto
     POST /api/assistant/permission               the hook's long poll (secret-checked)
 
 The permission route is the one the hook process calls from inside the Claude
@@ -115,6 +116,20 @@ def stop(req):
 @route("POST", "/api/assistant/{cid}/new", area="assistant")
 def new(req):
     return _mgr(req).new(req.params["cid"])
+
+
+@route("POST", "/api/assistant/{cid}/mode", area="assistant")
+@route("POST", "/api/assistant/{cid}/prefs", area="assistant")
+def mode(req):
+    """Plan/ask/auto and the Claude model. Does not change Canvas."""
+    body = req.body if isinstance(req.body, dict) else {}
+    try:
+        return _mgr(req).set_prefs(
+            req.params["cid"],
+            mode=body.get("mode") if "mode" in body else None,
+            model=body.get("model") if "model" in body else None)
+    except ValueError as exc:
+        raise HTTPError(400, str(exc))
 
 
 @route("POST", "/api/assistant/permission", area="assistant")

@@ -1544,6 +1544,10 @@ function renderSchedule() {
 
   $('#schedBody').querySelectorAll('.itemName').forEach(el => {
     el.onclick = ev => {
+      // Middle-click, Ctrl/Cmd-click and "open in new tab" must follow the
+      // href to the assignment. preventDefault on every click is why those
+      // landed on the home page: the name used to be href="#".
+      if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button) return;
       ev.preventDefault();
       const [cid, aid] = el.dataset.open.split(':');
       openScheduleItem(cid, aid);
@@ -1587,8 +1591,9 @@ function schedRow(it) {
       title="${esc(it.course_name || it.course_code)}">${
         esc(it.course_label || it.course_code)}</span></td>
     <td class="name">
-      <a href="#" class="itemName" data-open="${esc(it.course_id)}:${
-        esc(it.assignment_id)}" title="Read what this assignment asks for"
+      <a href="#/c/${esc(it.course_id)}/a/${esc(it.assignment_id)}" class="itemName"
+         data-open="${esc(it.course_id)}:${esc(it.assignment_id)}"
+         title="Read what this assignment asks for. Middle-click opens it in a new tab."
          >${esc(it.name)}</a>
       ${it.url ? `<a class="extLink" href="${esc(it.url)}" target="_blank"
          rel="noopener" title="Open in Canvas">↗</a>` : ''}

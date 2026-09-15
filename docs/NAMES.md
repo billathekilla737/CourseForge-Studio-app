@@ -116,6 +116,8 @@ The swap covers what you type and what Claude writes back. It does not cover
 what Claude *reads*. If you Allow a tool call that opens the gradebook or a
 file with names in it, those names go to Anthropic exactly as they are
 written, because that text never passes through this code on its way out.
+Studio dry-run verbs are not reads of grading files; a brief that says
+"submission" is not `extracted.json`.
 
 The Allow card says so, on the card, for the kinds of call where it is true.
 That is the honest place for it: the decision is being made right there.

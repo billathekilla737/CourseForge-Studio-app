@@ -78,7 +78,18 @@
 .asstCompose{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px;align-items:stretch}
 .asstCompose textarea{min-height:72px;max-height:220px;resize:vertical;font:13.5px/1.5 var(--sans);margin:0}
 .asstCompose textarea:focus-visible{outline:2px solid var(--ai);outline-offset:1px}
-.asstCompose .col{display:flex;flex-direction:column;gap:6px;min-width:150px}
+.asstCompose .col{display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:150px}
+.asstModes{display:flex;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel);
+  position:relative;z-index:1}
+.asstModes .chip{margin:0;border:0;border-radius:0;border-right:1px solid var(--line);background:transparent;
+  font-size:11.5px;padding:6px 10px;cursor:pointer;flex:1;color:var(--ink)}
+.asstModes .chip:last-child{border-right:0}
+.asstModes .chip[aria-checked="true"]{background:var(--ai-soft);color:var(--ai);font-weight:600}
+.asstModes .chip:hover{background:var(--bg)}
+.asstModes .chip[aria-checked="true"]:hover{background:var(--ai-soft)}
+.asstModelPick{display:block}
+.asstModelPick select{width:100%;font:12px var(--sans);padding:5px 8px;border:1px solid var(--line);
+  border-radius:8px;background:var(--panel);color:var(--ink)}
 .asstCompose .col .btn{width:100%}
 /* Below this the box and its three buttons cannot both have room, and the box
    is the part being typed into. It was already tight; the @ picker sits over
@@ -87,12 +98,31 @@
   .asstCompose{grid-template-columns:minmax(0,1fr)}
   .asstCompose .col{flex-direction:row;flex-wrap:wrap;min-width:0}
   .asstCompose .col .btn{width:auto;flex:1 1 auto}
+  .asstModes{flex:1 1 100%}
 }
 .asstFoot{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
 .asstFoot .spacer{flex:1}
 .asstFoot .working{color:var(--ai);font-weight:600}
 .asstFoot .working::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;
   background:var(--ai);margin-right:6px;vertical-align:1px;animation:asstBlink 1s steps(1) infinite}
+
+.asstDraft{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);
+  padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.asstDraft header{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.asstDraft header b{font-size:14px}
+.asstDraftNote{margin:0;font-size:12.5px;color:var(--muted);max-width:62ch}
+.asstDraftPaper{max-height:min(52vh,420px);overflow:auto}
+.asstDraftActs{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.asstDraftList{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.asstDraftList li{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:baseline}
+.asstDraftOpen{appearance:none;background:none;border:0;padding:0;margin:0;font:inherit;
+  font-weight:650;color:var(--ink);text-align:left;cursor:pointer}
+.asstDraftOpen:hover{color:var(--ai);text-decoration:underline}
+.asstDraftList .hint{grid-column:1;font-size:11px}
+.asstDraftLinks{grid-column:2;grid-row:1 / span 2;display:flex;flex-direction:column;gap:2px;
+  font-size:11.5px;align-items:flex-end}
+.asstDraftLinks a{color:var(--ai)}
+.modal .asstDraftPaper{max-height:min(60vh,520px);margin:8px 0}
 
 /* rail */
 .asstRail{display:flex;flex-direction:column;gap:12px;min-width:0}

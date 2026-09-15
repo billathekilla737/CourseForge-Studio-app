@@ -32,6 +32,45 @@ CONVERSATION_TAIL = 12_000  # bytes of conversation.txt shown after a restart
 # never land on a call that has already failed.
 GRACE_S = 10.0
 
+# How the Assistant treats questions the gate would otherwise stop for.
+# Ask is the default: every live write, every student file, every unknown
+# command waits. Auto lets local *reads* through (the draft it just wrote).
+# Plan refuses anything that would change Canvas or this PC.
+MODES = ("plan", "ask", "auto")
+AUTO_ALLOW = frozenset({"read"})
+PLAN_DENY = frozenset({
+    "canvas-write", "local-change", "local-script", "system", "unknown", "run",
+})
+MODE_HINTS = {
+    "plan": "Plan mode: it will read and draft locally, not change Canvas or this PC.",
+    "ask": "Ask mode: local content files run on their own; Canvas writes still need Allow.",
+    "auto": "Auto mode: local reads run on their own. Canvas writes still need Allow.",
+}
+MODE_NOTICES = {
+    "plan": "Plan mode. It can read and think; anything that would change Canvas or this PC is refused until you switch to Ask or Auto.",
+    "ask": "Ask mode. Content drafts it just wrote are read without asking. Live Canvas writes still stop for Allow.",
+    "auto": "Auto mode. Local file reads run without asking. Live Canvas writes, grading files, and unknown commands still stop for Allow.",
+}
+
+
+def auto_decision(mode: str, kind: str):
+    """None = ask the person. Else (decision, reason, via).
+
+    Canvas writes, grading files, and unknown commands are never auto-allowed.
+    """
+    kind = kind or "unknown"
+    mode = mode if mode in MODES else "ask"
+    if mode == "auto" and kind in AUTO_ALLOW:
+        return ("allow", "Auto mode: a local read, not a Canvas write.", "auto")
+    if mode == "plan":
+        if kind in PLAN_DENY:
+            return ("deny",
+                    "Plan mode: this would change something. Switch to Ask or Auto to run it.",
+                    "plan")
+        if kind in AUTO_ALLOW:
+            return ("allow", "Plan mode: a local read.", "plan")
+    return None
+
 
 class NameProblem(ValueError):
     """A message stopped because of a student's name, with what to do about it.
@@ -63,6 +102,7 @@ class Pending:
         self.decision: str | None = None
         self.reason = ""
         self.auto = False
+        self.via = "person"
         self.created = time.time()
         self.expires_at = self.created + timeout_s
 
@@ -89,8 +129,11 @@ class Pending:
                 "tool_use_id": self.req.get("tool_use_id"),
                 # The name swap covers what is typed and what comes back. It
                 # cannot cover a file: whatever this reads goes to Anthropic as
-                # it is. Say so on the card that decides it, not in a document.
-                "leaks_names": self.req.get("kind") in ("student-data", "read")}
+                # it is. Say so only when this card is actually opening a file,
+                # never on a Studio dry-run whose brief happens to say "grade".
+                "leaks_names": (self.req.get("kind") in ("student-data", "read")
+                                and bool(ti.get("file_path") or ti.get("notebook_path")
+                                         or ti.get("path")))}
 
 
 class Course:
@@ -286,13 +329,18 @@ class Manager:
                 "session_id": (c.session.session_id if c.session else st.get("session_id")),
                 "started": st.get("started"), "last_used": st.get("last_used"),
                 "has_conversation": bool(st),
-                "model": c.model or getattr(self.cfg, "assistant_model", "") or "Claude Code default",
+                "model": self.chosen_model(c.id) or c.model
+                         or getattr(self.cfg, "assistant_model", "") or "",
+                "models": list(getattr(self.cfg, "models", None) or ["opus", "sonnet", "haiku"]),
                 "workspace": str(c.workspace),
                 "quick_jobs": S.QUICK_JOBS,
                 "headlines": self.HEADLINES,
                 "pending": self.pending_for(c.id),
                 "claude": bool(shutil.which("claude")),
                 "last_error": c.last_error,
+                "mode": self.mode(c.id),
+                "modes": list(MODES),
+                "mode_hint": MODE_HINTS.get(self.mode(c.id), MODE_HINTS["ask"]),
             }
             names = self.names(c.id)
             out["names"] = {"enabled": bool(names.enabled and len(names)),
@@ -352,8 +400,13 @@ class Manager:
             if c.busy and c.session and c.session.alive():
                 raise ValueError("Claude is still working on the last message. "
                                  "Stop it first, or wait for it to finish.")
+            want = model or self.chosen_model(c.id) or None
             if not (c.session and c.session.alive()):
-                self._start(c, model)
+                self._start(c, want)
+            elif (want or "") != (getattr(c.session, "model", None) or "") and not c.busy:
+                c.session.stop()
+                c.session = None
+                self._start(c, want)
             c.busy = True
             # The ring and the log keep what was sent, not what was typed.
             c.push({"kind": "user", "text": outgoing})
@@ -392,7 +445,8 @@ class Manager:
         sess = S.Session(course, self.port, self.secret,
                          sink=lambda ev, cc=c: self._on_event(cc, ev),
                          session_id=st["session_id"] if st else None, resume=bool(st),
-                         model=model or getattr(self.cfg, "assistant_model", "") or None,
+                         model=model or self.chosen_model(c.id)
+                         or getattr(self.cfg, "assistant_model", "") or None,
                          skill_dir=skill, cfg_path=getattr(self.cfg, "_path", None))
         sess.start()
         c.session = sess
@@ -441,7 +495,8 @@ class Manager:
                 # any question still open for this session dies with it
                 for p in list(self.pending.values()):
                     if p.course_id == c.id and not p.event.is_set():
-                        self._settle(p, "deny", "The Claude session ended before anyone answered.", auto=True)
+                        self._settle(p, "deny", "The Claude session ended before anyone answered.",
+                                     via="timeout")
             c.push(ev)
 
     def _restream(self, c: Course, ev: dict):
@@ -481,7 +536,8 @@ class Manager:
             c.busy = False
             for p in list(self.pending.values()):
                 if p.course_id == c.id and not p.event.is_set():
-                    self._settle(p, "deny", "The conversation was reset before anyone answered.", auto=True)
+                    self._settle(p, "deny", "The conversation was reset before anyone answered.",
+                                 via="timeout")
             S.clear_session_state(c.assistant_dir)
             c.rotate_conversation()
             c.ring.clear()
@@ -517,13 +573,84 @@ class Manager:
         view = p.view()
         view["kind"] = view.get("kind") or "unknown"
         view["headline"] = self.HEADLINES.get(view["kind"], "Claude wants to use a tool that may change something")
+        decided = auto_decision(self.mode(cid), view["kind"])
+        if decided:
+            decision, reason, via = decided
+            self._settle(p, decision, reason, via=via)
+            return {"decision": decision, "reason": reason}
         c.push(dict(view, kind_gate=view["kind"], kind="permission"))
         if not p.event.wait(wait):
             self._settle(p, "deny",
                          "No answer in CourseForge Studio within %d minutes, so this was not run. "
                          "Ask the person whether to try it again." % max(1, int(wait // 60)),
-                         auto=True)
+                         via="timeout")
         return {"decision": p.decision or "deny", "reason": p.reason or gate.DENY_TEXT}
+
+    def mode(self, course_id) -> str:
+        path = self.course(course_id).assistant_dir / "mode.json"
+        try:
+            found = json.loads(path.read_text(encoding="utf-8")).get("mode")
+            if found in MODES:
+                return found
+        except Exception:  # noqa: BLE001
+            pass
+        return "ask"
+
+    def chosen_model(self, course_id) -> str:
+        path = self.course(course_id).assistant_dir / "model.json"
+        try:
+            found = json.loads(path.read_text(encoding="utf-8")).get("model")
+            if isinstance(found, str):
+                return found.strip()
+        except Exception:  # noqa: BLE001
+            pass
+        return str(getattr(self.cfg, "assistant_model", "") or "").strip()
+
+    def set_mode(self, course_id, mode: str) -> dict:
+        return self.set_prefs(course_id, mode=mode)
+
+    def set_prefs(self, course_id, mode: str | None = None, model: str | None = None) -> dict:
+        """Plan/ask/auto and the Claude model. Neither writes to Canvas."""
+        c = self.course(course_id)
+        c.assistant_dir.mkdir(parents=True, exist_ok=True)
+        out = {"ok": True,
+               "mode": self.mode(course_id),
+               "hint": MODE_HINTS.get(self.mode(course_id), MODE_HINTS["ask"]),
+               "model": self.chosen_model(course_id),
+               "models": list(getattr(self.cfg, "models", None) or ["opus", "sonnet", "haiku"])}
+        if mode is not None:
+            mode = str(mode or "").strip().lower()
+            if mode not in MODES:
+                raise ValueError("Mode must be plan, ask, or auto.")
+            (c.assistant_dir / "mode.json").write_text(
+                json.dumps({"mode": mode}, indent=2), encoding="utf-8")
+            c.push({"kind": "notice", "text": MODE_NOTICES[mode]})
+            out["mode"] = mode
+            out["hint"] = MODE_HINTS[mode]
+        if model is not None:
+            model = str(model or "").strip()
+            allowed = list(out["models"])
+            if model and model not in allowed:
+                raise ValueError("Unknown model %r; choose one of %s."
+                                 % (model, ", ".join(allowed)))
+            (c.assistant_dir / "model.json").write_text(
+                json.dumps({"model": model}, indent=2), encoding="utf-8")
+            c.model = model
+            label = model or "Claude Code default"
+            if c.session and c.session.alive() and not c.busy:
+                c.session.stop()
+                c.session = None
+                c.push({"kind": "notice",
+                        "text": "Model is now %s. The next message starts a session on it."
+                        % label})
+            elif c.busy:
+                c.push({"kind": "notice",
+                        "text": "This turn keeps the current model. The next conversation uses %s."
+                        % label})
+            else:
+                c.push({"kind": "notice", "text": "Model is now %s." % label})
+            out["model"] = model
+        return out
 
     def _course_for_session(self, session_id, cwd) -> str:
         with self.lock:
@@ -545,20 +672,21 @@ class Manager:
             raise KeyError("That request is no longer waiting for an answer.")
         decision = "allow" if str(decision).lower() == "allow" else "deny"
         self._settle(p, decision, reason if decision == "deny" and reason else
-                     ("" if decision == "allow" else gate.DENY_TEXT))
+                     ("" if decision == "allow" else gate.DENY_TEXT), via="person")
         return {"ok": True, "decision": decision, "request_id": request_id}
 
-    def _settle(self, p: Pending, decision: str, reason: str, auto: bool = False) -> None:
+    def _settle(self, p: Pending, decision: str, reason: str, via: str = "person") -> None:
         with self.lock:
             if p.event.is_set():
                 return
-            p.decision, p.reason, p.auto = decision, reason, auto
+            p.decision, p.reason, p.via = decision, reason, via
+            p.auto = via != "person"
             self.pending.pop(p.id, None)
             p.event.set()
         c = self.course(p.course_id)
         what = p.req.get("what") or p.req.get("summary") or ""
         c.push({"kind": "permission_answered", "request_id": p.id, "decision": decision,
-                "auto": auto, "what": what, "gate_kind": p.req.get("kind")})
+                "auto": p.auto, "via": via, "what": what, "gate_kind": p.req.get("kind")})
         if decision == "allow" and p.req.get("kind") == "canvas-write":
             # The action, not the content: what the person let through. The
             # verb itself records the write when it succeeds.

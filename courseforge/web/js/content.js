@@ -266,7 +266,7 @@
       <div class="bdPanes">
         <section aria-labelledby="bdPrevH">
           <h3 id="bdPrevH" class="gwH">How it will read</h3>
-          <div class="paperFrame"><div class="canvasHtml asIs">${(preview && preview.html) || ''}</div></div>
+          <div class="paperFrame canvasPage"><div class="canvasHtml asIs">${(preview && preview.html) || ''}</div></div>
         </section>
         <section aria-labelledby="bdEditH">
           <h3 id="bdEditH" class="gwH">The body</h3>

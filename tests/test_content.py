@@ -771,6 +771,19 @@ class PlaceTests(unittest.TestCase):
         self.assertEqual(out["mismatches"], [])
 
 
+class DraftSummaryKeepsTheCanvasLink(unittest.TestCase):
+    def test_a_placed_draft_still_has_its_html_url(self):
+        from courseforge.content.routes import _draft_summary
+        row = _draft_summary({
+            "id": "abc", "kind": "assignment", "title": "Reading: Underwater Basket Weaving",
+            "html": GOOD_HTML, "placed": {"html_url": "https://x.instructure.com/courses/1/assignments/2",
+                                          "id": 2},
+        })
+        self.assertEqual(row["placed"]["html_url"],
+                         "https://x.instructure.com/courses/1/assignments/2")
+        self.assertEqual(row["title"], "Reading: Underwater Basket Weaving")
+
+
 # ------------------------------------------------------------ diff_content
 class DiffContentTests(unittest.TestCase):
     def test_lost_words_show_up(self):

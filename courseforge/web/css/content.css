@@ -40,7 +40,12 @@
 
 .bdPanes{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
 @media (max-width:1000px){.bdPanes{grid-template-columns:1fr}.bdRow{grid-template-columns:1fr}}
-.bdPanes .paperFrame{max-height:64vh}
+/* How it will read: Canvas's own white page, even when the Studio is dark.
+   Navy headings on --paper in dark mode disappear; students do not read on
+   that surface. */
+.bdPanes .paperFrame{max-height:64vh;background:#fff;color:#2c3a4d;
+  border-color:#d7dce3;color-scheme:light}
+.bdPanes .paperFrame .canvasHtml.asIs{color:#2c3a4d}
 
 /* The body, and the one signal that matters on this screen: once a person has
    touched it, the border says so and stays saying so. */

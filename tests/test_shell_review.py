@@ -280,6 +280,29 @@ class FrontEndContract(unittest.TestCase):
         self.assertIn("S.route.parts[0] === 'inbox'", src)
         self.assertNotIn("if (S.view !== 'inbox') return;", src)
 
+    def test_the_assistant_has_plan_ask_auto_modes(self):
+        src = (JS / "assistant.js").read_text(encoding="utf-8")
+        self.assertIn("function asstModes(", src)
+        self.assertIn("function asstSetMode(", src)
+        self.assertIn("function asstFillModel(", src)
+        self.assertIn("function asstSetModel(", src)
+        self.assertIn("id=\"asstModel\"", src)
+        self.assertIn("data-mode", src)
+        self.assertIn("/mode", src)
+
+    def test_the_assistant_previews_drafts_without_leaving(self):
+        """A draft the Assistant just wrote used to be visible only in Canvas
+        or the Build area. The tab itself now shows the sanitised HTML and a
+        Canvas link once the item has been placed."""
+        src = (JS / "assistant.js").read_text(encoding="utf-8")
+        self.assertIn("function asstWatchDrafts(", src)
+        self.assertIn("function asstPreviewDraft(", src)
+        self.assertIn("function asstLoadPreview(", src)
+        self.assertIn("/preview", src)
+        self.assertIn("Open in Canvas", src)
+        self.assertIn("Open in Build", src)
+        self.assertIn("placed.html_url", src)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

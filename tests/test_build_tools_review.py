@@ -127,6 +127,16 @@ class ManifestScreenTest(unittest.TestCase):
     def test_a_remembered_plan_is_tied_to_its_course(self):
         self.assertIn("mfPlanFor", self.js)
 
+    def test_the_review_preview_is_a_canvas_page_not_the_app_paper(self):
+        """Navy headings on the dark --paper surface disappear. Students read
+        on white; How it will read has to use that surface in both themes."""
+        review = self.js[self.js.index("How it will read"):]
+        review = review[:review.index("The body")]
+        self.assertIn("paperFrame canvasPage", review)
+        css = (WEB.parent / "css" / "content.css").read_text(encoding="utf-8")
+        self.assertIn("color-scheme:light", css)
+        self.assertIn(".bdPanes .paperFrame", css)
+
 
 class CrumbNamesThisCourseTest(unittest.TestCase):
     """Only the hub used to call ensureCourse, so a tab opened straight on a

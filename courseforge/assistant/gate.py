@@ -170,12 +170,24 @@ _TOKEN = re.compile(r"canvas\.token|CANVAS_TOKEN|\.token\.enc\b|\btoken-[\w.-]+\
 # Grading is the Studio's own screens. The Assistant never touches it: not the
 # gradebook, not the per-assignment folders next to the workspace, not the
 # pseudonym map or the draft grades. "graded discussion" is content and passes.
-_GRADING = re.compile(
-    r"\bgrades?\b|\bgrading\b|\bgradebook\b|\bmap\.json\b|\bdraft\.json\b|"
-    r"\bnames\.json\b|"
-    r"proposed-grades|[\\/]data[\\/]\d+[\\/]\d+(?=[\\/\s\"']|$)|"
-    r"\baccommodations\.json\b|\bextracted\.json\b|\bsubmission",
+# These match ACCESS TARGETS (paths, URLs, filenames) — never assignment prose
+# in --title / --brief. Bare words like "grading" or "submission" are course
+# language; extracted.json is a student record.
+_STUDENT_FILES = re.compile(
+    r"(?:^|[\\/])(?:map|names|accommodations|extracted)\.json(?:$|[\\/\s\"'?#])"
+    r"|proposed-grades",
     re.I)
+_STUDENT_PATHS = re.compile(
+    r"(?:^|[\\/])data[\\/]\d+[\\/]\d+(?:[\\/]|$)"
+    r"|\bgradebook\b"
+    r"|[\\/]grades?(?:[\\/?#]|$)"
+    r"|[\\/]submissions?(?:[\\/?#]|$)",
+    re.I)
+# argparse flags whose values are instructor prose, not files.
+_PROSE_FLAGS = {
+    "--brief", "--title", "--body", "--prompt", "--message",
+    "--comment", "--note", "--instructions", "--why", "--look",
+}
 
 # Commands that only read or compute. Cmdlet verbs first, then aliases.
 _READ_VERBS = re.compile(
@@ -224,6 +236,36 @@ _URL = re.compile(r"https?://[^\s\"'<>()\]]+", re.I)
 def _verdict(decision, kind, summary, why, what=None):
     return {"decision": decision, "kind": kind, "summary": summary, "why": why,
             "what": what or summary}
+
+
+def _is_student_data_target(text):
+    """True when `text` names a gradebook file, identity map, assignment
+    folder, or a live Canvas grades/submissions URL — not when it is a
+    sentence that happens to say "grading"."""
+    if not text:
+        return False
+    t = str(text).strip().strip("\"'")
+    return bool(_STUDENT_FILES.search(t) or _STUDENT_PATHS.search(t))
+
+
+def _strip_prose_args(cmd):
+    """Drop --title / --brief / --body and their values so detectors never
+    see assignment prose."""
+    toks = _tokens(cmd or "")
+    out, skip = [], False
+    for tok in toks:
+        if skip:
+            skip = False
+            continue
+        name = tok.strip("\"'")
+        if name.startswith("--") and "=" in name:
+            if name.split("=", 1)[0].lower() in _PROSE_FLAGS:
+                continue
+        elif name.lower() in _PROSE_FLAGS:
+            skip = True
+            continue
+        out.append(tok)
+    return " ".join(out)
 
 
 def _shorten(text, n=90):
@@ -321,6 +363,35 @@ def _connected_course():
     return os.environ.get("CF_STUDIO_COURSE") or ""
 
 
+def _course_dir(cwd):
+    """The course folder when cwd is its workspace/. Else None.
+
+    Content drafts live in <course>/build/, next to workspace/, not in the
+    grading folders (numeric assignment ids).
+    """
+    try:
+        base = os.path.normpath(os.path.abspath(cwd or ""))
+    except Exception:
+        return None
+    if os.path.basename(base).lower() != "workspace":
+        return None
+    parent = os.path.dirname(base)
+    return parent or None
+
+
+# Course-level folders the Assistant may READ unasked. They hold content it
+# just drafted or dumped, not student records. Writes stay limited to
+# workspace/ plus build/ (non-scripts) so a draft JSON can be edited.
+_CONTENT_READ_DIRS = ("build", "a11y")
+
+
+def _under_course_content(full, cwd, names=_CONTENT_READ_DIRS):
+    root = _course_dir(cwd)
+    if not root:
+        return False
+    return any(_under(full, os.path.join(root, name)) for name in names)
+
+
 def _expand(path, cwd):
     """Resolve the few variable forms Claude uses in paths. Anything else with
     a $ in it cannot be resolved and is treated as unknown."""
@@ -340,7 +411,8 @@ def _local_path_problem(path, cwd):
     full = _expand(path, cwd)
     if full is None:
         return "a path the gate cannot resolve"
-    if not (_under(full, cwd) or _is_temp(full)):
+    if not (_under(full, cwd) or _is_temp(full)
+            or _under_course_content(full, cwd, names=("build",))):
         return "a file outside the workspace folder"
     low = os.path.normcase(full)
     parts = low.replace("/", "\\").split("\\")
@@ -363,13 +435,13 @@ def _local_path_problem(path, cwd):
 
 
 def _read_path_problem(path, cwd):
-    """None when a path may be READ unasked: inside the workspace, in temp, or
-    in the installed skill (its references are meant to be read). The folders
-    next door hold grading, so anything else is a question."""
+    """None when a path may be READ unasked: inside the workspace, the course
+    build/ (content drafts) or a11y/ dumps, temp, or the installed skill.
+    Numeric assignment folders next door still hold grading."""
     full = _expand(path, cwd)
     if full is None:
         return "a path the gate cannot resolve"
-    if _under(full, cwd) or _is_temp(full):
+    if _under(full, cwd) or _is_temp(full) or _under_course_content(full, cwd):
         return None
     sdir = _skill_dir()
     if sdir and _under(full, sdir):
@@ -495,11 +567,24 @@ def _studio_problem(args, seg):
     # gate can read: `$env:X`, `%X%`, `$(echo --apply)` and a backtick escape
     # all reach the verb as --apply while this text says nothing of the kind.
     # A quote split through the flag ('--ap'ply) is the same trick, so the
-    # flag is looked for with the quotes taken out.
+    # flag is looked for with the quotes taken out. Instructor prose (--brief,
+    # --title) may contain $20 or (optional) without being a shell expansion.
+    skip_value = False
     for a in rest:
+        if skip_value:
+            skip_value = False
+            continue
+        name = a.strip("\"'")
+        flag = name.split("=", 1)[0].lower()
+        if name.startswith("--") and "=" in name and flag in _PROSE_FLAGS:
+            continue
+        if flag in _PROSE_FLAGS:
+            skip_value = True
+            continue
         if re.search(r"[$`%()]", a):
             return ("a built-up argument to a Studio verb that the gate cannot read", "run")
-    if _APPLY.search(re.sub(r"[\"']", "", " ".join(rest))):
+    # --apply inside --brief "never --apply this" is prose, not a live write.
+    if _APPLY.search(re.sub(r"[\"']", "", _strip_prose_args(" ".join(rest)))):
         cid = _course_of(rest)
         return ("%s %s with --apply changes the live Canvas course" % (head, verb),
                 "canvas-write",
@@ -587,6 +672,9 @@ def _segment_problem(seg, cwd):
         u = _urls_problem(s)
         if u:
             return (u, "egress")
+        for addr in _URL.findall(s):
+            if _is_student_data_target(addr):
+                return ("grading data", "student-data")
         # only what the request SAVES is a path; -Uri values are addresses
         for i, a in enumerate(args):
             if a.lower() in ("-o", "--output", "-outfile", "-outfile:") and i + 1 < len(args):
@@ -616,8 +704,11 @@ def _segment_problem(seg, cwd):
         u = _urls_problem(s)
         if u:
             return (u, "egress")
+        for addr in _URL.findall(s):
+            if _is_student_data_target(addr):
+                return ("grading data", "student-data")
         for tok in _path_like(args):
-            if _GRADING.search(tok):
+            if _is_student_data_target(tok):
                 return ("%s: grading data" % head, "student-data")
             prob = _read_path_problem(tok, cwd)
             if prob:
@@ -655,7 +746,7 @@ def classify(tool_name, tool_input, cwd):
         if tool_name in PATH_READERS:
             path = str(ti.get("file_path") or ti.get("notebook_path") or ti.get("path") or "")
             if path:
-                if _GRADING.search(path):
+                if _is_student_data_target(path):
                     return _verdict("ask", "student-data", summary,
                                     "grading data; grades are the Studio's own screens and "
                                     "never go through the Assistant", what)
@@ -670,6 +761,10 @@ def classify(tool_name, tool_input, cwd):
         url = str(ti.get("url") or "")
         host = re.sub(r"^https?://", "", url, flags=re.I).split("/")[0].split(":")[0].lower()
         if url.lower().startswith("https://") and host and host == _canvas_host():
+            if _is_student_data_target(url):
+                return _verdict("ask", "student-data", summary,
+                                "grading data; grades are the Studio's own screens and "
+                                "never go through the Assistant", what)
             return _verdict("allow", "read", summary, "a page on the connected Canvas site", what)
         return _verdict("ask", "egress", summary,
                         "a web request to %s, outside the connected Canvas site; "
@@ -678,7 +773,7 @@ def classify(tool_name, tool_input, cwd):
 
     if tool_name in FILE_TOOLS:
         path = str(ti.get("file_path") or ti.get("notebook_path") or "")
-        if path and _GRADING.search(path):
+        if path and _is_student_data_target(path):
             return _verdict("ask", "student-data", "Change grading data: %s" % path,
                             "grading data; grades are the Studio's own screens and never "
                             "go through the Assistant", what)
@@ -696,22 +791,19 @@ def classify(tool_name, tool_input, cwd):
         if not isinstance(cmd, str) or not cmd.strip():
             return _verdict("ask", "run", summary,
                             "a shell call with no readable command", what)
-        if _TOKEN.search(cmd):
+        scanned = _strip_prose_args(cmd)
+        if _TOKEN.search(scanned):
             return _verdict("ask", "system", summary,
                             "touches the Canvas token; Canvas is already connected in the "
                             "Studio and the token never moves", what)
-        if _GRADING.search(cmd):
-            return _verdict("ask", "student-data", summary,
-                            "grading data; grades are the Studio's own screens and never "
-                            "go through the Assistant", what)
-        if _http_write(cmd):
+        if _http_write(scanned):
             return _verdict("ask", "canvas-write", summary,
                             "a direct web request that changes data", what)
         for rx, label in _SYSTEM_CHANGES:
-            if rx.search(cmd):
+            if rx.search(scanned):
                 return _verdict("ask", "system", "%s: %s" % (label, summary),
                                 label.lower(), what)
-        if _OPAQUE.search(cmd):
+        if _OPAQUE.search(scanned):
             return _verdict("ask", "system", "Run code the gate cannot read: %s" % summary,
                             "an encoded, built-up or nested command the Assistant "
                             "cannot inspect", what)

@@ -303,8 +303,21 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         # Bulk bar and context menu share one action list, so a new verb cannot
         # land on shift-click and be missing from right-click (or the reverse).
         self.assertIn("selectionItems(st)", self.src)
-        self.assertIn("js/grade.js?v=remind-1",
+        self.assertIn("js/grade.js?v=sched-href-1",
                       (WEB / "index.html").read_text(encoding="utf-8"))
+
+    def test_a_schedule_assignment_name_is_a_real_link(self):
+        """Middle-click uses the href, not the click handler. href="#" is the
+        home page in this router, which is how a new tab used to open empty."""
+        row = self.src[self.src.index("function schedRow("):]
+        row = row[:row.index("\n}\n")]
+        self.assertIn('class="itemName"', row)
+        self.assertIn('href="#/c/${esc(it.course_id)}/a/${esc(it.assignment_id)}"', row)
+        self.assertNotIn('href="#"', row)
+        body = self.src[self.src.index("$('#schedBody').querySelectorAll('.itemName')"):]
+        body = body[:body.index("});\n")]
+        self.assertIn("ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button",
+                      body)
 
     def test_remind_missing_is_wired_in_the_header(self):
         """The Send group paints Remind missing when the deadline has passed.

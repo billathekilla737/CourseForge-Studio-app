@@ -28,6 +28,8 @@
     mem.seq = 0;
     mem.pending = [];
     mem.answering = null;
+    mem.draftSeen = null;
+    mem.draftPlaced = {};
     showView('area');
     crumbs([
       { label: 'Courses', href: '#/' },
@@ -55,6 +57,10 @@
               aria-label="Students on this roster"></ul>
           </div>
           <div class="col">
+            <div class="asstModes" id="asstModes" role="radiogroup" aria-label="Assistant mode"></div>
+            <label class="asstModelPick"><span class="srOnly">Model</span>
+              <select id="asstModel" title="Claude model for this conversation"></select>
+            </label>
             <button class="btn ai" type="button" id="asstSend">Send</button>
             <button class="btn" type="button" id="asstStop" disabled title="Nothing is running">Stop</button>
             <button class="btn" type="button" id="asstNew">New conversation</button>
@@ -64,7 +70,7 @@
           <span id="asstState">Not started.</span>
           <span class="spacer"></span>
           <span class="hint" id="asstNames"></span>
-          <span class="hint">Nothing reaches Canvas without an Allow.</span>
+          <span class="hint" id="asstModeHint">Nothing reaches Canvas without an Allow.</span>
         </div>
       </div>
       <aside class="asstRail" aria-label="This conversation">
@@ -75,6 +81,7 @@
             title="Reads the class list from Canvas. A read; nothing is written.">Re-read the roster</button>
         </div>
         <div class="card"><div class="t">This conversation</div><dl class="asstFacts" id="asstFacts"></dl></div>
+        <div class="card"><div class="t">Drafts</div><div id="asstDrafts"><p class="muted">Checking…</p></div></div>
         <div class="card"><div class="t">What it changed</div><div id="asstLedger"></div></div>
       </aside>
     </div>`;
@@ -106,10 +113,13 @@
     mem.headlines = state.headlines || {};
     asstChips($('#asstChips'), state);
     asstNames(state);
+    asstModes(state);
+    asstFillModel(state);
     asstRoster(courseId);
     asstFacts(state);
     asstBoot(state);
     asstLedger(courseId);
+    asstWatchDrafts(courseId);
 
     /* One poller for this view, stopped on the way out. A question still
        waiting when the person leaves is said out loud, because the only other
@@ -328,6 +338,140 @@
     }
   }
 
+  /* Content the Assistant just drafted lives in build/drafts, not in the
+     transcript. Watch that folder while this view is open: new drafts get a
+     preview in the log, and the rail always lists them with a Canvas link
+     once they have been placed. */
+  const ASST_KIND = {
+    page: 'Page', syllabus: 'Syllabus', assignment: 'Assignment',
+    discussion: 'Discussion', quiz: 'Quiz', 'study-guide': 'Study guide',
+  };
+
+  function asstDraftUrl(d) {
+    return (d && d.placed && d.placed.html_url) || '';
+  }
+
+  async function asstWatchDrafts(courseId) {
+    const mem = asstMem();
+    let rows;
+    try { rows = (await api('/build/' + encodeURIComponent(courseId) + '/drafts')).drafts || []; }
+    catch (_) { return; }
+    if (String(mem.courseId) !== String(courseId) || !$('#asstDrafts')) return;
+    asstDraftsRail(courseId, rows);
+    if (!mem.draftSeen) {
+      mem.draftSeen = new Set(rows.map(d => String(d.id)));
+      mem.draftPlaced = {};
+      rows.forEach(d => { mem.draftPlaced[d.id] = !!asstDraftUrl(d); });
+      return;
+    }
+    rows.forEach(d => {
+      const id = String(d.id);
+      const nowPlaced = !!asstDraftUrl(d);
+      if (!mem.draftSeen.has(id)) {
+        mem.draftSeen.add(id);
+        mem.draftPlaced[id] = nowPlaced;
+        asstDraftIntoLog(courseId, d, nowPlaced
+          ? 'Placed in the course. Preview it here, or open it in Canvas.'
+          : 'Drafted on this computer. Preview it here before it goes to Canvas.');
+      } else if (nowPlaced && !mem.draftPlaced[id]) {
+        mem.draftPlaced[id] = true;
+        asstDraftIntoLog(courseId, d, 'Now in Canvas. Preview it here, or open the live page.');
+      }
+    });
+  }
+
+  function asstDraftsRail(courseId, rows) {
+    const host = $('#asstDrafts');
+    if (!host) return;
+    if (!rows.length) {
+      host.innerHTML = '<p class="muted">No drafts yet. Ask it to write a page or assignment and the preview lands here.</p>';
+      return;
+    }
+    host.innerHTML = `<ul class="asstDraftList">${rows.slice(0, 8).map(d => {
+      const canvas = asstDraftUrl(d);
+      const build = '#/c/' + courseId + '/build/draft/' + encodeURIComponent(d.id);
+      return `<li>
+        <button type="button" class="asstDraftOpen" data-id="${esc(d.id)}"
+          title="Preview this draft here">${esc(d.title || '(untitled)')}</button>
+        <span class="hint">${esc(ASST_KIND[d.kind] || d.kind || '')}${
+          canvas ? ' · in Canvas' : ' · draft'}</span>
+        <span class="asstDraftLinks">
+          <a href="${esc(build)}">Build</a>
+          ${canvas ? `<a href="${esc(canvas)}" target="_blank" rel="noopener">Canvas</a>` : ''}
+        </span>
+      </li>`;
+    }).join('')}</ul>`;
+    const byId = Object.fromEntries(rows.map(d => [String(d.id), d]));
+    host.querySelectorAll('.asstDraftOpen').forEach(btn => {
+      btn.onclick = () => asstPreviewDraft(courseId, byId[btn.dataset.id]);
+    });
+  }
+
+  function asstDraftIntoLog(courseId, d, note) {
+    const log = $('#asstLog');
+    if (!log) return;
+    const empty = log.querySelector('.asstEmpty');
+    if (empty) empty.remove();
+    const canvas = asstDraftUrl(d);
+    const build = '#/c/' + courseId + '/build/draft/' + encodeURIComponent(d.id);
+    const el = asstAdd(log, `<article class="asstDraft" data-draft="${esc(d.id)}">
+      <header>
+        <b>${esc(d.title || '(untitled)')}</b>
+        <span class="hint">${esc(ASST_KIND[d.kind] || d.kind || '')}</span>
+      </header>
+      ${note ? `<p class="asstDraftNote">${esc(note)}</p>` : ''}
+      <div class="paperFrame canvasPage asstDraftPaper"><p class="muted">Reading the preview…</p></div>
+      <div class="asstDraftActs">
+        <a class="btn sm" href="${esc(build)}">Open in Build</a>
+        ${canvas ? `<a class="btn sm" href="${esc(canvas)}" target="_blank" rel="noopener">Open in Canvas</a>`
+                 : '<span class="hint">Not in Canvas yet</span>'}
+      </div>
+    </article>`);
+    asstLoadPreview(courseId, d.id, el && el.querySelector('.asstDraftPaper'));
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function asstPreviewDraft(courseId, d) {
+    if (!d) return;
+    const host = $('#modalHost');
+    if (!host) return;
+    const canvas = asstDraftUrl(d);
+    const build = '#/c/' + courseId + '/build/draft/' + encodeURIComponent(d.id);
+    host.innerHTML = `<div class="modalBack"><div class="modal wide">
+      <h3>${esc(d.title || 'Draft')}</h3>
+      <div class="sub">${esc(ASST_KIND[d.kind] || d.kind || '')}${
+        canvas ? '' : ' · not in Canvas yet'}</div>
+      <div class="paperFrame canvasPage asstDraftPaper"><p class="muted">Reading the preview…</p></div>
+      <div class="foot">
+        <a class="btn" href="${esc(build)}">Open in Build</a>
+        ${canvas ? `<a class="btn" href="${esc(canvas)}" target="_blank" rel="noopener">Open in Canvas</a>` : ''}
+        <span class="spacer"></span>
+        <button class="btn" type="button" id="asstPrevClose">Close</button>
+      </div>
+    </div></div>`;
+    const close = () => { host.innerHTML = ''; };
+    $('#asstPrevClose').onclick = close;
+    const back = host.querySelector('.modalBack');
+    if (back) back.addEventListener('click', ev => { if (ev.target === back) close(); });
+    host.querySelectorAll('a[href^="#/"]').forEach(a => { a.addEventListener('click', close); });
+    asstLoadPreview(courseId, d.id, host.querySelector('.asstDraftPaper'));
+  }
+
+  function asstLoadPreview(courseId, id, paper) {
+    if (!paper) return;
+    api('/build/' + encodeURIComponent(courseId) + '/drafts/' +
+        encodeURIComponent(id) + '/preview')
+      .then(p => {
+        if (!paper.isConnected) return;
+        paper.innerHTML = '<div class="canvasHtml asIs">' +
+          ((p && p.html) || '<p class="muted">This draft has no body yet.</p>') + '</div>';
+      })
+      .catch(err => {
+        if (paper.isConnected) paper.innerHTML = '<p class="muted">Could not load the preview: ' +
+          esc(firstLine(err.message)) + '</p>';
+      });
+  }
+
   async function asstLedger(courseId) {
     const host = $('#asstLedger');
     if (!host) return;
@@ -410,6 +554,7 @@
     mem.pending = data.pending || [];
     asstBusy(data);
     asstPermission(courseId);
+    asstWatchDrafts(courseId);
   }
 
   /* ------------------------------------------------------- the transcript */
@@ -439,8 +584,13 @@
       asstToolResult(log, ev);
     } else if (ev.kind === 'permission_answered') {
       mem.live = null;
-      const word = ev.auto ? 'No answer, so it was denied'
-        : ev.decision === 'allow' ? 'You allowed it' : 'You denied it';
+      let word;
+      if (ev.via === 'auto') word = 'Allowed in Auto mode';
+      else if (ev.via === 'plan') word = ev.decision === 'allow'
+        ? 'Read in Plan mode' : 'Skipped in Plan mode';
+      else if (ev.via === 'timeout' || (ev.auto && ev.decision !== 'allow'))
+        word = 'No answer, so it was denied';
+      else word = ev.decision === 'allow' ? 'You allowed it' : 'You denied it';
       asstAdd(log, `<div class="asstDecision ${esc(ev.decision === 'allow' ? 'allow' : 'deny')}">
         <b>${esc(word)}</b> ${esc(asstClamp(ev.what || '', 120))}</div>`);
       if (ev.decision === 'allow') asstLedger(asstMem().courseId);
@@ -641,6 +791,89 @@
     };
   }
 
+  /* ------------------------------------------------------------- mode */
+  const ASST_MODE = {
+    plan: { label: 'Plan', title: 'Read and think. Anything that would change Canvas or this PC is refused.' },
+    ask: { label: 'Ask', title: 'Content drafts it just wrote are read without asking. Live Canvas writes still need Allow.' },
+    auto: { label: 'Auto', title: 'Local file reads run without asking. Live Canvas writes still need Allow.' },
+  };
+
+  function asstModes(state) {
+    const host = $('#asstModes');
+    const hint = $('#asstModeHint');
+    if (!host) return;
+    const mode = (state && state.mode) || 'ask';
+    const mem = asstMem();
+    mem.mode = mode;
+    host.innerHTML = ['plan', 'ask', 'auto'].map(id => {
+      const m = ASST_MODE[id];
+      return `<button type="button" class="chip" role="radio" data-mode="${id}"
+        aria-checked="${id === mode}" title="${esc(m.title)}">${esc(m.label)}</button>`;
+    }).join('');
+    host.querySelectorAll('[data-mode]').forEach(btn => {
+      btn.onclick = () => asstSetMode(mem.courseId, btn.dataset.mode);
+    });
+    if (hint) hint.textContent = (state && state.mode_hint)
+      || ASST_MODE[mode].title;
+  }
+
+  function asstFillModel(state) {
+    const sel = $('#asstModel');
+    if (!sel) return;
+    const mem = asstMem();
+    const models = (state && state.models && state.models.length)
+      ? state.models
+      : ((S.health && S.health.models) || ['opus', 'sonnet', 'haiku']);
+    const current = (state && state.model) || mem.model || '';
+    mem.models = models;
+    mem.model = current;
+    const opts = ['<option value="">Claude default</option>'].concat(
+      models.map(m => `<option value="${esc(m)}"${m === current ? ' selected' : ''}>${esc(m)}</option>`));
+    sel.innerHTML = opts.join('');
+    sel.value = models.indexOf(current) >= 0 ? current : '';
+    sel.onchange = () => asstSetModel(mem.courseId, sel.value);
+  }
+
+  function asstRestartHint(err, prefix) {
+    if (err && err.status === 404) {
+      return prefix + ': close the CourseForge Studio window and open it again so this control can talk to the server.';
+    }
+    return prefix + ': ' + firstLine(err && err.message);
+  }
+
+  function asstSetMode(courseId, mode) {
+    const mem = asstMem();
+    const prev = mem.mode || 'ask';
+    asstModes({ mode, mode_hint: (ASST_MODE[mode] || ASST_MODE.ask).title });
+    api(asstBase(courseId) + '/mode', { body: { mode } })
+      .then(out => {
+        asstModes(out);
+        if (out.models) asstFillModel(out);
+        setStatus(out.hint || ('mode: ' + out.mode), 'ok');
+      })
+      .catch(err => {
+        asstModes({ mode: prev, mode_hint: (ASST_MODE[prev] || ASST_MODE.ask).title });
+        setStatus(asstRestartHint(err, 'could not change mode'), 'err');
+      });
+  }
+
+  function asstSetModel(courseId, model) {
+    const mem = asstMem();
+    const prev = mem.model || '';
+    mem.model = model;
+    api(asstBase(courseId) + '/mode', { body: { model } })
+      .then(out => {
+        asstFillModel(out);
+        setStatus('model: ' + (out.model || 'Claude default'), 'ok');
+      })
+      .catch(err => {
+        mem.model = prev;
+        const sel = $('#asstModel');
+        if (sel) sel.value = prev;
+        setStatus(asstRestartHint(err, 'could not change model'), 'err');
+      });
+  }
+
   /* ------------------------------------------------------------- the verbs */
   function asstSend(courseId, allowNear) {
     const box = $('#asstText');
@@ -650,8 +883,11 @@
     mentionClose();
     const send = $('#asstSend');
     send.disabled = true;
-    api(asstBase(courseId) + '/send',
-      { body: allowNear ? { text, allow_near: true } : { text } })
+    const mem = asstMem();
+    const payload = { text };
+    if (allowNear) payload.allow_near = true;
+    if (mem.model) payload.model = mem.model;
+    api(asstBase(courseId) + '/send', { body: payload })
       .then(res => {
         box.value = '';
         box.focus();

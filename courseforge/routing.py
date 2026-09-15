@@ -171,4 +171,5 @@ def _error_payload(exc: Exception) -> dict:
         pass
     if isinstance(exc, (ValueError, KeyError, FileNotFoundError)):
         return {"error": f"{name}: {exc}", "_status": 400}
-    return {"error": f"{name}: {exc}", "trace": traceback.format_exc()[-2000:], "_status": 500}
+    traceback.print_exception(exc)
+    return {"error": name, "_status": 500}

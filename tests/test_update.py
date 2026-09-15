@@ -18,7 +18,7 @@ from courseforge import update
 
 
 class Cfg:
-    update_repo = "someone/CourseForge-Studio"
+    update_repo = "billathekilla737/CourseForge-Studio-app"
     update_branch = "main"
     update_token = ""
     check_updates = True
@@ -262,6 +262,70 @@ class WhatTheWindowIsToldWhenItGoesWrong(Base):
         self.assertTrue(status.available)
         self.assertEqual(status.latest, "9999999")
         self.assertEqual(status.headline(), "Update available")
+
+
+class TheSourceIsPinned(Base):
+    def test_a_foreign_repo_cannot_apply(self):
+        self.cfg.update_repo = "attacker/malware"
+        self.serve(archive())
+        out = update.apply(self.cfg, self.ready(), root=self.tmp)
+        self.assertFalse(out["ok"])
+        self.assertIn("pinned", out["message"].lower())
+        self.assertEqual((self.tmp / "courseforge" / "server.py").read_text(), "# old\n")
+
+    def test_a_foreign_repo_cannot_check(self):
+        self.cfg.update_repo = "attacker/malware"
+        called = []
+
+        def fake(url, token="", accept=""):
+            called.append(url)
+            raise AssertionError("must not hit the network")
+
+        self.addCleanup(setattr, update, "_get", update._get)
+        update._get = fake
+        status = update.check(self.cfg, root=self.tmp)
+        self.assertFalse(status.checked)
+        self.assertIn("pinned", status.error.lower())
+        self.assertEqual(called, [])
+
+    def test_apply_fetches_the_commit_not_the_branch(self):
+        seen = []
+
+        def fake(url, token="", accept=""):
+            seen.append(url)
+            return FakeResponse(archive())
+
+        self.addCleanup(setattr, update, "_get", update._get)
+        update._get = fake
+        st = self.ready()
+        st.latest_sha = "deadbeefcafebabe0123456789abcdef01234567"
+        out = update.apply(self.cfg, st, root=self.tmp)
+        self.assertTrue(out["ok"], out["message"])
+        self.assertTrue(any("deadbeefcafebabe0123456789abcdef01234567" in u for u in seen))
+        self.assertFalse(any(u.rstrip("/").endswith("/zipball/main") for u in seen))
+
+    def test_config_update_token_is_not_sent(self):
+        import os
+        self.cfg.update_token = "ghp_this_must_not_be_used"
+        old = os.environ.pop("GITHUB_TOKEN", None)
+
+        def restore():
+            if old is None:
+                os.environ.pop("GITHUB_TOKEN", None)
+            else:
+                os.environ["GITHUB_TOKEN"] = old
+        self.addCleanup(restore)
+        seen = []
+
+        def fake(url, token="", accept=""):
+            seen.append(token)
+            return FakeResponse(json.dumps({"sha": "c4925f6aaaa"}).encode())
+
+        self.addCleanup(setattr, update, "_get", update._get)
+        update._get = fake
+        update.write_stamp(self.tmp, "c4925f6")
+        update.check(self.cfg, root=self.tmp)
+        self.assertEqual(seen, [""])
 
 
 class TheLauncherShowsIt(unittest.TestCase):

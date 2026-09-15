@@ -253,7 +253,8 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
         # Students often link or embed a file from the Canvas editor instead of
         # attaching it, so the .cs or the screenshot lives in their personal
         # files and never appears in sub["attachments"]. Follow those too.
-        for ref in rce_file_refs(sub.get("body"), cfg.base_url):
+        for ref in rce_file_refs(sub.get("body"), cfg.base_url,
+                                 getattr(cfg, "canvas_hosts", None)):
             safe = re.sub(r"[^A-Za-z0-9._-]", "_", ref["name"])[:80] or f"file_{ref['file_id']}"
             dest = adir / "files" / f"{uid}_rce{ref['file_id']}_{safe}"
             if dest.exists():

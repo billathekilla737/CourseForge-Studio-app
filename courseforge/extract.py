@@ -12,6 +12,9 @@ import shutil
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
+
+from .canvas_policy import file_url_allowed
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".bmp", ".tif", ".tiff"}
 # Screen recordings and phone video. Nothing reads these: they are handed to the
@@ -130,12 +133,17 @@ _ALT = re.compile(r"""\balt\s*=\s*["']([^"']*)["']""", re.I)
 _VERIFIER = re.compile(r"[?&]verifier=([A-Za-z0-9._-]+)")
 
 
-def rce_file_refs(raw: str | None, base_url: str = "") -> list[dict]:
+def rce_file_refs(raw: str | None, base_url: str = "",
+                  canvas_hosts: list[str] | None = None) -> list[dict]:
     """Find Canvas files linked or embedded in a submission body.
 
     Returns dicts of {file_id, url, name, tag}. `url` is rewritten to the
     /download form with the verifier preserved, which is what actually returns
     bytes; the plain link returns Canvas's file preview page instead.
+
+    Only https URLs on the configured Canvas host, `canvas_hosts`, or a known
+    Canvas file CDN are kept. A body that points at `https://evil.example/files/1`
+    is ignored, not downloaded onto the instructor's PC.
     """
     out: list[dict] = []
     seen: set[str] = set()
@@ -147,7 +155,12 @@ def rce_file_refs(raw: str | None, base_url: str = "") -> list[dict]:
         if fid in seen:
             continue
         seen.add(fid)
-        url = htmllib.unescape(match.group("url"))
+        url = htmllib.unescape(match.group("url")).strip()
+        parsed = urlparse(url)
+        # Protocol-relative //host/files/1 is an off-host URL, not a site-root path.
+        if parsed.netloc and not parsed.scheme:
+            parsed = urlparse("https:" + url)
+            url = parsed.geturl()
 
         name = ""
         if tag == "a":
@@ -158,13 +171,20 @@ def rce_file_refs(raw: str | None, base_url: str = "") -> list[dict]:
         name = name or f"file_{fid}"
 
         verifier = _VERIFIER.search(url)
-        stem = url.split("?")[0].rstrip("/")
+        path = parsed.path or url.split("?")[0]
+        stem = path.rstrip("/")
         stem = re.sub(r"/(preview|download)$", "", stem)
-        download = stem + "/download?download_frd=1"
+        if parsed.scheme and parsed.netloc:
+            download = f"{parsed.scheme}://{parsed.netloc}{stem}/download?download_frd=1"
+        else:
+            download = stem + "/download?download_frd=1"
         if verifier:
             download += "&verifier=" + verifier.group(1)
         if download.startswith("/") and base_url:
             download = base_url.rstrip("/") + download
+
+        if not file_url_allowed(download, base_url, canvas_hosts):
+            continue
 
         out.append({"file_id": fid, "url": download, "name": name, "tag": tag})
     return out

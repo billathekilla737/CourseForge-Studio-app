@@ -91,11 +91,14 @@ These prove the doors are locked before you touch the rooms. PowerShell shown;
 
 | # | Do | Expect |
 |---|---|---|
-| 3.1 | `Invoke-RestMethod http://127.0.0.1:8900/api/setup` | `token_len` is a number; no token value in the output |
-| 3.2 | `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:8900/api/settings` | `404` (settings are POST only) |
-| 3.3 | `curl.exe -s -D - -o NUL http://127.0.0.1:8900/api/health` | headers include `X-App-Build` and `Cache-Control: no-store` |
+| 3.1 | `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:8900/api/setup` | `403` (no `X-Studio-Key`) |
+| 3.1b | `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:8900/api/courses` | `403` |
+| 3.1c | `curl.exe -s -o NUL -w "%{http_code}" -H "Host: evil.example" http://127.0.0.1:8900/api/courses` | `403` |
+| 3.1d | `curl.exe -s -D - -o NUL http://127.0.0.1:8900/api/health` | `200`; headers include `X-App-Build`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`. Health is the only open API. |
+| 3.2 | `curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:8900/api/settings` | `403` without the key (settings are POST only even with it) |
+| 3.3 | Open `http://127.0.0.1:8900/`, view source, copy `cf-secret`; `Invoke-RestMethod http://127.0.0.1:8900/api/setup -Headers @{"X-Studio-Key"="<secret>"}` | `token_len` is a number; no token value in the output |
 | 3.4 | `curl.exe -s -o NUL -w "%{http_code}" --path-as-is http://127.0.0.1:8900/../config.json` and again with `/..%2f..%2fconfig.json` | `404` both times |
-| 3.5 | `curl.exe -s -w " %{http_code}" --path-as-is "http://127.0.0.1:8900/api/a/../probe/file?name=x"` | `400` or `404`, and no folder named `probe` appears beside `data\` |
+| 3.5 | `curl.exe -s -w " %{http_code}" --path-as-is "http://127.0.0.1:8900/api/a/../probe/file?name=x"` | `403` (no key) or `400`/`404` with the key; no folder named `probe` appears beside `data\` |
 | 3.6 | `curl.exe -s -o NUL -w "%{http_code}" -X OPTIONS http://127.0.0.1:8900/api/health` | `501` |
 | 3.7 | `Invoke-WebRequest -Method POST -Uri http://127.0.0.1:8900/api/settings -Headers @{Origin="https://evil.example"} -ContentType application/json -Body '{}' -SkipHttpErrorCheck` | `403` (a foreign origin cannot POST) |
 | 3.8 | Same POST with `-ContentType application/x-www-form-urlencoded` and `Origin=http://127.0.0.1:8900` | `403` (form posts are refused) |

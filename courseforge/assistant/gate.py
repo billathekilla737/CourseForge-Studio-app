@@ -45,12 +45,12 @@ import sys
 
 # Tools that only look at things, or that only organise Claude's own work.
 # Sub-agents (Task/Agent) are fine: every tool call they make comes back
-# through this hook. WebFetch is NOT here: it is an outbound request whose
-# address the model chooses, so it is gated on the host below. The path-taking
+# through this hook. WebFetch is gated on the Canvas host below. WebSearch is
+# not here: a search query leaves this PC, so it is a question. The path-taking
 # readers are allowed inside the workspace (and the skill folder) and are a
 # question outside it, because the folder next door holds grading.
 READ_ONLY_TOOLS = {
-    "Read", "Glob", "Grep", "LS", "WebSearch", "TodoWrite", "TodoRead",
+    "Read", "Glob", "Grep", "LS", "TodoWrite", "TodoRead",
     "Task", "Agent", "Skill", "ToolSearch", "NotebookRead",
     "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "ListAgents",
     "TaskOutput", "TaskStop", "Monitor", "Workflow", "ReportFindings",

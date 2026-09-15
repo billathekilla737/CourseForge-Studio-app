@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import fnmatch
+import ipaddress
 import re
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -135,3 +136,59 @@ def assert_token_host(base_url: str, url: str, allowed_hosts: list[str] | None =
 
 def same_host(base_url: str, url: str) -> bool:
     return (urlparse(url).hostname or "").lower() == (urlparse(base_url).hostname or "").lower()
+
+
+# Hosts Canvas itself redirects file downloads to. Not a general AWS allow-list:
+# only Instructure's file service and the upload bucket the LMS actually uses.
+FILE_HOSTS = (
+    "*.instructure.com",
+    "*.canvas-user-content.com",
+    "*.inscloudgate.net",
+    "instructure-uploads.s3.amazonaws.com",
+)
+
+
+def is_blocked_host(host: str) -> bool:
+    """True for localhost, RFC1918, link-local, metadata, and other unusable targets."""
+    h = (host or "").lower().rstrip(".")
+    if not h:
+        return True
+    if h in ("localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"):
+        return True
+    if h.endswith(".localhost"):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return bool(
+        ip.is_private or ip.is_loopback or ip.is_link_local
+        or ip.is_multicast or ip.is_reserved or ip.is_unspecified
+    )
+
+
+def file_url_allowed(url: str, base_url: str = "",
+                     extra_hosts: list[str] | None = None) -> bool:
+    """True when `url` is an https Canvas (or Canvas file-CDN) address.
+
+    The configured Canvas host is allowed even on a LAN (self-hosted). Every
+    other host must match FILE_HOSTS / canvas_hosts and must not be a
+    loopback, RFC1918, link-local or metadata address.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return False
+    if parsed.username or parsed.password:
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    home = (urlparse(base_url).hostname or "").lower()
+    if home and host == home:
+        return True
+    if is_blocked_host(host):
+        return False
+    patterns = list(FILE_HOSTS)
+    if extra_hosts:
+        patterns.extend(extra_hosts)
+    return any(fnmatch.fnmatch(host, pat.lower()) for pat in patterns if pat)

@@ -128,9 +128,8 @@ class Config:
     audit_to_canvas: bool = True
     audit_sync_s: int = 180
     # Where the launcher looks for a newer version, and whether it looks at
-    # all. A token is only needed while the source repository is private; the
-    # point of the feature is that a colleague needs no GitHub account, so a
-    # public source is what makes it work for them.
+    # all. The updater refuses any update_repo other than the public app
+    # source. A GitHub token is never stored here; the public source needs none.
     check_updates: bool = True
     update_repo: str = "billathekilla737/CourseForge-Studio-app"
     update_branch: str = "main"
@@ -160,6 +159,9 @@ class Config:
         for key, value in raw.items():
             # Only settings. A key such as "token" names a method here, and
             # letting it through would replace the method with a string.
+            # A GitHub PAT does not belong in config.json; ignore one if present.
+            if key == "update_token":
+                continue
             if (hasattr(cfg, key) and not key.startswith("_")
                     and not callable(getattr(cfg, key))):
                 setattr(cfg, key, value)
@@ -269,6 +271,7 @@ class Config:
             except (OSError, json.JSONDecodeError):
                 raw = {}
         raw.update(changes)
+        raw.pop("update_token", None)
         tmp = self._path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(raw, indent=2), encoding="utf-8")
         tmp.replace(self._path)

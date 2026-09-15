@@ -21,10 +21,19 @@ const esc = s => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+function studioKey() {
+  const el = document.querySelector('meta[name="cf-secret"]');
+  return (el && el.getAttribute('content')) || '';
+}
+
 async function api(path, opts = {}) {
+  const headers = {};
+  const key = studioKey();
+  if (key) headers['X-Studio-Key'] = key;
+  if (opts.body) headers['Content-Type'] = 'application/json';
   const res = await fetch('/api' + path, {
     method: opts.body ? 'POST' : (opts.method || 'GET'),
-    headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+    headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   noticeBuild(res.headers.get('X-App-Build'));

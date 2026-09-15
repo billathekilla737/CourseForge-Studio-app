@@ -14,6 +14,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import signal
 import sys
 import threading
@@ -35,6 +36,66 @@ from .config import Config
 from .store import Store, safe_id
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
+STUDIO_COOKIE = "cf-studio-key"
+# Images, playable video, and .glb may render in the page. Everything else
+# (including .html and .svg) is a download, so it cannot run as this origin.
+INLINE_STUDENT_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+    ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm",
+    ".ogv": "video/ogg", ".mov": "video/quicktime",
+    ".glb": "model/gltf-binary",
+}
+def api_host_allowed(host: str, port: int) -> bool:
+    """True when Host is exactly this process's loopback address and port."""
+    got = (host or "").strip().lower()
+    return got in (f"127.0.0.1:{int(port)}", f"localhost:{int(port)}")
+
+
+def student_file_response(name: str, download: bool = False) -> tuple[str, bool]:
+    """Content-Type and attachment flag for a submission file served to the page."""
+    ext = Path(name).suffix.lower()
+    if ext in INLINE_STUDENT_TYPES and not download:
+        return INLINE_STUDENT_TYPES[ext], False
+    return "application/octet-stream", True
+
+
+def keys_match(got: str, expected: str) -> bool:
+    if not got or not expected:
+        return False
+    left, right = got.encode("utf-8"), expected.encode("utf-8")
+    if len(left) != len(right):
+        return False
+    return secrets.compare_digest(left, right)
+
+
+def request_studio_key(headers) -> str:
+    """X-Studio-Key, or the HttpOnly cookie set on the index page (for <img>/<video>)."""
+    got = (headers.get("X-Studio-Key") or "").strip()
+    if got:
+        return got
+    for part in (headers.get("Cookie") or "").split(";"):
+        name, _, value = part.strip().partition("=")
+        if name == STUDIO_COOKIE:
+            return value.strip()
+    return ""
+
+
+def log_server_error(exc: BaseException, data_dir: Path | str | None = None) -> None:
+    """Tracebacks stay on this machine. HTTP 500 JSON does not carry them."""
+    traceback.print_exception(exc)
+    if not data_dir:
+        return
+    try:
+        path = Path(data_dir) / "server-error.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n--- %s %s ---\n" % (
+                datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                type(exc).__name__))
+            traceback.print_exception(exc, file=fh)
+    except OSError:
+        pass
 
 
 def build_id() -> str:
@@ -163,12 +224,12 @@ class Jobs:
                                               **exc.payload())
             except Exception as exc:  # noqa: BLE001
                 # A refusal an area wrote for a person to read is shown as
-                # written; the class name is for the trace, not the page.
+                # written; the class name is for the log, not the page.
+                traceback.print_exc()
                 plain = type(exc).__name__ in PLAIN_ERRORS or isinstance(exc, PermissionError)
                 with self._lock:
                     self._jobs[job_id].update(state="error",
-                                              error=str(exc) if plain else f"{type(exc).__name__}: {exc}",
-                                              trace=traceback.format_exc()[-2000:],
+                                              error=str(exc) if plain else type(exc).__name__,
                                               items={}, updated=time.time())
 
         threading.Thread(target=target, daemon=True).start()
@@ -208,7 +269,7 @@ class Jobs:
             job = self._jobs.get(job_id)
             if not job:
                 return None
-            out = {k: v for k, v in job.items() if k not in ("log", "items")}
+            out = {k: v for k, v in job.items() if k not in ("log", "items", "trace")}
             out["log"] = list(job["log"])
             now = time.time()
             out["items"] = [
@@ -227,6 +288,10 @@ class App:
         self.cfg = cfg
         self.store = Store(cfg.data)
         self.jobs = Jobs()
+        # Per-launch key the browser sends as X-Studio-Key. Not the Canvas token
+        # and not the Assistant hook secret; it only proves the request came
+        # from the page this process served.
+        self.studio_key = secrets.token_hex(16)
         self._client: CanvasClient | None = None
         # Assignment pages read from the schedule, kept for this run only.
         self._item_cache: dict[tuple[str, str], dict] = {}
@@ -328,7 +393,11 @@ class App:
         return self._doctor
 
     def set_settings(self, changes: dict) -> dict:
-        """Change a runtime setting from the UI and persist it to config.json."""
+        """Change a runtime setting from the UI and persist it to config.json.
+
+        The allow-list is the four keys the page actually edits. Do not add
+        update_repo, base_url or canvas_hosts: those are not a dropdown.
+        """
         allowed = {"model", "vision_model", "grading_concurrency", "pseudonymize"}
         applied: dict = {}
         for key, value in changes.items():
@@ -2580,6 +2649,9 @@ def _shape(batches: list[dict]) -> list:
 
 
 def make_handler(app: App):
+    studio_key = getattr(app, "studio_key", None) or secrets.token_hex(16)
+    app.studio_key = studio_key
+
     def cfg_port() -> int:
         return int(app.cfg.port)
 
@@ -2588,6 +2660,72 @@ def make_handler(app: App):
 
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(WEB_DIR), **kw)
+
+        def _listen_port(self) -> int:
+            try:
+                return int(self.server.server_address[1])
+            except Exception:
+                return cfg_port()
+
+        def _studio_key_ok(self) -> bool:
+            return keys_match(request_studio_key(self.headers), studio_key)
+
+        def _hook_secret_ok(self, body: dict) -> bool:
+            mgr = getattr(app, "assistant", None)
+            expected = getattr(mgr, "secret", None) if mgr is not None else None
+            got = body.get("secret") if isinstance(body, dict) else None
+            if not isinstance(expected, str) or not isinstance(got, str):
+                return False
+            return keys_match(got, expected)
+
+        def _allow_api(self, method: str, parts: list, body: dict) -> bool:
+            """Host + key for /api. GET /api/health is open. The Assistant hook
+            may skip the browser key when body.secret is this launch's hook secret."""
+            is_health = method == "GET" and parts[1:] == ["health"]
+            if is_health:
+                return True
+            if not api_host_allowed(self.headers.get("Host") or "", self._listen_port()):
+                self._json({"error": "This request did not target the CourseForge "
+                                     "Studio server on this machine, so it was "
+                                     "refused."}, 403)
+                return False
+            is_permission = method == "POST" and parts[1:] == ["assistant", "permission"]
+            if is_permission and self._hook_secret_ok(body):
+                return True
+            if not self._studio_key_ok():
+                self._json({"error": "This request did not come from the "
+                                     "CourseForge Studio page on this machine, "
+                                     "so it was refused."}, 403)
+                return False
+            return True
+
+        def _serve_index(self):
+            path = WEB_DIR / "index.html"
+            try:
+                html = path.read_text(encoding="utf-8")
+            except OSError:
+                return self._json({"error": "not found"}, 404)
+            nonce = secrets.token_urlsafe(16)
+            if 'name="cf-secret"' not in html:
+                html = html.replace(
+                    "<head>",
+                    f'<head>\n<meta name="cf-secret" content="{studio_key}">',
+                    1)
+            html = html.replace(
+                '<script type="importmap">',
+                f'<script type="importmap" nonce="{nonce}">',
+                1)
+            body = html.encode("utf-8")
+            self._csp_nonce = nonce
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header(
+                "Set-Cookie",
+                f"{STUDIO_COOKIE}={studio_key}; Path=/; HttpOnly; SameSite=Strict")
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
 
         # ---------------------------------------------------------- helpers
         def _send(self, code: int, body: bytes, ctype: str):
@@ -2690,24 +2828,34 @@ def make_handler(app: App):
             the next request, so the write endpoints need to know the request
             came from this app's own page.
 
-            Two cheap checks do it. A cross-origin request from a browser always
-            carries Origin, so a mismatch is refused. And a plain HTML form --
-            the one cross-site POST that needs no preflight -- cannot set a JSON
-            content type, so requiring one blocks it. A request with no Origin at
-            all is a local script such as curl, which already has the run of the
-            machine and gains nothing here.
+            A browser POST always carries Origin; a mismatch or a missing Origin
+            is refused. A plain HTML form cannot set a JSON content type, so
+            requiring one blocks that path. The Assistant hook is the one POST
+            allowed without Origin, and only when body.secret matches.
             """
             origin = (self.headers.get("Origin") or "").rstrip("/")
-            if origin:
-                allowed = {f"http://127.0.0.1:{cfg_port()}",
-                           f"http://localhost:{cfg_port()}"}
-                if origin not in allowed:
-                    return False
+            if not origin:
+                return False
+            port = self._listen_port()
+            allowed = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+            if origin not in allowed:
+                return False
             ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
-            return ctype == "application/json" or not origin
+            return ctype == "application/json"
 
         def end_headers(self):
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            nonce = getattr(self, "_csp_nonce", "")
+            script = f"'self' 'nonce-{nonce}'" if nonce else "'self'"
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; img-src 'self' blob: data:; "
+                "media-src 'self' blob:; script-src %s; style-src 'self' "
+                "'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; "
+                "base-uri 'none'; form-action 'self'" % script)
             super().end_headers()
 
         def log_message(self, fmt, *args):
@@ -2721,7 +2869,12 @@ def make_handler(app: App):
             refresh = query.get("refresh", ["0"])[0] in ("1", "true")
 
             if not parts or parts[0] != "api":
+                if not parts or parts == ["index.html"]:
+                    return self._serve_index()
                 return super().do_GET()
+
+            if not self._allow_api("GET", parts, {}):
+                return
 
             if routing.dispatch(app, self, "GET", url, query, {}):
                 return
@@ -2788,19 +2941,21 @@ def make_handler(app: App):
                     target = app.store.assignment_dir(parts[2], parts[3]) / "files" / name
                     if not name or not target.is_file():
                         return self._json({"error": "not found"}, 404)
-                    ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-                    return self._send_file(target, ctype,
-                                           download=query.get("dl", ["0"])[0] in ("1", "true"))
+                    want_dl = query.get("dl", ["0"])[0] in ("1", "true")
+                    ctype, as_attachment = student_file_response(name, want_dl)
+                    return self._send_file(target, ctype, download=as_attachment)
                 return self._json({"error": "unknown endpoint"}, 404)
             except confirm.ConfirmRequired as exc:
                 return self._json(exc.payload(), 409)
             except confirm.ConfirmStale as exc:
                 return self._json({"error": str(exc), "confirm_stale": True}, 409)
+            except ValueError as exc:
+                return self._json({"error": str(exc)}, 400)
             except CanvasError as exc:
                 return self._json({"error": str(exc), "status": exc.status}, 502)
             except Exception as exc:  # noqa: BLE001
-                return self._json({"error": f"{type(exc).__name__}: {exc}",
-                                   "trace": traceback.format_exc()[-1500:]}, 500)
+                log_server_error(exc, getattr(app.cfg, "data_dir", None))
+                return self._json({"error": type(exc).__name__}, 500)
 
         # -------------------------------------------------------------- POST
         def do_POST(self):
@@ -2811,10 +2966,15 @@ def make_handler(app: App):
             if len(parts) < 2 or parts[0] != "api":
                 return self._json({"error": "unknown endpoint"}, 404)
 
-            if not self._same_origin():
-                return self._json(
-                    {"error": "This request did not come from the CourseForge Studio "
-                              "page on this machine, so it was refused."}, 403)
+            if not self._allow_api("POST", parts, body):
+                return
+
+            is_permission = parts[1:] == ["assistant", "permission"]
+            if not (is_permission and self._hook_secret_ok(body)):
+                if not self._same_origin():
+                    return self._json(
+                        {"error": "This request did not come from the CourseForge Studio "
+                                  "page on this machine, so it was refused."}, 403)
 
             if routing.dispatch(app, self, "POST", url, {}, body):
                 return
@@ -3038,8 +3198,8 @@ def make_handler(app: App):
             except PermissionError as exc:
                 return self._json({"error": str(exc)}, 403)
             except Exception as exc:  # noqa: BLE001
-                return self._json({"error": f"{type(exc).__name__}: {exc}",
-                                   "trace": traceback.format_exc()[-1500:]}, 500)
+                log_server_error(exc, getattr(app.cfg, "data_dir", None))
+                return self._json({"error": type(exc).__name__}, 500)
 
     return Handler
 

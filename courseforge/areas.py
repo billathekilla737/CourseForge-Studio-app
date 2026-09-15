@@ -26,7 +26,7 @@ def install_all(app) -> dict:
                 install(app)
             status[name] = {"ok": True}
         except Exception as exc:  # noqa: BLE001
-            status[name] = {"ok": False, "error": f"{type(exc).__name__}: {exc}",
-                            "trace": traceback.format_exc()[-1500:]}
+            traceback.print_exc()
+            status[name] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     app.area_status = status
     return status

@@ -24,6 +24,15 @@ def _bash(cmd):
     return gate.classify("Bash", {"command": cmd}, CWD)
 
 
+class WebSearchIsAQuestion(unittest.TestCase):
+    def test_web_search_asks(self):
+        v = gate.classify("WebSearch", {"query": "Jordan Vance"}, CWD)
+        self.assertEqual(v["decision"], "ask", v)
+
+    def test_web_search_is_not_on_the_read_only_list(self):
+        self.assertNotIn("WebSearch", gate.READ_ONLY_TOOLS)
+
+
 class ShellReadsStayInsideTheWorkspace(unittest.TestCase):
     def test_get_content_of_names_json_is_a_question(self):
         v = _bash(r"Get-Content ..\names.json")

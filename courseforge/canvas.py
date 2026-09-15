@@ -30,6 +30,8 @@ from .canvas_files import FilesOps
 
 USER_AGENT = "courseforge-studio/2.0 (+local instructor tool)"
 _NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
+# Same cap as extract.expand_archive: a student file is not allowed to fill the disk.
+MAX_DOWNLOAD_BYTES = 150_000_000
 
 
 class CanvasError(RuntimeError):
@@ -591,43 +593,76 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
             return None
 
     def _open_url(self, url: str, use_token: bool, timeout: int):
-        """GET a URL. Tokened requests do not follow redirects, so a 302 to S3
-        cannot take the Canvas bearer token with it."""
+        """GET a URL. Never follows redirects: a 302 to S3 must not take the
+        Canvas bearer token with it, and student-supplied URLs get at most one
+        hop, checked by `_fetch_bytes`."""
         req = urllib.request.Request(url)
         req.add_header("User-Agent", USER_AGENT)
         if use_token:
             canvas_policy.assert_token_host(self.base, url, self.allowed_hosts)
             req.add_header("Authorization", f"Bearer {self.token}")
-            return urllib.request.build_opener(self._NoRedirect).open(req, timeout=timeout)
-        return urllib.request.urlopen(req, timeout=timeout)
+        return urllib.request.build_opener(self._NoRedirect).open(req, timeout=timeout)
+
+    def _read_limited(self, resp, limit: int = MAX_DOWNLOAD_BYTES) -> bytes:
+        length = resp.headers.get("Content-Length")
+        if length:
+            try:
+                if int(length) > limit:
+                    raise RuntimeError("file is larger than the download limit")
+            except ValueError:
+                pass
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = resp.read(64 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > limit:
+                raise RuntimeError("file is larger than the download limit")
+            chunks.append(chunk)
+        return b"".join(chunks)
 
     def _fetch_bytes(self, url: str, timeout: int) -> bytes:
-        """Download file bytes. Signed S3 URLs go without a token; Canvas
-        /files/:id/download URLs that 302 to storage are followed without it."""
+        """Download file bytes. Signed storage URLs go without a token; Canvas
+        /files/:id/download URLs that 302 to storage are followed without it,
+        once, and only onto a Canvas file host — never localhost or RFC1918."""
+        if not canvas_policy.file_url_allowed(url, self.base, self.allowed_hosts):
+            raise RuntimeError("refused to fetch a file from a host that is not Canvas")
         if canvas_policy.same_host(self.base, url):
             canvas_policy.check_scope(self.scope, "GET", url)
         errors: list[str] = []
-        tries = (False, True) if canvas_policy.same_host(self.base, url) else (False,)
-        for use_token in tries:
+        # Canvas often 302s to InstFS, which may 302 once more to object storage.
+        # Two hops, each allow-listed, is the most we will chase.
+        max_hops = 2
+        token_ok = canvas_policy.same_host(self.base, url)
+        for use_token in ((False, True) if token_ok else (False,)):
+            target = url
+            token_this = use_token
             try:
-                with self._open_url(url, use_token, timeout) as resp:
-                    data = resp.read()
-                if data:
-                    return data
-                errors.append("empty response")
-            except urllib.error.HTTPError as exc:
-                loc = exc.headers.get("Location") if exc.code in (301, 302, 303, 307, 308) else ""
-                if use_token and loc:
+                for hop in range(max_hops + 1):
                     try:
-                        with self._open_url(loc, False, timeout) as resp:
-                            data = resp.read()
+                        with self._open_url(target, token_this, timeout) as resp:
+                            data = self._read_limited(resp)
                         if data:
                             return data
-                        errors.append("empty response after redirect")
-                    except Exception as follow:  # noqa: BLE001
-                        errors.append(f"{type(follow).__name__}: {follow}")
-                else:
-                    errors.append(f"HTTP {exc.code}{' with token' if use_token else ''}")
+                        errors.append("empty response")
+                        break
+                    except urllib.error.HTTPError as exc:
+                        loc = (exc.headers.get("Location") or "").strip() if exc.code in (
+                            301, 302, 303, 307, 308) else ""
+                        if loc and hop < max_hops:
+                            nxt = urllib.parse.urljoin(target, loc)
+                            if not canvas_policy.file_url_allowed(
+                                    nxt, self.base, self.allowed_hosts):
+                                errors.append("redirect was not a Canvas file host")
+                                break
+                            target = nxt
+                            token_this = False
+                            continue
+                        errors.append(
+                            f"HTTP {exc.code}{' with token' if token_this else ''}")
+                        break
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{type(exc).__name__}: {exc}")
         raise RuntimeError(f"could not download attachment ({'; '.join(errors)})")

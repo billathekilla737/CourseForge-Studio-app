@@ -17,6 +17,7 @@ canvas.project*.json
 config.json
 config.local.json
 secrets.json
+.env
 
 # --- everything downloaded or produced --------------------------------------
 data/

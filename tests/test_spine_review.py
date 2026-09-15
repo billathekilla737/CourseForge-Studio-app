@@ -233,14 +233,16 @@ class SameOriginTests(unittest.TestCase):
         h.headers["Content-Type"] = "application/x-www-form-urlencoded"
         self.assertFalse(h._same_origin())
 
-    def test_own_page_and_local_scripts_pass(self):
+    def test_own_page_passes(self):
         h = self._handler()
         h.headers["Origin"] = "http://localhost:8900"
         h.headers["Content-Type"] = "application/json; charset=utf-8"
         self.assertTrue(h._same_origin())
-        h2 = self._handler()                       # curl: no Origin at all
-        h2.headers["Content-Type"] = "text/plain"
-        self.assertTrue(h2._same_origin())
+
+    def test_missing_origin_is_not_trusted(self):
+        h = self._handler()
+        h.headers["Content-Type"] = "application/json"
+        self.assertFalse(h._same_origin())
 
 
 class StoreTraversalTests(unittest.TestCase):
@@ -416,6 +418,19 @@ class LaunchFilesTests(unittest.TestCase):
             self.assertFalse(raw["audit_to_canvas"])
             cfg2 = Config.load(path)
             self.assertFalse(cfg2.audit_to_canvas)
+
+    def test_update_token_in_the_file_is_ignored_and_stripped(self):
+        from courseforge.config import Config
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text('{"update_token": "ghp_nope", "model": "sonnet"}',
+                            encoding="utf-8")
+            cfg = Config.load(path)
+            self.assertEqual(cfg.update_token, "")
+            self.assertEqual(cfg.model, "sonnet")
+            cfg.persist(pseudonymize=True)
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn("update_token", raw)
 
     def test_launcher_can_build_a_restart_argv(self):
         import inspect

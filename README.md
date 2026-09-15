@@ -96,9 +96,8 @@ carries on. The check never blocks startup and never raises.
 | Key | Default | What it does |
 |---|---|---|
 | `check_updates` | `true` | Whether the launcher looks at all |
-| `update_repo` | `billathekilla737/CourseForge-Studio-app` | Where it looks |
+| `update_repo` | `billathekilla737/CourseForge-Studio-app` | Pinned. Any other value is refused |
 | `update_branch` | `main` | Which branch counts as current |
-| `update_token` | `""` | Only needed while the source repository is private |
 
 A colleague who was handed a folder needs none of this: the source is public,
 so the button works with no GitHub account, no git, and no terminal.
@@ -126,8 +125,11 @@ keeps that true.
 ```bash
 git clone https://github.com/billathekilla737/CourseForge-Studio-app
 cd CourseForge-Studio-app
-pip install -e .[pdf]
+pip install -r requirements.lock
+pip install -e .
 ```
+
+`requirements.lock` pins hashes for the libraries that parse student files. Re-check with `python -m pip_audit -r requirements.lock` when you bump them.
 
 Someone who does not use git can instead take
 [the latest zip](https://github.com/billathekilla737/CourseForge-Studio-app/archive/refs/heads/main.zip),

@@ -44,6 +44,9 @@ from pathlib import Path
 from . import __version__
 
 API = "https://api.github.com"
+# The only repository this copy will fetch. A config.json that names anything
+# else is refused, not followed: the updater overwrites the install.
+ALLOWED_REPO = "billathekilla737/CourseForge-Studio-app"
 # Written into the install directory whenever an update is applied, so a folder
 # that was never a git checkout still knows which revision it is running.
 STAMP = "installed.json"
@@ -65,6 +68,7 @@ class Status:
     available: bool = False
     current: str = ""            # short revision of this copy, if it knows one
     latest: str = ""             # short revision upstream
+    latest_sha: str = ""         # full upstream SHA, used to pin the zipball
     version: str = __version__
     notes: list = field(default_factory=list)     # recent commit subjects
     error: str = ""
@@ -151,7 +155,13 @@ def write_stamp(root: Path, revision: str, version: str = __version__) -> None:
 
 # ----------------------------------------------------------------- the check
 def _repo(cfg) -> str:
-    return (getattr(cfg, "update_repo", "") or "billathekilla737/CourseForge-Studio-app").strip("/")
+    """The public app repo, or a ValueError if config.json tried to retarget it."""
+    got = (getattr(cfg, "update_repo", "") or ALLOWED_REPO).strip("/")
+    if got.lower() != ALLOWED_REPO.lower():
+        raise ValueError(
+            f"Updates are pinned to {ALLOWED_REPO}. This copy names {got}, "
+            "which will not be fetched.")
+    return ALLOWED_REPO
 
 
 def _branch(cfg) -> str:
@@ -159,8 +169,8 @@ def _branch(cfg) -> str:
 
 
 def _token(cfg) -> str:
-    """Only needed while the source repository is private."""
-    return (getattr(cfg, "update_token", "") or os.environ.get("GITHUB_TOKEN") or "")
+    """Never read from config.json. The public source needs none."""
+    return os.environ.get("GITHUB_TOKEN") or ""
 
 
 def _get(url: str, token: str = "", accept: str = "application/vnd.github+json"):
@@ -175,7 +185,12 @@ def _get(url: str, token: str = "", accept: str = "application/vnd.github+json")
 def check(cfg, root: Path | None = None) -> Status:
     """Ask GitHub what the branch head is. Never raises."""
     root = Path(root or install_dir())
-    repo, branch = _repo(cfg), _branch(cfg)
+    try:
+        repo, branch = _repo(cfg), _branch(cfg)
+    except ValueError as exc:
+        status = Status(current=current_revision(root), error=str(exc))
+        _guard_local_edits(status, root)
+        return status
     status = Status(current=current_revision(root), source=f"{repo}@{branch}")
 
     # Before the network, not after it. Asked the other way round, a check that
@@ -200,7 +215,8 @@ def check(cfg, root: Path | None = None) -> Status:
         return status
 
     status.checked = True
-    status.latest = str(head.get("sha") or "")[:7]
+    status.latest_sha = str(head.get("sha") or "")
+    status.latest = status.latest_sha[:7]
     if not status.current:
         # A folder with no git and no stamp cannot be compared, only replaced.
         # Saying "update available" there would nag forever, so it says nothing
@@ -266,8 +282,15 @@ def apply(cfg, status: Status, root: Path | None = None,
         return {"ok": False, "restart": False,
                 "message": status.why_not or fresh.why_not}
 
-    repo, branch = _repo(cfg), _branch(cfg)
-    url = f"{API}/repos/{repo}/zipball/{branch}"
+    try:
+        repo = _repo(cfg)
+    except ValueError as exc:
+        return {"ok": False, "restart": False, "message": str(exc)}
+    sha = status.latest_sha or status.latest
+    if not sha:
+        return {"ok": False, "restart": False,
+                "message": "No revision to fetch."}
+    url = f"{API}/repos/{repo}/zipball/{sha}"
     with tempfile.TemporaryDirectory(prefix="cfstudio-update-") as tmp:
         tmpdir = Path(tmp)
         archive = tmpdir / "update.zip"

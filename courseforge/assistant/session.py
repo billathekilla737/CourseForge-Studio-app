@@ -241,6 +241,14 @@ call, and an Allow / Deny card whenever something is about to change in Canvas.
 - Keep every working file inside the working folder (subfolders are fine).
   The folders next to it belong to other parts of the Studio; do not read
   them. Do not edit the skill.
+- Course policy lives in Canvas, not in this app. Never search the
+  CourseForge-Studio-app source, the skill, or Python files for
+  SmarterProctoring, a test policy, or a page the person wrote. In this
+  instructor's courses the testing instructions are in the syllabus.
+  Dump the course HTML first:
+      {prefix} a11y dump --course {cid}
+  Then search the syllabus body. If you cannot find it, say so. Do not
+  invent a webcam, an ID check, a lock-down browser, or a vendor.
 
 ## Students are tags, never names
 - {students}

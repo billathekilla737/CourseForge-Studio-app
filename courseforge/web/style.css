@@ -830,6 +830,12 @@ html.busy .btn, html.busy button{cursor:progress}
   font:13.5px/1.6 var(--sans);resize:vertical}
 .annLabel input:focus,.annLabel textarea:focus{outline:2px solid var(--ai);
   outline-offset:-1px}
+.annPanes{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin:12px 0}
+@media (max-width:900px){.annPanes{grid-template-columns:1fr}}
+.annPanes .paperFrame{max-height:min(52vh,420px)}
+.annCanvasTitle{font:700 22px Georgia,'Times New Roman',serif;color:#061E3F;margin:0 0 14px;
+  padding-bottom:10px;border-bottom:1px solid #d7dce3}
+.bdAnnPrev{max-height:220px;margin-top:8px}
 
 #inText{width:100%;padding:10px 12px;border:1px solid var(--line);
   border-radius:var(--radius);background:var(--bg);color:var(--ink);

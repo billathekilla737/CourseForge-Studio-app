@@ -295,6 +295,8 @@ class App:
         self._client: CanvasClient | None = None
         # Assignment pages read from the schedule, kept for this run only.
         self._item_cache: dict[tuple[str, str], dict] = {}
+        # Course pages/syllabus about how to take a test (SmarterProctoring).
+        self._policy_cache: dict[str, str] = {}
         self._doctor: dict | None = None
         self._me_id: int | str | None = None
         # Every Canvas write passes through here twice: refused once with a
@@ -958,8 +960,19 @@ class App:
         # The model gets the words, not the markup.
         plain = re.sub(r"<[^>]+>", " ", text)
         plain = re.sub(r"\s+", " ", plain).strip()
+        if not plain and detail.get("quiz_id"):
+            try:
+                quiz = self.client.quiz(course_id, detail["quiz_id"])
+                qhtml = htmlclean.clean(quiz.get("description") or "", self.cfg.base_url)
+                plain = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", qhtml)).strip()
+            except Exception:  # noqa: BLE001
+                pass
+        policy = ""
+        if instruct.needs_testing_policy(item, extra):
+            log("reading the course testing instructions")
+            policy = self._testing_policy(course_id)
 
-        prompt = instruct.announce_prompt(item, plain)
+        prompt = instruct.announce_prompt(item, plain, policy_text=policy, extra=extra)
         if extra.strip():
             prompt += ("\n\nThe instructor also said, and this takes priority "
                        f"over the guidance above:\n{extra.strip()[:600]}")
@@ -969,13 +982,22 @@ class App:
             system=instruct.ANNOUNCE_SYSTEM,
             on_activity=grader._activity_sink(log, "announcement", self.cfg.model))
         data = result.data if isinstance(result.data, dict) else {}
+        title = str(data.get("title") or f"Reminder: {detail.get('name')}")
+        message = str(data.get("message") or result.text.strip())
+        look = getattr(self.cfg, "a11y_look", "hybrid") or "hybrid"
+        from .content.generate import load_brand
+        brand = load_brand(getattr(self.cfg, "brand_path", None))
+        html = instruct.wrap_announcement(message, look=look, brand=brand)
         return {
             "course_id": str(course_id),
             "assignment_id": str(assignment_id),
             "course_label": detail.get("course_label"),
             "name": detail.get("name"),
-            "title": str(data.get("title") or f"Reminder: {detail.get('name')}"),
-            "message": str(data.get("message") or result.text.strip()),
+            "title": title,
+            "message": message,
+            "html": html,
+            "look": look,
+            "brand": {"colors": brand["colors"], "fonts": brand["fonts"]},
             "model": self.cfg.model,
             "cost_usd": round(result.cost_usd or 0.0, 4),
             "parse_error": result.parse_error if not data else "",
@@ -1146,8 +1168,9 @@ class App:
             log(f"{index}/{total}: {line}", index - 1, total)
             try:
                 if op["op"] == "announce":
-                    self.client.create_announcement(op["course_id"], op["title"],
-                                                    op["message"])
+                    look = getattr(self.cfg, "a11y_look", "hybrid") or "hybrid"
+                    html = instruct.wrap_announcement(op["message"], look=look)
+                    self.client.create_announcement(op["course_id"], op["title"], html)
                 elif op["op"] in ("publish", "unpublish"):
                     want = op["op"] == "publish"
                     self.client.update_assignment(op["course_id"],
@@ -1729,6 +1752,53 @@ class App:
                         "ok": False, "at": datetime.now().isoformat(timespec="seconds"),
                         "error": f"{type(exc).__name__}: {exc}"}
 
+    def _plain_html(self, html: str) -> str:
+        cleaned = htmlclean.clean(html or "", self.cfg.base_url)
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", cleaned)).strip()
+
+    def _testing_policy(self, course_id) -> str:
+        """The testing / SmarterProctoring section of this course's syllabus.
+
+        Proctored assignments here often have an empty description (external
+        tool). The real instructions live in the syllabus of each course, not
+        in the assignment and not in a page titled SmarterProctoring. Cached
+        per course for this run.
+        """
+        key = str(course_id)
+        if key in self._policy_cache:
+            return self._policy_cache[key]
+        chunks: list[str] = []
+        try:
+            course = self.client.course_detail(course_id, include=["syllabus_body"])
+            syl = self._plain_html(course.get("syllabus_body") or "")
+            passage = instruct.extract_policy_passages(syl)
+            if passage:
+                chunks.append("Syllabus: %s" % passage)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            pages = self.client.pages(course_id)
+        except Exception:  # noqa: BLE001
+            pages = []
+        for page in pages:
+            title = str(page.get("title") or "")
+            want = instruct.policy_relevant(title) or instruct.SYLLABUS_TITLE.search(title)
+            if not want:
+                continue
+            slug = page.get("url")
+            try:
+                full = self.client.page(course_id, slug) if slug else page
+            except Exception:  # noqa: BLE001
+                continue
+            plain = self._plain_html(full.get("body") or "")
+            passage = instruct.extract_policy_passages(plain) or (
+                plain[:2500] if instruct.SYLLABUS_TITLE.search(title) else "")
+            if passage:
+                chunks.append("%s: %s" % (title, passage))
+        text = "\n\n".join(chunks)[:6000]
+        self._policy_cache[key] = text
+        return text
+
     def schedule_item(self, course_id, assignment_id) -> dict:
         """One assignment's own page: the description, as Canvas has it now.
 
@@ -1765,6 +1835,7 @@ class App:
             "lock_at": raw.get("lock_at"),
             "points": raw.get("points_possible"),
             "kind_label": row.get("kind_label") or "ASSIGNMENT",
+            "exam": bool(row.get("exam")),
             # Present only for a classic quiz, and the editor keys off that:
             # New Quizzes and publisher tests keep their settings elsewhere.
             "quiz_id": raw.get("quiz_id") or row.get("quiz_id"),

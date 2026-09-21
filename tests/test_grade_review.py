@@ -303,7 +303,7 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         # Bulk bar and context menu share one action list, so a new verb cannot
         # land on shift-click and be missing from right-click (or the reverse).
         self.assertIn("selectionItems(st)", self.src)
-        self.assertIn("js/grade.js?v=sched-href-1",
+        self.assertIn("js/grade.js?v=ann-preview-1",
                       (WEB / "index.html").read_text(encoding="utf-8"))
 
     def test_a_schedule_assignment_name_is_a_real_link(self):
@@ -343,12 +343,77 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         self.assertIn("Waiting to grade", self.src)
         self.assertNotIn("Master Schedule", self.src)
 
+    def test_the_announcement_draft_has_a_canvas_page_preview(self):
+        self.assertIn("function wrapAnnouncement(", self.src)
+        self.assertIn("function paintAnnouncePreview(", self.src)
+        self.assertIn("How it will read", self.src)
+        self.assertIn("paperFrame canvasPage", self.src)
+        self.assertIn("id=\"anPreview\"", self.src)
+
     def test_the_announcement_dialog_tolerates_no_schedule(self):
         body = self.src[self.src.index("function openAnnounce("):]
         body = body[:body.index("\n}\n")]
         unguarded = re.findall(r"(?<!&& )S\.sched\.items", body)
         self.assertEqual(unguarded, [])
         self.assertIn("(S.sched && S.sched.items)", body)
+
+
+class AnnouncePromptUsesTheCoursePolicy(unittest.TestCase):
+    def test_a_proctored_test_without_policy_forbids_invented_steps(self):
+        from courseforge import instruct
+        prompt = instruct.announce_prompt({
+            "name": "Test 1 - Weeks 1-3 (Proctored exam)",
+            "kind_label": "TEST", "proctored": True, "exam": True,
+        })
+        self.assertIn("The assignment page has no description", prompt)
+        self.assertIn("Do not name a vendor", prompt)
+        self.assertNotIn("webcam is required", prompt.lower())
+
+    def test_policy_text_is_quoted_in_the_prompt(self):
+        from courseforge import instruct
+        prompt = instruct.announce_prompt(
+            {"name": "Test 1", "kind_label": "TEST", "proctored": True},
+            policy_text="Bring a photo ID. SmarterProctoring needs a webcam.")
+        self.assertIn("Bring a photo ID", prompt)
+        self.assertIn("SmarterProctoring needs a webcam", prompt)
+        self.assertIn("from the syllabus", prompt)
+
+    def test_syllabus_passages_are_the_testing_section_not_the_opening(self):
+        from courseforge import instruct
+        padding = "Course description. " * 200
+        body = padding + "SmarterProctoring requires a webcam and a photo ID. " + padding
+        passage = instruct.extract_policy_passages(body)
+        self.assertIn("SmarterProctoring requires a webcam", passage)
+        self.assertNotIn("Course description. Course description.", passage[:80])
+
+    def test_policy_relevant_matches_smarterproctoring_titles(self):
+        from courseforge import instruct
+        self.assertTrue(instruct.policy_relevant("SmarterProctoring"))
+        self.assertTrue(instruct.policy_relevant("How to take a test"))
+        self.assertTrue(instruct.needs_testing_policy(
+            {"name": "Test 1 - Proctored exam", "kind_label": "TEST"}))
+        self.assertFalse(instruct.policy_relevant("Week 3 Homework"))
+        self.assertFalse(instruct.needs_testing_policy(
+            {"name": "Homework 4", "kind_label": "ASSIGNMENT"}))
+
+
+class AnnouncementWrapIsACanvasPage(unittest.TestCase):
+    def test_plain_sentences_become_school_html(self):
+        from courseforge import instruct
+        html = instruct.wrap_announcement(
+            "The quiz opens Wednesday at 8am.\n\nIt is due Friday at 11:59 PM.")
+        self.assertIn("Announcement", html)
+        self.assertIn("#E9A821", html)
+        self.assertIn("The quiz opens Wednesday at 8am.", html)
+        self.assertIn("<p", html)
+        self.assertNotIn("<h2", html)
+
+    def test_html_is_not_wrapped_twice(self):
+        from courseforge import instruct
+        once = instruct.wrap_announcement("Due Friday.")
+        twice = instruct.wrap_announcement(once)
+        self.assertEqual(once.count("Announcement"), 1)
+        self.assertEqual(twice.count("Announcement"), 1)
 
 
 if __name__ == "__main__":

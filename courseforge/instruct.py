@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from html import escape as html_escape
 
 from .style import HUMANIZE_RULES
 
@@ -266,16 +267,78 @@ Rules:
 - Say the date and time in words a person reads: "Wednesday, September 10, by
   11:59 PM", not an ISO stamp.
 - Only state facts you were given. Do not invent a location, a password, a
-  proctor, a chapter list or a length. If a detail matters and you were not told
-  it, leave it out rather than guessing.
+  proctor, a vendor, a webcam, an ID check, a lock-down browser, a chapter
+  list or a length. If a detail matters and you were not told it, leave it
+  out rather than guessing.
 - Four short sentences is plenty. One paragraph, no headings, no bullet lists
   unless there are genuinely separate steps.
 
 {HUMANIZE_RULES}
 """
 
+# Titles and bodies that are how this course says to take a test — not the
+# Studio app, and not a guess.
+POLICY_HINT = re.compile(
+    r"smarter\s*proctor|smarter\s*services|proctor(?:ing|ed)?|honorlock|respondus|"
+    r"lock\s*-?down|test(?:ing)?\s+polic|exam\s+polic|examity|"
+    r"how\s+to\s+take\s+(?:(?:the|a)\s+)?(?:test|exam)|testing\s+instructions|"
+    r"remote\s+proctor|online\s+proctor",
+    re.I)
+SYLLABUS_TITLE = re.compile(r"\bsyllabus\b|course\s+polic", re.I)
 
-def announce_prompt(item: dict, description_text: str = "") -> str:
+
+def policy_relevant(title: str, body: str = "") -> bool:
+    return bool(POLICY_HINT.search(title or "") or POLICY_HINT.search(body or ""))
+
+
+def extract_policy_passages(text: str, window: int = 900) -> str:
+    """The testing / SmarterProctoring part of a long syllabus, not the start.
+
+    A syllabus leads with outcomes and the calendar. Taking the first few
+    thousand characters drops the proctoring section that actually lives
+    further down.
+    """
+    plain = re.sub(r"\s+", " ", text or "").strip()
+    if not plain:
+        return ""
+    spans: list[tuple[int, int]] = []
+    for match in POLICY_HINT.finditer(plain):
+        start = max(0, match.start() - window)
+        end = min(len(plain), match.end() + window)
+        if start > 0:
+            dot = plain.rfind(". ", start, match.start())
+            if dot != -1:
+                start = dot + 2
+        if end < len(plain):
+            dot = plain.find(". ", match.end(), end)
+            if dot != -1:
+                end = dot + 1
+        spans.append((start, end))
+    if not spans:
+        return ""
+    spans.sort()
+    merged = [spans[0]]
+    for a, b in spans[1:]:
+        pa, pb = merged[-1]
+        if a <= pb + 40:
+            merged[-1] = (pa, max(pb, b))
+        else:
+            merged.append((a, b))
+    return "\n\n".join(plain[a:b].strip() for a, b in merged)[:4000]
+
+
+def needs_testing_policy(item: dict, extra: str = "") -> bool:
+    """True when this announcement is about a test students have to sit."""
+    if item.get("proctored") or item.get("exam"):
+        return True
+    kind = str(item.get("kind_label") or "").upper()
+    if kind in ("TEST", "EXAM", "FINAL"):
+        return True
+    return bool(POLICY_HINT.search((item.get("name") or "") + " " + (extra or "")))
+
+
+def announce_prompt(item: dict, description_text: str = "",
+                    policy_text: str = "", extra: str = "") -> str:
     """Ask for a reminder about one assignment, from what Canvas knows."""
     lines = [
         "# The assignment",
@@ -305,11 +368,85 @@ def announce_prompt(item: dict, description_text: str = "") -> str:
                   "Use this only to be accurate about what the task is. Do not "
                   "repeat it at length: the announcement is a reminder, not a "
                   "second copy of the instructions."]
+    else:
+        lines += ["",
+                  "The assignment page has no description. Do not invent one."]
+    if policy_text.strip():
+        lines += ["", "# How this course says to take a test (from the syllabus)",
+                  policy_text.strip()[:4000],
+                  "",
+                  "These are the course's own instructions, taken from the "
+                  "syllabus. Name only the requirements that appear here. Do "
+                  "not add steps that are not in this text."]
+    elif needs_testing_policy(item, extra):
+        lines += ["",
+                  "You were not given this course's testing instructions. Do "
+                  "not name a vendor, a webcam, an ID check, a lock-down "
+                  "browser, a password, or a testing center. Say the test is "
+                  "proctored if that is in the assignment name, say when it "
+                  "opens and is due, and tell them to follow the instructions "
+                  "on the test itself."]
     lines += ["", """# What to return
 
 Return ONLY this JSON object:
 {
   "title": "<subject line, under 60 characters, no course code>",
   "message": "<the announcement itself, plain sentences>"
-}"""]
+}
+
+The message is plain sentences, not HTML. The Studio wraps it in the school
+look for the preview and for Canvas."""]
     return "\n".join(lines)
+
+
+def looks_like_html(text: str) -> bool:
+    return bool(re.match(r"(?is)\s*<(div|p|h[1-6]|ul|ol|span|table|section|article)\b",
+                         text or ""))
+
+
+def wrap_announcement(message: str, look: str = "hybrid", brand: dict | None = None) -> str:
+    """Turn plain announcement sentences into Canvas-safe HTML in the school
+    look. Already-marked-up text is cleaned, not wrapped a second time.
+
+    The Canvas topic title is the heading students see, so this wrapper does
+    not repeat it as an h2. It is a gold-bar card with the body, the same
+    surface a generated page uses.
+    """
+    from . import htmlclean
+    from .content.generate import LOOKS, load_brand
+
+    raw = (message or "").strip()
+    if not raw:
+        return ""
+    if looks_like_html(raw):
+        return htmlclean.clean(raw, "")
+    brand = brand or load_brand()
+    look = look if look in LOOKS else "hybrid"
+    c = brand["colors"]
+    f = brand["fonts"]
+    paras = [p.strip() for p in re.split(r"\n\s*\n", raw) if p.strip()]
+    body = []
+    for para in paras:
+        lines = "<br>".join(html_escape(line, quote=True) for line in para.split("\n"))
+        body.append(
+            f'<p style="margin: 0 0 12px; font-size: 15px; color: {c["body_text"]};">'
+            f"{lines}</p>")
+    inner = "".join(body)
+    fill = (f"background: {c['navy']}; " if look in ("hybrid", "rich") else "")
+    eyebrow = c["gold"] if look in ("hybrid", "rich") else c["navy"]
+    band = (
+        f'<div style="padding: 14px 20px; border-radius: 8px; {fill}'
+        f'border-top: 5px solid {c["gold"]};">'
+        f'<div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; '
+        f'color: {eyebrow}; font-weight: 700;">Announcement</div></div>'
+    )
+    card_bg = c["card_fill"] if look == "rich" else "transparent"
+    return htmlclean.clean(
+        f'<div style="max-width: 980px; margin: 0 auto; font-family: {f["body"]}; '
+        f'line-height: 1.55; color: {c["body_text"]};">'
+        f"{band}"
+        f'<div style="margin-top: 14px; padding: 18px 20px; border-radius: 8px; '
+        f'border: 1px solid {c["hairline"]}; background: {card_bg};">{inner}</div>'
+        f"</div>",
+        "",
+    )

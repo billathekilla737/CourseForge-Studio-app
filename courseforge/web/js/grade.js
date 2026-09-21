@@ -72,6 +72,7 @@ function showBatchDrafts(r) {
       </label>
       <input type="text" class="bdTitle" data-i="${i}" value="${esc(d.title || '')}">
       <textarea class="bdBody" data-i="${i}" rows="5">${esc(d.message || '')}</textarea>
+      <div class="paperFrame canvasPage bdAnnPrev" data-i="${i}"></div>
     </div>`;
 
   host.innerHTML = `<div class="modalBack"><div class="modal wide">
@@ -97,6 +98,19 @@ function showBatchDrafts(r) {
     </div></div>`;
   $('#bdClose').onclick = () => { host.innerHTML = ''; };
 
+  const paintOne = i => paintAnnouncePreview(
+    host.querySelector(`.bdTitle[data-i="${i}"]`),
+    host.querySelector(`.bdBody[data-i="${i}"]`),
+    host.querySelector(`.bdAnnPrev[data-i="${i}"]`),
+    drafts[i].brand, drafts[i].look);
+  drafts.forEach((_, i) => {
+    paintOne(i);
+    const title = host.querySelector(`.bdTitle[data-i="${i}"]`);
+    const body = host.querySelector(`.bdBody[data-i="${i}"]`);
+    if (title) title.oninput = () => paintOne(i);
+    if (body) body.oninput = () => paintOne(i);
+  });
+
   const ticked = () => [...host.querySelectorAll('.bdTick')]
     .filter(c => c.checked)
     .map(c => {
@@ -105,7 +119,9 @@ function showBatchDrafts(r) {
         op: 'announce',
         course_id: drafts[i].course_id,
         title: host.querySelector(`.bdTitle[data-i="${i}"]`).value.trim(),
-        message: host.querySelector(`.bdBody[data-i="${i}"]`).value.trim(),
+        message: wrapAnnouncement(
+          host.querySelector(`.bdBody[data-i="${i}"]`).value.trim(),
+          drafts[i].brand, drafts[i].look),
         _label: drafts[i].course_label,
       };
     })
@@ -860,6 +876,45 @@ function openAnnounce(courseId, assignmentId) {
   };
 }
 
+function looksLikeHtml(s) {
+  return /^\s*<(div|p|h[1-6]|ul|ol|span|table|section|article)\b/i.test(s || '');
+}
+
+function wrapAnnouncement(message, brand, look) {
+  const c = (brand && brand.colors) || {
+    navy: '#061E3F', gold: '#E9A821', body_text: '#2c3a4d',
+    hairline: '#d7dce3', card_fill: '#ffffff',
+  };
+  const f = (brand && brand.fonts) || {
+    body: "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  };
+  look = look || 'hybrid';
+  const raw = (message || '').trim();
+  if (!raw) return '';
+  if (looksLikeHtml(raw)) return raw;
+  const paras = raw.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const inner = paras.map(p => {
+    const lines = p.split('\n').map(line => esc(line)).join('<br>');
+    return `<p style="margin: 0 0 12px; font-size: 15px; color: ${c.body_text};">${lines}</p>`;
+  }).join('');
+  const filled = look === 'hybrid' || look === 'rich';
+  const band = `<div style="padding: 14px 20px; border-radius: 8px; ${
+    filled ? 'background: ' + c.navy + '; ' : ''}border-top: 5px solid ${c.gold};">`
+    + `<div style="font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: ${
+      filled ? c.gold : c.navy}; font-weight: 700;">Announcement</div></div>`;
+  return `<div style="max-width: 980px; margin: 0 auto; font-family: ${f.body}; line-height: 1.55; color: ${c.body_text};">`
+    + band
+    + `<div style="margin-top: 14px; padding: 18px 20px; border-radius: 8px; border: 1px solid ${c.hairline};">${inner}</div></div>`;
+}
+
+function paintAnnouncePreview(titleEl, bodyEl, paper, brand, look) {
+  if (!paper) return;
+  const title = (titleEl && titleEl.value) || '';
+  const html = wrapAnnouncement((bodyEl && bodyEl.value) || '', brand, look);
+  paper.innerHTML = `<div class="annCanvasTitle">${esc(title || '(no subject)')}</div>`
+    + `<div class="canvasHtml asIs">${html || '<p class="muted">Nothing to show yet.</p>'}</div>`;
+}
+
 function showAnnounceDraft(d) {
   const host = $('#modalHost');
   host.innerHTML = `<div class="modalBack"><div class="modal wide">
@@ -870,12 +925,21 @@ function showAnnounceDraft(d) {
         goes out</div>
       ${d.parse_error ? `<div class="callout bad">Claude's reply was not clean
         JSON, so the text below is its raw answer. Read it before posting.</div>` : ''}
-      <label class="annLabel">Subject
-        <input type="text" id="anTitle" value="${esc(d.title || '')}">
-      </label>
-      <label class="annLabel">Message
-        <textarea id="anBody" rows="9">${esc(d.message || '')}</textarea>
-      </label>
+      <div class="annPanes">
+        <section aria-labelledby="anPrevH">
+          <h4 id="anPrevH" class="gwH">How it will read</h4>
+          <div class="paperFrame canvasPage" id="anPreview"></div>
+        </section>
+        <section>
+          <label class="annLabel">Subject
+            <input type="text" id="anTitle" value="${esc(d.title || '')}">
+          </label>
+          <label class="annLabel">Message
+            <span>plain sentences. The preview on the left is the Canvas page.</span>
+            <textarea id="anBody" rows="9">${esc(d.message || '')}</textarea>
+          </label>
+        </section>
+      </div>
       <div class="callout" id="anGate">${d.writes_enabled
         ? 'Posting puts this in front of every student in the course. You will be '
           + 'asked to confirm once more first.'
@@ -890,6 +954,11 @@ function showAnnounceDraft(d) {
           >Post to Canvas…</button>
       </div>
     </div></div>`;
+  const refresh = () => paintAnnouncePreview($('#anTitle'), $('#anBody'),
+    $('#anPreview'), d.brand, d.look);
+  refresh();
+  $('#anTitle').oninput = refresh;
+  $('#anBody').oninput = refresh;
   $('#anClose').onclick = () => { host.innerHTML = ''; };
   $('#anRedo').onclick = () => openAnnounce(d.course_id, d.assignment_id);
   $('#anCopy').onclick = () => {
@@ -903,7 +972,8 @@ function showAnnounceDraft(d) {
     if (!title || !message) { setStatus('needs a subject and a message', 'err'); return; }
     runJobConfirmed('Posting the announcement',
       token => api('/schedule/apply', { body: { dry_run: false, confirm: token,
-        operations: [{ op: 'announce', course_id: d.course_id, title, message }] } }),
+        operations: [{ op: 'announce', course_id: d.course_id, title,
+          message: wrapAnnouncement(message, d.brand, d.look) }] } }),
       r => {
         $('#modalHost').innerHTML = '';
         const ok = (r.applied || []).length;

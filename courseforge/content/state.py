@@ -53,7 +53,10 @@ def load(build: BuildDir) -> dict:
 def save(build: BuildDir, state: dict) -> Path:
     state["course_id"] = build.course_id
     state["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    return build.write_json(build.state_path, state)
+    path = build.write_json(build.state_path, state)
+    from .paths import notify
+    notify(build.course_id)
+    return path
 
 
 def owns(state: dict | None, course_id) -> bool:

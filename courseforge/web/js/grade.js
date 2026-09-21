@@ -628,6 +628,48 @@ function showAccomPlan(plan, scope, courseId, quizId, afterwards) {
   };
 }
 
+function syncBanner(sync) {
+  sync = sync || {};
+  const state = sync.state || sync.did || '';
+  if (state === 'diverged') {
+    const who = (sync.remote_machine || (sync.machine && sync.machine.name) || 'another computer');
+    return `<div class="callout warn" id="roSync">This list also changed on
+      ${esc(String(who))}. Nothing was overwritten.
+      <div class="foot" style="margin-top:.6rem">
+        <button class="btn" id="roTakeRemote">Use the Canvas copy</button>
+        <button class="btn" id="roTakeLocal">Keep this computer's list</button>
+      </div></div>`;
+  }
+  if (state === 'error') {
+    return `<div class="callout warn" id="roSync">Could not reach your Canvas
+      files: ${esc(sync.detail || sync.error || 'unknown error')}.
+      The list on this computer is unchanged.
+      <button class="btn" id="roHydrate">Try again</button></div>`;
+  }
+  if (state === 'picked_up' || state === 'in_sync' || state === 'sent' || state === 'seeded') {
+    const rev = sync.rev != null ? ` · rev ${esc(String(sync.rev))}` : '';
+    return `<div class="sub" id="roSync">Synced through your Canvas files
+      (courseforge-studio/state/accommodations.json)${rev}</div>`;
+  }
+  if (state === 'empty' || !state) {
+    return `<div class="sub" id="roSync">Not in Canvas yet — saving the list
+      uploads it so another computer can pick it up.</div>`;
+  }
+  return `<div class="sub" id="roSync">${esc(state)}</div>`;
+}
+
+function syncSaveMessage(r) {
+  const n = `${r.count} student(s) on the accommodation list`;
+  const st = (r.sync || {}).state || (r.sync || {}).did || '';
+  if (st === 'in_sync' || st === 'sent' || st === 'seeded')
+    return n + ' · saved to your Canvas files';
+  if (st === 'diverged')
+    return n + ' · Canvas has a different copy — open the roster to choose';
+  if (st === 'error')
+    return n + ' · saved here; Canvas upload failed';
+  return n;
+}
+
 /* ---------------------------------------------------------- the saved roster */
 /* The list itself: who has a standing accommodation, and what it is. Kept out
    of any one course on purpose -- a college approval applies to every course
@@ -639,6 +681,7 @@ async function openRoster(afterwards) {
       <div class="sub">loading…</div></div></div>`;
   let saved, everyone;
   try {
+    await api('/accommodations/sync').catch(() => null);
     [saved, everyone] = await Promise.all([
       api('/accommodations'), api('/accommodations/students'),
     ]);
@@ -679,18 +722,23 @@ async function openRoster(afterwards) {
         <h3>Accommodation roster</h3>
         <div class="sub">${state.rows.length} student(s) with a standing
           accommodation · ${everyone.count} students across
-          ${everyone.courses} of your courses</div>
+          ${everyone.courses} of your courses${
+            saved.dropped ? ' · ' + saved.dropped + ' row(s) in the file could not be read'
+                          : ''}</div>
 
         <div class="callout">Entered once, applied anywhere. A Canvas user id is
           the same person in every course, so a college approval set here reaches
-          all of them — and it stays put for next term.</div>
+          all of them. The list itself is kept in your Canvas files
+          (Files → courseforge-studio → state) so another computer signed in
+          as you can pick it up.</div>
+        ${syncBanner(saved.sync)}
 
         ${state.rows.length ? `<table class="acTable rosterTable"><thead><tr>
             <th>Student</th><th>Type</th><th>Amount</th><th>Attempts</th>
             <th title="Can start a quiz that is locked for everyone else">Unlock</th>
             <th>Note</th><th></th></tr></thead>
           <tbody>${state.rows.map((r, i) => `<tr>
-            <td class="acName">${esc(r.name || r.user_id)}
+            <td class="acName"><a href="#/student/${esc(r.user_id)}">${esc(r.name || r.user_id)}</a>
               <span class="muted">${esc(r.sis_user_id || r.user_id)}</span></td>
             <td><select data-i="${i}" data-k="kind">
               <option value="percent" ${r.kind === 'percent' ? 'selected' : ''}
@@ -787,9 +835,28 @@ async function openRoster(afterwards) {
         try { search.select(); } catch (_) { /* older type=search */ }
       }
     }
+    const hydrate = async (take) => {
+      try {
+        const r = take
+          ? await api('/accommodations/resolve', { body: { take } })
+          : await api('/accommodations/sync');
+        setStatus(r.did === 'diverged' ? 'Still two copies — pick one'
+                  : (r.did === 'picked_up' ? 'Loaded the list from Canvas'
+                  : (r.did === 'sent' || r.did === 'seeded' ? 'Uploaded this list to Canvas'
+                  : (r.did || 'synced'))), 'ok');
+        host.innerHTML = '';
+        return openRoster(afterwards);
+      } catch (err) { setStatus(firstLine(err.message), 'err'); }
+    };
+    const takeRemote = $('#roTakeRemote');
+    const takeLocal = $('#roTakeLocal');
+    const tryAgain = $('#roHydrate');
+    if (takeRemote) takeRemote.onclick = () => hydrate('remote');
+    if (takeLocal) takeLocal.onclick = () => hydrate('local');
+    if (tryAgain) tryAgain.onclick = () => hydrate('');
     $('#roClose').onclick = () => { host.innerHTML = ''; if (afterwards) afterwards(); };
     $('#roSave').onclick = () => save().then(r => {
-      if (r) { setStatus(`${r.count} student(s) on the accommodation list`, 'ok');
+      if (r) { setStatus(syncSaveMessage(r), r.sync && r.sync.state === 'error' ? 'err' : 'ok');
                host.innerHTML = ''; if (afterwards) afterwards(); }
     });
     $('#roApply').onclick = () => save().then(r => {
@@ -1795,6 +1862,8 @@ async function openCourses(refresh) {
 
   renderResume(resume);
   $('#pickerTitle').textContent = resume ? 'Your other courses' : 'Your courses';
+  const staleNote = $('#pickerThisPc');
+  if (staleNote) staleNote.remove();
 
   const opts = (S.termInfo.terms || []).map(t =>
     `<option value="${esc(t.label)}"${t.label === S.term ? ' selected' : ''}>${esc(t.label)} (${t.count})</option>`).join('');
@@ -3307,7 +3376,7 @@ function openPush(only) {
           write.length ? '\nWILL WRITE:\n'
             + write.map(s => `  ${s.name}: ${s.score}`
               + (s.curved_by ? `   (${s.earned} earned ${s.curved_by > 0 ? '+' : ''}${
-                  s.curved_by} curve)` : '')
+                  s.curved_by}${s.curved_by > 0 ? ' curve' : ' late'})` : '')
               + (s.comment ? '   + comment' : '')).join('\n') : '',
         ].filter(Boolean).join('\n');
         $('#pushGo').disabled = !write.length;
@@ -3416,16 +3485,33 @@ function unscoredReason(s, e) {
   return 'not graded yet';
 }
 
-/* The score that counts: earned plus any curve. The server keeps final_total in
-   step whenever a curve is applied or the earned score changes. */
+/* The score that counts: earned, minus a syllabus late dock, plus any curve.
+   The server keeps final_total in step whenever those change. */
+function lateOff(e) {
+  const lp = e && e.late_penalty;
+  if (!lp || !lp.applied) return 0;
+  return +(lp.points || 0);
+}
 function finalOf(e) {
   if (!isScored(e)) return null;
-  return e.final_total != null ? e.final_total : e.total;
+  if (e.final_total != null) return e.final_total;
+  const earned = e.total;
+  const off = lateOff(e);
+  return off ? Math.round((earned - off) * 100) / 100 : earned;
 }
 function earnedOf(e) { return isScored(e) ? e.total : null; }
+function scoreAdjustNote(e, earned, bump) {
+  const off = lateOff(e);
+  if (!off && !bump) return aiDeltaNote(e);
+  const bits = [`earned ${num(earned)}`];
+  if (off) bits.push(`late −${num(off)}`);
+  if (bump) bits.push(`curved +${num(bump)}`);
+  return bits.join(', ');
+}
 function curveDelta(e) {
   const f = finalOf(e), b = earnedOf(e);
-  return (f == null || b == null) ? 0 : Math.round((f - b) * 100) / 100;
+  if (f == null || b == null) return 0;
+  return Math.round((f - b + lateOff(e)) * 100) / 100;
 }
 /* A criterion's score including any curve aimed at that criterion, so the
    per-criterion charts show the effect of a curve instead of the old numbers. */
@@ -3463,16 +3549,48 @@ function infoOf(uid) { return (S.ws.extracted || {})[String(uid)] || {}; }
 /* Surname, the way a roster is usually read. */
 function sortKey(s) { return String(s.name || '').trim().split(/\s+/).pop(); }
 
+const ROSTER_SORTS = ['submitted', 'name', 'name-desc', 'grade-desc', 'grade-asc', 'late'];
+S.sort = S.sort || 'submitted';
+
+function byName(a, b) {
+  return sortKey(a).localeCompare(sortKey(b))
+    || String(a.name || '').localeCompare(String(b.name || ''));
+}
+
+/* A missing score is not a zero. It sorts after every real grade, either way. */
+function gradeOf(s) {
+  const n = finalOf(entryOf(s.user_id));
+  return n == null ? null : +n;
+}
+
+function rosterOrder(a, b) {
+  const mode = S.sort || 'submitted';
+  if (mode === 'name') return byName(a, b);
+  if (mode === 'name-desc') return byName(b, a);
+  if (mode === 'grade-desc' || mode === 'grade-asc') {
+    const ga = gradeOf(a), gb = gradeOf(b);
+    if (ga == null && gb == null) return byName(a, b);
+    if (ga == null) return 1;
+    if (gb == null) return -1;
+    if (ga !== gb) return mode === 'grade-desc' ? gb - ga : ga - gb;
+    return byName(a, b);
+  }
+  if (mode === 'late') {
+    const rank = s => s.status === 'unsubmitted' ? 2 : (s.late ? 0 : 1);
+    const gap = rank(a) - rank(b);
+    if (gap) return gap;
+    const lateGap = (+(b.seconds_late || 0)) - (+(a.seconds_late || 0));
+    if (a.late && b.late && lateGap) return lateGap;
+    return byName(a, b);
+  }
+  // Turned in first, then last name. Empty rows stay at the bottom so grading
+  // can run top to bottom without skipping past people who handed nothing in.
+  return ((a.status === 'unsubmitted') - (b.status === 'unsubmitted')) || byName(a, b);
+}
+
 function students() {
   const all = Object.values(S.ws.extracted || {});
-  // Whoever handed something in comes first, then everyone who did not, each
-  // half alphabetical on its own. Grading runs top to bottom, and a roster that
-  // interleaves empty rows with real work makes you skip past them all the way
-  // down. The people with nothing to read are still listed, just after the
-  // people who gave you something.
-  all.sort((a, b) => (
-    ((a.status === 'unsubmitted') - (b.status === 'unsubmitted'))
-    || sortKey(a).localeCompare(sortKey(b))));
+  all.sort(rosterOrder);
   return all.filter(s => {
     if (S.query && !String(s.name).toLowerCase().includes(S.query)) return false;
     const e = entryOf(s.user_id);
@@ -3717,6 +3835,14 @@ function renderRoster() {
   closeRosterMenu();
   const list = students(), host = $('#roster'), keep = host.scrollTop;
   host.innerHTML = '';
+  const policy = S.ws.late_policy || (S.ws.draft || {}).late_policy || {};
+  if (policy.summary && policy.kind && policy.kind !== 'none') {
+    const note = document.createElement('p');
+    note.className = 'sub';
+    note.style.cssText = 'margin:0 0 8px;padding:0 4px';
+    note.textContent = policy.summary;
+    host.appendChild(note);
+  }
   list.forEach((s, i) => {
     const e = entryOf(s.user_id);
     const shown = finalOf(e);
@@ -3743,6 +3869,8 @@ function renderRoster() {
       ? `<span class="clashMark" title="Canvas holds ${num(e.conflict.canvas_score)}; you have ${total}. Nothing was overwritten.">!</span>` : '';
     const curveMark = bump
       ? `<span class="curveMark" title="includes a curve of +${num(bump)}">↑</span>` : '';
+    const lateMark = lateOff(e)
+      ? `<span class="tag warn" title="${esc((e.late_penalty && e.late_penalty.summary) || '')}">−${num(lateOff(e))}</span>` : '';
     // Video never gets an automatic score, so the roster has to say which rows
     // are waiting on someone to sit and watch them.
     const vidMark = (s.videos || []).length
@@ -3756,11 +3884,16 @@ function renderRoster() {
     const cmtMark = e && e.post_comment && (e.comment || '').trim()
       ? '<span class="cmtMark" title="this comment will be included on the next push">cmt</span>' : '';
     b.innerHTML = `<span><span class="nm">${dot}${esc(s.name)}${ok}${clash}${vidMark}${cmtMark}</span><span class="sub">${esc(sub)}</span></span>
-                   <span class="sc">${postMark}${curveMark}${total}</span>`;
+                   <span class="sc">${postMark}${lateMark}${curveMark}${total}</span>`;
     b.onclick = ev => onRowClick(ev, i, s.user_id);
     host.appendChild(b);
   });
-  if (!list.length) host.innerHTML = '<div style="padding:18px;color:var(--muted);font-size:12.5px">No students match.</div>';
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding:18px;color:var(--muted);font-size:12.5px';
+    empty.textContent = 'No students match.';
+    host.appendChild(empty);
+  }
   host.scrollTop = keep;
   S.anchor = Math.max(0, Math.min(S.anchor, list.length - 1));
   renderBulkBar();
@@ -4165,6 +4298,7 @@ function renderDetail() {
     tags += `<span class="tag">no score · ${esc(unscoredReason(s, e))}</span>`;
   }
   if (bump) tags += `<span class="tag ai">curved +${num(bump)}</span>`;
+  if (lateOff(e)) tags += `<span class="tag warn" title="${esc((e.late_penalty && e.late_penalty.summary) || '')}">late −${num(lateOff(e))}</span>`;
   if (e.human_ok) tags += '<span class="tag ok">reviewed by you</span>';
   if (e.source === 'human') tags += '<span class="tag edit">edited by you</span>';
   else if (e.source === 'canvas') tags += '<span class="tag edit">pulled from Canvas</span>';
@@ -4176,7 +4310,8 @@ function renderDetail() {
   if (e.confidence && e.confidence !== 'high') tags += `<span class="tag">confidence: ${esc(e.confidence)}</span>`;
 
   let html = `<div class="who"><h2>${esc(s.name)}</h2>
-      <span class="id">user ${esc(s.user_id)}${S.ws.pseudonymize ? ' · sent as ' + esc(s.pseudonym) : ''}</span></div>
+      <span class="id">user ${esc(s.user_id)}${S.ws.pseudonymize ? ' · sent as ' + esc(s.pseudonym) : ''}
+        · <a href="#/student/${esc(s.user_id)}">Full record</a></span></div>
     <div class="tags">${tags || '<span class="tag">not graded yet</span>'}</div>`;
 
   if (e.total !== undefined && !isScored(e)) {
@@ -4221,30 +4356,27 @@ function renderDetail() {
       <span class="pct">${(total != null && possible)
         ? (100 * total / possible).toFixed(1) + '%'
           + ` <b class="ltr">${letterOf(100 * total / possible)}</b>` : ''}</span>
-      <span class="origNote">${bump
-        ? `earned ${num(earned)}, curved +${num(bump)}`
-        : aiDeltaNote(e)}</span>
+      <span class="origNote">${scoreAdjustNote(e, earned, bump)}</span>
     </div>
     ${bump ? `<div class="curveNote">
       This score includes a curve you applied${curveSteps(e)}.
       The earned score, ${num(earned)}, is kept underneath and is what comes back
-      if you remove the curve.</div>` : ''}`;
+      if you remove the curve.</div>` : ''}
+    ${lateOff(e) ? `<div class="curveNote">${esc((e.late_penalty && e.late_penalty.summary)
+      || 'A late penalty from the syllabus was applied.')} The rubric above is the
+      score the work earned.</div>` : ''}`;
 
   crits.forEach(c => {
-    const v = +(scores[c.id] || 0);
-    const tiers = (c.ratings || []).map(r => r.points).filter(p => p != null).sort((a, b) => a - b);
-    const useTiers = S.snap && tiers.length > 1;
-    let input, ticks;
-    if (useTiers) {
-      let idx = tiers.indexOf(v);
-      if (idx < 0) idx = tiers.reduce((best, t, i) => Math.abs(t - v) < Math.abs(tiers[best] - v) ? i : best, 0);
-      input = `<input type="range" min="0" max="${tiers.length - 1}" step="1" value="${idx}"
-                 data-cid="${esc(c.id)}" data-tiers="${tiers.join(',')}">`;
-      ticks = `<div class="ticks">${tiers.map(t => '<span>' + num(t) + '</span>').join('')}</div>`;
-    } else {
-      input = `<input type="range" min="0" max="${c.points}" step="1" value="${v}" data-cid="${esc(c.id)}">`;
-      ticks = `<div class="ticks"><span>0</span><span>${num(c.points)}</span></div>`;
-    }
+    const top = +c.points || 0;
+    const v = Math.max(0, Math.min(top, Math.round(+(scores[c.id] || 0))));
+    // Whole points, one at a time. The Canvas ratings stay as marks under the
+    // bar so you can see them, but the bar is not limited to those jumps.
+    const tiers = (c.ratings || []).map(r => Math.round(+r.points))
+      .filter(p => p >= 0 && p <= top);
+    const marks = [...new Set([0, ...tiers, top])].sort((a, b) => a - b);
+    const input = `<input type="range" min="0" max="${top}" step="1" value="${v}"
+                 data-cid="${esc(c.id)}">`;
+    const ticks = `<div class="ticks">${marks.map(t => '<span>' + num(t) + '</span>').join('')}</div>`;
     const why = (e.rationales || {})[c.id];
     html += `<div class="crit">
         <div class="critHead"><span class="lbl">${esc(c.label)}</span>
@@ -4272,9 +4404,9 @@ function renderDetail() {
   host.querySelectorAll('input[type=range]').forEach(r => {
     r.addEventListener('input', ev => {
       const el = ev.target;
-      const val = el.dataset.tiers ? +el.dataset.tiers.split(',')[+el.value] : +el.value;
-      const head = el.closest('.crit').querySelector('.val');
       const c = crits.find(x => x.id === el.dataset.cid);
+      const val = Math.max(0, Math.min(+(c && c.points) || 0, Math.round(+el.value)));
+      const head = el.closest('.crit').querySelector('.val');
       head.innerHTML = `${num(val)}<span style="color:var(--muted);font-weight:400"> / ${num(c.points)}</span>`;
       queueSave(s.user_id);
     });
@@ -4377,7 +4509,8 @@ async function saveStudent(uid) {
   const crits = rubric();
   const scores = {};
   document.querySelectorAll('#detail input[type=range]').forEach(el => {
-    scores[el.dataset.cid] = el.dataset.tiers ? +el.dataset.tiers.split(',')[+el.value] : +el.value;
+    const cap = +((crits.find(c => c.id === el.dataset.cid) || {}).points || 0);
+    scores[el.dataset.cid] = Math.max(0, Math.min(cap, Math.round(+el.value)));
   });
   const comment = ($('#cmt') || {}).value || '';
   const postComment = !!($('#postCmt') || {}).checked;
@@ -4742,6 +4875,29 @@ $('#filters').querySelectorAll('.chip').forEach(c => c.onclick = () => {
   setFilter(c.dataset.f);
   render();
 });
+
+/* The order is a habit, like the filter chip: highest-first should still be
+   highest-first on the next assignment. */
+function setSort(name) {
+  if (!ROSTER_SORTS.includes(name)) name = 'submitted';
+  const current = S.ws ? (students()[S.sel] || {}).user_id : null;
+  S.sort = name;
+  if (S.ws) {
+    const idx = students().findIndex(s => String(s.user_id) === String(current));
+    S.sel = idx >= 0 ? idx : 0;
+  }
+  const box = $('#rosterSort');
+  if (box && box.value !== name) box.value = name;
+  try { localStorage.setItem('cg.sort', name); } catch (_) { /* private mode */ }
+}
+
+const rosterSortBox = $('#rosterSort');
+if (rosterSortBox) {
+  rosterSortBox.onchange = () => { setSort(rosterSortBox.value); render(); };
+  let savedSort = null;
+  try { savedSort = localStorage.getItem('cg.sort'); } catch (_) { /* ignore */ }
+  if (ROSTER_SORTS.includes(savedSort)) setSort(savedSort);
+}
 
 /* The chip is a working preference, not a property of the assignment, so it
    outlives both. Someone who works from "Turned in" wants it still chosen the

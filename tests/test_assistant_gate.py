@@ -146,6 +146,8 @@ class AssistantModes(unittest.TestCase):
         self.assertIsNotNone(hit, "POST /api/assistant/{cid}/mode is missing from the router")
         hit = routing.ROUTER.match("POST", "/api/assistant/734975/prefs")
         self.assertIsNotNone(hit)
+        hit = routing.ROUTER.match("POST", "/api/assistant/734975/sync")
+        self.assertIsNotNone(hit, "POST /api/assistant/{cid}/sync is missing from the router")
 
     def test_auto_mode_settles_a_read_without_waiting(self):
         tmp = Path(tempfile.mkdtemp())

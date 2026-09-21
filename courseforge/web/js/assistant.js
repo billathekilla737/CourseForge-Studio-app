@@ -44,6 +44,7 @@
     const body = $('#areaBody');
     body.innerHTML = `<div class="asst">
       <div class="asstMain">
+        <div id="asstSync"></div>
         <div class="asstChips" id="asstChips"></div>
         <div class="asstLog" id="asstLog" role="log" aria-live="polite" aria-label="The conversation"></div>
         <div id="asstNameFix"></div>
@@ -111,6 +112,7 @@
     }
     if (String(mem.courseId) !== String(courseId)) return;
     mem.headlines = state.headlines || {};
+    asstSyncBanner(courseId, state);
     asstChips($('#asstChips'), state);
     asstNames(state);
     asstModes(state);
@@ -354,7 +356,17 @@
   async function asstWatchDrafts(courseId) {
     const mem = asstMem();
     let rows;
-    try { rows = (await api('/build/' + encodeURIComponent(courseId) + '/drafts')).drafts || []; }
+    try {
+      // First look at this view hydrates unpublished drafts from Canvas user
+      // files. Later ticks only re-read the local list so we do not pull every
+      // 700 ms while the conversation is open.
+      if (!mem.draftSeen) {
+        const st = await api('/build/' + encodeURIComponent(courseId) + '/state');
+        rows = st.drafts || [];
+      } else {
+        rows = (await api('/build/' + encodeURIComponent(courseId) + '/drafts')).drafts || [];
+      }
+    }
     catch (_) { return; }
     if (String(mem.courseId) !== String(courseId) || !$('#asstDrafts')) return;
     asstDraftsRail(courseId, rows);
@@ -372,7 +384,7 @@
         mem.draftPlaced[id] = nowPlaced;
         asstDraftIntoLog(courseId, d, nowPlaced
           ? 'Placed in the course. Preview it here, or open it in Canvas.'
-          : 'Drafted on this computer. Preview it here before it goes to Canvas.');
+          : 'Draft saved. Preview it here before it is placed in the course.');
       } else if (nowPlaced && !mem.draftPlaced[id]) {
         mem.draftPlaced[id] = true;
         asstDraftIntoLog(courseId, d, 'Now in Canvas. Preview it here, or open the live page.');
@@ -487,6 +499,42 @@
       <span class="when">${esc(fmtDate(r.at) || '')}</span>
       ${esc(r.sentence || '')}
       ${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">open</a>` : ''}</li>`).join('')}</ul>`;
+  }
+
+  function asstSyncBanner(courseId, state) {
+    const host = $('#asstSync');
+    if (!host) return;
+    const sync = (state && state.sync) || {};
+    const did = sync.did || sync.action || '';
+    if (did === 'diverged') {
+      const who = sync.remote_machine || 'another computer';
+      host.innerHTML = `<div class="callout warn">This conversation also changed on
+        ${esc(String(who))}. Nothing was overwritten.
+        <div class="foot" style="margin-top:.6rem">
+          <button class="btn" id="asstTakeRemote" type="button">Use the Canvas copy</button>
+          <button class="btn" id="asstTakeLocal" type="button">Keep this computer's chat</button>
+        </div></div>`;
+      const remote = $('#asstTakeRemote'), local = $('#asstTakeLocal');
+      if (remote) remote.onclick = () => asstResolveSync(courseId, 'remote');
+      if (local) local.onclick = () => asstResolveSync(courseId, 'local');
+      return;
+    }
+    if (did === 'error') {
+      host.innerHTML = `<div class="callout warn">Could not copy this chat to your Canvas
+        files: ${esc(sync.reason || sync.detail || 'unknown error')}. It is still saved here.</div>`;
+      return;
+    }
+    if (did === 'picked_up' || did === 'seeded' || did === 'sent' || did === 'in_sync') {
+      host.innerHTML = '<p class="hint">Saved here and in your Canvas files, so another PC signed in as you can pick it up.</p>';
+      return;
+    }
+    host.innerHTML = '';
+  }
+
+  function asstResolveSync(courseId, take) {
+    api(asstBase(courseId) + '/sync', { body: { take } })
+      .then(() => openAssistant(courseId, []))
+      .catch(err => setStatus('could not settle the two copies: ' + firstLine(err.message), 'err'));
   }
 
   /* What the ring has forgotten, written to disk at the time: shown once, at

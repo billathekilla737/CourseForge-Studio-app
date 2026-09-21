@@ -324,7 +324,17 @@ For each student the prompt contains:
 3. Your custom instructions, marked as overriding the rubric
 4. Submission metadata — status, timestamp, late flag, word count, filenames,
    and an explicit note listing any parts that could not be converted to text
-5. The student's work
+5. The student's work. Word, PowerPoint, Excel and text PDFs are read as
+   text. Screenshots (PNG, JPEG and the other common picture types), pictures
+   pasted inside those Office files, and scanned PDFs are sent as images and
+   graded from what is on the page. Video is not sent; you watch that.
+
+A late submission is still graded as if it were on time. After the scores come
+back, the Studio reads this course's syllabus (the late-work section, not the
+opening) and applies that rule: 10% per day, a flat percent, or no late work
+at all. The rubric cells stay as the work earned them. The number that posts
+is the earned score minus that dock. If Canvas already has a late policy
+turned on, Studio does not dock a second time and says so on the roster.
 
 Claude returns strict JSON: per-criterion points and rationale, a comment, flags,
 a confidence level, and a `needs_human` boolean. Anything unparseable is recorded

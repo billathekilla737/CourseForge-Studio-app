@@ -30,8 +30,33 @@ from .canvas_files import FilesOps
 
 USER_AGENT = "courseforge-studio/2.0 (+local instructor tool)"
 _NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
+_FILE_IN_URL = re.compile(r"/files/(\d+)(?:/|$)")
 # Same cap as extract.expand_archive: a student file is not allowed to fill the disk.
 MAX_DOWNLOAD_BYTES = 150_000_000
+
+
+def _cookie_header(cookies: dict, url: str) -> str:
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    return "; ".join(f"{name}={value}" for (owner, name), value in cookies.items()
+                     if owner == host)
+
+
+def _keep_cookies(headers, url: str, cookies: dict) -> None:
+    """Remember Set-Cookie for the host that sent it. Not for the next host."""
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    raw = []
+    if headers is not None and hasattr(headers, "get_all"):
+        raw = headers.get_all("Set-Cookie") or []
+    elif headers is not None:
+        one = headers.get("Set-Cookie") if hasattr(headers, "get") else None
+        if one:
+            raw = [one]
+    for item in raw:
+        pair = str(item).split(";", 1)[0]
+        if "=" not in pair:
+            continue
+        name, value = pair.split("=", 1)
+        cookies[(host, name.strip())] = value.strip()
 
 
 class CanvasError(RuntimeError):
@@ -162,8 +187,28 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
         return list(self.paged(f"/courses/{course_id}/assignments",
                                include=["assignment_visibility"], order_by="due_at"))
 
+    def assignments_with_overrides(self, course_id: int | str) -> list[dict]:
+        """Assignments plus their due-date overrides, in one read.
+
+        One call per course, instead of one more call for every assignment.
+        """
+        return list(self.paged(f"/courses/{course_id}/assignments",
+                               include=["overrides"]))
+
     def assignment(self, course_id: int | str, assignment_id: int | str) -> dict:
         return self.get(f"/courses/{course_id}/assignments/{assignment_id}")
+
+    def course_late_policy(self, course_id: int | str) -> dict | None:
+        """Canvas's own late-policy object, or None if the course has none."""
+        try:
+            raw = self.get(f"/courses/{course_id}/late_policy")
+        except CanvasError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        if not isinstance(raw, dict):
+            return None
+        return raw.get("late_policy") or raw
 
     def students(self, course_id: int | str) -> list[dict]:
         return list(self.paged(f"/courses/{course_id}/users",
@@ -592,15 +637,18 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             return None
 
-    def _open_url(self, url: str, use_token: bool, timeout: int):
+    def _open_url(self, url: str, use_token: bool, timeout: int,
+                  cookies: dict | None = None):
         """GET a URL. Never follows redirects: a 302 to S3 must not take the
-        Canvas bearer token with it, and student-supplied URLs get at most one
-        hop, checked by `_fetch_bytes`."""
+        Canvas bearer token with it. `_follow_file` decides the next hop."""
         req = urllib.request.Request(url)
         req.add_header("User-Agent", USER_AGENT)
         if use_token:
             canvas_policy.assert_token_host(self.base, url, self.allowed_hosts)
             req.add_header("Authorization", f"Bearer {self.token}")
+        baked = _cookie_header(cookies or {}, url)
+        if baked:
+            req.add_header("Cookie", baked)
         return urllib.request.build_opener(self._NoRedirect).open(req, timeout=timeout)
 
     def _read_limited(self, resp, limit: int = MAX_DOWNLOAD_BYTES) -> bytes:
@@ -624,48 +672,97 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
         return b"".join(chunks)
 
     def _fetch_bytes(self, url: str, timeout: int) -> bytes:
-        """Download file bytes. Signed storage URLs go without a token; Canvas
-        /files/:id/download URLs that 302 to storage are followed without it,
-        once, and only onto a Canvas file host — never localhost or RFC1918."""
+        """Download file bytes.
+
+        A Canvas /files/:id/download link does not return the file. It 302s to
+        InstFS, which 302s to S3, which sometimes 302s once more to a regional
+        bucket. The bearer token stays on the Canvas host only. Cookies set
+        along the way are sent back to the host that set them, because InstFS
+        refuses the next hop without them.
+        """
         if not canvas_policy.file_url_allowed(url, self.base, self.allowed_hosts):
             raise RuntimeError("refused to fetch a file from a host that is not Canvas")
         if canvas_policy.same_host(self.base, url):
             canvas_policy.check_scope(self.scope, "GET", url)
         errors: list[str] = []
-        # Canvas often 302s to InstFS, which may 302 once more to object storage.
-        # Two hops, each allow-listed, is the most we will chase.
-        max_hops = 2
-        token_ok = canvas_policy.same_host(self.base, url)
-        for use_token in ((False, True) if token_ok else (False,)):
-            target = url
-            token_this = use_token
+        # Authenticated first when the link is still on Canvas. Trying with no
+        # token first walks into the login page and burns the attempt.
+        on_canvas = canvas_policy.same_host(self.base, url)
+        attempts = (True, False) if on_canvas else (False,)
+        for use_token in attempts:
+            got = self._follow_file(url, timeout, use_token, errors)
+            if got:
+                return got
+        fid = _FILE_IN_URL.search(url)
+        if fid and on_canvas:
             try:
-                for hop in range(max_hops + 1):
-                    try:
-                        with self._open_url(target, token_this, timeout) as resp:
-                            data = self._read_limited(resp)
-                        if data:
-                            return data
-                        errors.append("empty response")
-                        break
-                    except urllib.error.HTTPError as exc:
-                        loc = (exc.headers.get("Location") or "").strip() if exc.code in (
-                            301, 302, 303, 307, 308) else ""
-                        if loc and hop < max_hops:
-                            nxt = urllib.parse.urljoin(target, loc)
-                            if not canvas_policy.file_url_allowed(
-                                    nxt, self.base, self.allowed_hosts):
-                                errors.append("redirect was not a Canvas file host")
-                                break
-                            target = nxt
-                            token_this = False
-                            continue
-                        errors.append(
-                            f"HTTP {exc.code}{' with token' if token_this else ''}")
-                        break
+                info = self.get(f"/files/{fid.group(1)}")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"could not ask Canvas for a fresh link ({type(exc).__name__})")
+                info = None
+            fresh = (info or {}).get("url") if isinstance(info, dict) else ""
+            if fresh and fresh != url:
+                got = self._follow_file(fresh, timeout, False, errors)
+                if got:
+                    return got
+        raise RuntimeError(f"could not download attachment ({'; '.join(errors)})")
+
+    def _follow_file(self, url: str, timeout: int, use_token: bool,
+                     errors: list[str]) -> bytes | None:
+        """Follow one download, up to five redirects. None means this attempt failed."""
+        target = url
+        cookies: dict[tuple[str, str], str] = {}
+        seen: set[str] = set()
+        # Five hops: Canvas → InstFS → S3 → regional bucket → the bytes.
+        for hop in range(6):
+            if target in seen:
+                errors.append("redirect loop")
+                return None
+            seen.add(target)
+            if not canvas_policy.file_url_allowed(target, self.base, self.allowed_hosts):
+                errors.append("redirect was not a Canvas file host")
+                return None
+            path = (urllib.parse.urlparse(target).path or "").lower()
+            if path.startswith("/login") or path.startswith("/login/"):
+                errors.append("Canvas asked for a login instead of the file")
+                return None
+            token_this = bool(use_token and canvas_policy.same_host(self.base, target))
+            try:
+                with self._open_url(target, token_this, timeout, cookies) as resp:
+                    code = getattr(resp, "status", None) or getattr(resp, "code", 200)
+                    if code in (301, 302, 303, 307, 308):
+                        loc = (resp.headers.get("Location") or "").strip()
+                        if not loc or hop >= 5:
+                            errors.append(f"HTTP {code}")
+                            return None
+                        _keep_cookies(resp.headers, target, cookies)
+                        target = urllib.parse.urljoin(target, loc)
+                        continue
+                    data = self._read_limited(resp)
+                    ctype = (resp.headers.get("Content-Type") or "").lower()
+            except urllib.error.HTTPError as exc:
+                loc = ""
+                if exc.code in (301, 302, 303, 307, 308):
+                    loc = (exc.headers.get("Location") or "").strip()
+                if loc and hop < 5:
+                    _keep_cookies(exc.headers, target, cookies)
+                    target = urllib.parse.urljoin(target, loc)
+                    continue
+                errors.append(f"HTTP {exc.code}{' with token' if token_this else ''}")
+                return None
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{type(exc).__name__}: {exc}")
-        raise RuntimeError(f"could not download attachment ({'; '.join(errors)})")
+                return None
+            if data and "text/html" in ctype and not target.lower().split("?", 1)[0].endswith(
+                    (".html", ".htm")):
+                errors.append("Canvas returned a web page instead of the file")
+                return None
+            if data:
+                return data
+            errors.append("empty response")
+            return None
+        errors.append("too many redirects")
+        return None
 
     def upload_user_file(self, name: str, payload: bytes,
                          folder: str = "canvas-grader",
@@ -740,6 +837,35 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
     def user_quota(self) -> dict:
         """Bytes allowed and bytes used in your own file area."""
         return self.get("/users/self/files/quota") or {}
+
+    def user_file_named(self, name: str, folder: str = "courseforge-studio/state") -> dict | None:
+        """One file in a user-files folder, matched on display_name. None if missing."""
+        want = str(name)
+        for f in self.user_folder_files(folder):
+            if (f.get("display_name") or f.get("filename") or "") == want:
+                return f
+        return None
+
+    def read_user_named(self, name: str, folder: str = "courseforge-studio/state") -> bytes | None:
+        found = self.user_file_named(name, folder)
+        if not found:
+            return None
+        url = found.get("url") or found.get("download_url")
+        if not url:
+            return None
+        return self.read_file_bytes(url)
+
+    def quota_headroom(self, need: int = 0) -> dict:
+        """quota/quota_used plus whether `need` more bytes would fit."""
+        raw = self.user_quota() or {}
+        cap = int(raw.get("quota") or 0)
+        used = int(raw.get("quota_used") or 0)
+        return {
+            "quota": cap,
+            "quota_used": used,
+            "free": max(0, cap - used) if cap else None,
+            "ok": True if not cap else (used + int(need) <= cap),
+        }
 
     # --------------------------------------------------------------- graphql
     def graphql(self, query: str, variables: dict | None = None) -> dict:

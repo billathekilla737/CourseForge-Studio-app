@@ -20,14 +20,19 @@ Assistant within the whole roster.
 
 Neither map file ever leaves the computer. Not to Canvas, not to Anthropic,
 not into the grading handoff (`handoff.py` documents `map.json` as the one
-file it deliberately does not carry).
+file it deliberately does not carry). Tags are assigned in Canvas user-id
+order the first time a machine absorbs the roster, so Student-3 on this PC
+may be Student-11 on another until tags are derived from user id. Rebuild
+from the live roster; do not copy `names.json` or `map.json` between machines.
 
 ## What the Assistant does
 
 Type a real name. Before the message goes anywhere it is swapped for that
 student's tag, and the reply's tags are swapped back into names on the way to
 the screen. The transcript on disk and the event log keep the tag, because
-those are the record of what actually left the machine.
+those are the record of what actually left the machine. That tagged
+transcript is what copies to your Canvas user files so another computer can
+show the same chat; `names.json` still never leaves this PC.
 
 It recognises the full name, the name written last-name-first, the short name,
 the login id, the SIS id and the email. It recognises a first or last name on

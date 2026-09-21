@@ -139,6 +139,9 @@ aside{border-right:1px solid var(--line);background:var(--panel);display:flex;fl
 .rosterTools{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
 .rosterTools input[type=search]{width:100%;padding:7px 10px;border:1px solid var(--line);
   border-radius:var(--radius);background:var(--bg)}
+.rosterSort{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+.rosterSort select{flex:1;min-width:0;font:12px/1.3 var(--sans);padding:4px 6px;
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--bg);color:var(--ink)}
 .chips{display:flex;gap:4px;flex-wrap:wrap}
 .chip{padding:4px 9px;font-size:11.5px;border:1px solid var(--line);border-radius:99px;
   background:transparent;cursor:pointer}

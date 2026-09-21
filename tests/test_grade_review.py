@@ -303,8 +303,13 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         # Bulk bar and context menu share one action list, so a new verb cannot
         # land on shift-click and be missing from right-click (or the reverse).
         self.assertIn("selectionItems(st)", self.src)
-        self.assertIn("js/grade.js?v=ann-preview-1",
+        self.assertIn("js/grade.js?v=rubric-step-1",
                       (WEB / "index.html").read_text(encoding="utf-8"))
+        self.assertIn('step="1"', self.src)
+        self.assertNotIn("data-tiers", self.src)
+        self.assertIn('id="rosterSort"', (WEB / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("function rosterOrder(", self.src)
+        self.assertIn("grade-desc", self.src)
 
     def test_a_schedule_assignment_name_is_a_real_link(self):
         """Middle-click uses the href, not the click handler. href="#" is the

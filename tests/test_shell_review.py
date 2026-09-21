@@ -296,12 +296,24 @@ class FrontEndContract(unittest.TestCase):
         Canvas link once the item has been placed."""
         src = (JS / "assistant.js").read_text(encoding="utf-8")
         self.assertIn("function asstWatchDrafts(", src)
+        self.assertIn("/state", src)
         self.assertIn("function asstPreviewDraft(", src)
         self.assertIn("function asstLoadPreview(", src)
         self.assertIn("/preview", src)
         self.assertIn("Open in Canvas", src)
         self.assertIn("Open in Build", src)
         self.assertIn("placed.html_url", src)
+
+    def test_assistant_and_build_copy_across_machines(self):
+        asst = (JS / "assistant.js").read_text(encoding="utf-8")
+        self.assertIn("function asstSyncBanner(", asst)
+        self.assertIn("/sync", asst)
+        build = (JS / "content.js").read_text(encoding="utf-8")
+        self.assertIn("function buildSyncBanner(", build)
+        self.assertIn("copied to your Canvas files", build)
+        core = (JS / "core.js").read_text(encoding="utf-8")
+        self.assertNotIn("function thisPcNote(", core)
+        self.assertNotIn("unpublished Build drafts copy", core)
 
 
 if __name__ == "__main__":

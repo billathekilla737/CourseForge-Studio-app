@@ -1,8 +1,10 @@
-"""Turn whatever a student submitted into plain text a model can read.
+"""Turn whatever a student submitted into text and pictures a model can grade.
 
-Handles Canvas RCE HTML, .docx (including text boxes, which python-docx skips),
-.pdf, and plain text. Images, video and unknown binaries are reported as such so
-the caller can route them to a human, to a vision-capable path, or to a player.
+Handles Canvas RCE HTML, Word (.docx, including text boxes), PowerPoint
+(.pptx), Excel (.xlsx), PDF (text, or page images when it is a scan), plain
+text, code, and screenshots (.png, .jpg, .jpeg, .webp, .gif, and the rest of
+IMAGE_EXT). Video is reported so the instructor can watch it; it is not sent
+to a model.
 """
 from __future__ import annotations
 
@@ -12,11 +14,14 @@ import shutil
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote_plus, urlparse
 
 from .canvas_policy import file_url_allowed
 
-IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".bmp", ".tif", ".tiff"}
+IMAGE_EXT = {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".gif", ".webp",
+             ".heic", ".bmp", ".tif", ".tiff"}
+# What the grader can hand to Claude without a conversion step.
+VISION_EXT = {".png", ".jpg", ".jpeg", ".jpe", ".jfif", ".webp", ".gif"}
 # Screen recordings and phone video. Nothing reads these: they are handed to the
 # browser to play, and the instructor watches them. Deliberately not sent to a
 # model -- a minute of video costs many times what a whole essay does.
@@ -25,7 +30,7 @@ VIDEO_EXT = {".mov", ".mp4", ".m4v", ".webm", ".avi", ".mkv", ".mpg", ".mpeg",
 # What a browser will actually play. The rest still gets a card and a download
 # link, because "your player cannot open this" beats a blank panel.
 VIDEO_PLAYABLE = {".mp4", ".m4v", ".webm", ".ogv", ".mov"}
-TEXT_EXT = {".txt", ".md", ".csv", ".json", ".log"}
+TEXT_EXT = {".txt", ".md", ".csv", ".tsv", ".json", ".log", ".rtf"}
 # Source files are plain text and students submit them constantly. Reading them
 # as text beats reporting "no extractor" and grading an empty submission.
 CODE_EXT = {
@@ -168,7 +173,7 @@ def rce_file_refs(raw: str | None, base_url: str = "",
         if not name:
             alt = _ALT.search(match.group(0))
             name = htmllib.unescape(alt.group(1)).strip() if alt else ""
-        name = name or f"file_{fid}"
+        name = unquote_plus(name or "").strip() or f"file_{fid}"
 
         verifier = _VERIFIER.search(url)
         path = parsed.path or url.split("?")[0]
@@ -231,14 +236,210 @@ def pdf_to_text(path: Path) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(pages)).strip()
 
 
+def pdf_page_images(path: Path, max_pages: int = 6) -> list[Path]:
+    """Render a scanned PDF to PNGs so the grader can see the pages.
+
+    Needs PyMuPDF. When it is not installed, returns nothing and the caller
+    keeps the 'no extractable text' note.
+    """
+    try:
+        import pymupdf
+    except ImportError:
+        return []
+    out: list[Path] = []
+    folder = path.parent / (path.stem + "-pages")
+    try:
+        doc = pymupdf.open(str(path))
+    except Exception:  # noqa: BLE001
+        return []
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        for index, page in enumerate(doc):
+            if index >= max_pages:
+                break
+            pix = page.get_pixmap(dpi=110)
+            target = folder / f"page-{index + 1}.png"
+            pix.save(str(target))
+            out.append(target)
+    except Exception:  # noqa: BLE001
+        return out
+    finally:
+        doc.close()
+    return out
+
+
+# -------------------------------------------------------------------- OOXML
+_OFFICE_MEDIA = {
+    ".docx": "word/media/",
+    ".pptx": "ppt/media/",
+    ".xlsx": "xl/media/",
+    ".xlsm": "xl/media/",
+}
+_MEDIA_EXT = {".png", ".jpg", ".jpeg", ".jpe", ".jfif", ".gif", ".webp", ".bmp", ".tif", ".tiff"}
+
+
+def _xml_texts(xml: str, tag: str) -> list[str]:
+    return [htmllib.unescape(t).strip()
+            for t in re.findall(rf"<{tag}(?:\s[^>]*)?>(.*?)</{tag}>", xml, flags=re.S)
+            if t and t.strip()]
+
+
+def pptx_to_text(path: Path) -> str:
+    """Slide text in order, then speaker notes. Text boxes included."""
+    lines: list[str] = []
+    with zipfile.ZipFile(path) as zf:
+        slides = [n for n in zf.namelist()
+                  if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)]
+        slides.sort(key=lambda n: int(re.search(r"(\d+)", n).group(1)))
+        for index, name in enumerate(slides, start=1):
+            bits = _xml_texts(zf.read(name).decode("utf-8", "replace"), "a:t")
+            if bits:
+                lines.append(f"Slide {index}")
+                lines.extend(bits)
+        notes = [n for n in zf.namelist()
+                 if re.fullmatch(r"ppt/notesSlides/notesSlide\d+\.xml", n)]
+        notes.sort(key=lambda n: int(re.search(r"(\d+)", n).group(1)))
+        for index, name in enumerate(notes, start=1):
+            bits = _xml_texts(zf.read(name).decode("utf-8", "replace"), "a:t")
+            # The first runs are usually the slide number placeholder.
+            bits = [b for b in bits if b and not b.isdigit()]
+            if bits:
+                lines.append(f"Notes {index}")
+                lines.extend(bits)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def xlsx_to_text(path: Path, max_sheets: int = 8, max_rows: int = 250,
+                 max_cols: int = 30) -> str:
+    """Cell text from an .xlsx, sheet by sheet. Formulas keep their cached value."""
+    with zipfile.ZipFile(path) as zf:
+        names = set(zf.namelist())
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in names:
+            xml = zf.read("xl/sharedStrings.xml").decode("utf-8", "replace")
+            for item in re.split(r"</si>", xml):
+                bits = _xml_texts(item, "t")
+                if bits or "<si" in item:
+                    shared.append("".join(bits))
+        sheets = [n for n in names if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)]
+        sheets.sort(key=lambda n: int(re.search(r"(\d+)", n).group(1)))
+        titles = _sheet_titles(zf, names)
+        blocks: list[str] = []
+        for index, name in enumerate(sheets[:max_sheets]):
+            title = titles[index] if index < len(titles) else f"Sheet {index + 1}"
+            rows = _sheet_rows(zf.read(name).decode("utf-8", "replace"), shared,
+                               max_rows, max_cols)
+            if rows:
+                blocks.append(title + "\n" + "\n".join(rows))
+    return "\n\n".join(blocks).strip()
+
+
+def _sheet_titles(zf: zipfile.ZipFile, names: set[str]) -> list[str]:
+    if "xl/workbook.xml" not in names:
+        return []
+    xml = zf.read("xl/workbook.xml").decode("utf-8", "replace")
+    return [htmllib.unescape(n) for n in re.findall(r'<sheet\b[^>]*\bname="([^"]+)"', xml)]
+
+
+def _sheet_rows(xml: str, shared: list[str], max_rows: int, max_cols: int) -> list[str]:
+    rows: list[str] = []
+    for chunk in re.split(r"</row>", xml)[:max_rows + 1]:
+        if "<c " not in chunk and "<c>" not in chunk:
+            continue
+        cells: list[str] = []
+        for cell in re.findall(r"<c\b([^>]*)>(.*?)</c>", chunk, flags=re.S)[:max_cols]:
+            attrs, body = cell
+            kind = ""
+            match = re.search(r'\bt="([^"]+)"', attrs)
+            if match:
+                kind = match.group(1)
+            value = ""
+            if kind == "s":
+                raw = re.search(r"<v>(.*?)</v>", body)
+                if raw:
+                    try:
+                        value = shared[int(raw.group(1))]
+                    except (ValueError, IndexError):
+                        value = raw.group(1)
+            elif kind == "inlineStr":
+                value = "".join(_xml_texts(body, "t"))
+            else:
+                raw = re.search(r"<v>(.*?)</v>", body)
+                value = htmllib.unescape(raw.group(1)) if raw else "".join(_xml_texts(body, "t"))
+            cells.append(value.replace("\n", " ").strip())
+        if any(cells):
+            rows.append(" | ".join(cells).rstrip(" |"))
+            if len(rows) >= max_rows:
+                rows.append("…")
+                break
+    return rows
+
+
+def embedded_images(path: Path, max_images: int = 8) -> list[Path]:
+    """Screenshots pasted into a Word, PowerPoint or Excel file."""
+    prefix = _OFFICE_MEDIA.get(path.suffix.lower())
+    if not prefix:
+        return []
+    out: list[Path] = []
+    folder = path.parent / (path.stem + "-media")
+    try:
+        zf = zipfile.ZipFile(path)
+    except (OSError, zipfile.BadZipFile):
+        return []
+    with zf:
+        members = [n for n in zf.namelist()
+                   if n.startswith(prefix) and Path(n).suffix.lower() in _MEDIA_EXT]
+        for name in members:
+            info = zf.getinfo(name)
+            if info.file_size < 4096 or info.file_size > 15_000_000:
+                continue
+            folder.mkdir(parents=True, exist_ok=True)
+            target = _vision_copy(folder / Path(name).name, zf.read(name))
+            if target:
+                out.append(target)
+            if len(out) >= max_images:
+                break
+    return out
+
+
+def _vision_copy(dest: Path, raw: bytes) -> Path | None:
+    """Write image bytes as a PNG or JPEG Claude can read."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    ext = dest.suffix.lower()
+    if ext in VISION_EXT and ext not in {".bmp", ".tif", ".tiff", ".heic"}:
+        dest.write_bytes(raw)
+        return dest
+    try:
+        import io
+        from PIL import Image
+        with Image.open(io.BytesIO(raw)) as im:
+            target = dest.with_suffix(".png")
+            im.convert("RGB").save(target, "PNG")
+        return target
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _prepare_image(path: Path) -> Path:
+    """PNG/JPEG stay as they are. BMP, TIFF and HEIC become a PNG beside them."""
+    if path.suffix.lower() in VISION_EXT:
+        return path
+    try:
+        prepared = _vision_copy(path.with_name(path.stem + "-vision.png"), path.read_bytes())
+        return prepared or path
+    except OSError:
+        return path
+
+
 # --------------------------------------------------------------------- file
 def extract_file(path: Path, label: str | None = None) -> Extracted:
     label = label or path.name
     ext = path.suffix.lower()
     try:
         if ext in IMAGE_EXT:
-            return Extracted(label, kind="image", path=str(path),
-                             note="image -- needs a human or a vision pass")
+            ready = _prepare_image(path)
+            return Extracted(label, kind="image", path=str(ready),
+                             note="image — graded from the picture")
         if ext in VIDEO_EXT:
             playable = ext in VIDEO_PLAYABLE
             return Extracted(
@@ -252,14 +453,31 @@ def extract_file(path: Path, label: str | None = None) -> Extracted:
             )
         if ext == ".docx":
             return Extracted(label, text=docx_to_text(path), path=str(path))
+        if ext == ".pptx":
+            return Extracted(label, text=pptx_to_text(path), path=str(path))
+        if ext in (".xlsx", ".xlsm"):
+            return Extracted(label, text=xlsx_to_text(path), path=str(path))
         if ext == ".pdf":
             text = pdf_to_text(path)
             if len(text.split()) < 5:
+                pages = pdf_page_images(path)
+                if pages:
+                    return Extracted(label, text=text, kind="text", path=str(path),
+                                     note="scanned PDF — pages are graded as images",
+                                     data={"pages": [str(p) for p in pages]})
                 return Extracted(label, text=text, kind="binary", path=str(path),
-                                 note="PDF has no extractable text -- likely a scan")
+                                 note="PDF has no extractable text — likely a scan. "
+                                      "Install PyMuPDF (pip install pymupdf) so those "
+                                      "pages can be graded as images.")
             return Extracted(label, text=text, path=str(path))
         if ext in TEXT_EXT or ext in CODE_EXT:
             body = path.read_text(encoding="utf-8-sig", errors="replace").strip()
+            if ext == ".rtf":
+                body = re.sub(r"\\'[0-9a-fA-F]{2}", " ", body)
+                body = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", body)
+                body = body.replace("{", " ").replace("}", " ")
+                body = re.sub(r"[ \t]+", " ", body)
+                body = re.sub(r"\n{3,}", "\n\n", body).strip()
             if ext in CODE_EXT:
                 lang = ext.lstrip(".")
                 body = "```" + lang + "\n" + body + "\n```"
@@ -272,7 +490,11 @@ def extract_file(path: Path, label: str | None = None) -> Extracted:
                              note="Blender file, not analyzed yet - run the Blender pass")
         if ext == ".doc":
             return Extracted(label, kind="binary", path=str(path),
-                             note="legacy .doc -- ask the student to resubmit as .docx or PDF")
+                             note="legacy .doc — ask the student to resubmit as .docx or PDF")
+        if ext in (".xls", ".ppt"):
+            return Extracted(label, kind="binary", path=str(path),
+                             note=f"legacy {ext} — ask the student to resubmit as "
+                                  f"{'.xlsx' if ext == '.xls' else '.pptx'}")
         return Extracted(label, kind="binary", path=str(path),
                          note=f"no text extractor for {ext or 'this file type'}")
     except Exception as exc:  # noqa: BLE001 - report, never crash a batch
@@ -348,6 +570,27 @@ def expand_archive(archive: Path, dest_dir: Path, prefix: str = "",
     return out
 
 
+def unpack_file(path: Path, label: str | None = None) -> list[Extracted]:
+    """The file itself, plus screenshots pasted inside it or scanned PDF pages."""
+    main = extract_file(path, label)
+    label = main.label
+    pages = list((main.data or {}).get("pages") or [])
+    parts: list[Extracted] = []
+    if pages:
+        if (main.text or "").strip():
+            parts.append(main)
+        for index, page in enumerate(pages, start=1):
+            parts.append(Extracted(f"{label} page {index}", kind="image", path=page,
+                                   note="page of a scanned PDF"))
+    else:
+        parts.append(main)
+    if main.kind != "image":
+        for image in embedded_images(path):
+            parts.append(Extracted(f"{label} — {image.name}", kind="image", path=str(image),
+                                   note="image inside the submitted file"))
+    return parts
+
+
 def extract_submission(body_html: str | None, files: list[Path],
                        labels: dict[str, str] | None = None) -> Submission:
     sub = Submission()
@@ -356,7 +599,8 @@ def extract_submission(body_html: str | None, files: list[Path],
     if body:
         sub.add(Extracted("Canvas text entry", text=body))
     for path in files:
-        sub.add(extract_file(path, labels.get(str(path))))
+        for part in unpack_file(path, labels.get(str(path))):
+            sub.add(part)
 
     # Only warn about images pasted into the editor if we did not manage to pull
     # them down. When the caller harvested them there are real image parts and

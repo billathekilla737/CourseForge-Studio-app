@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="css/content.css">
 <link rel="stylesheet" href="css/courseops.css">
 <link rel="stylesheet" href="css/assistant.css">
+<link rel="stylesheet" href="css/student.css?v=students-4">
 </head>
 <body>
 
@@ -121,6 +122,16 @@
         <button class="chip" data-f="conflict" aria-pressed="false"
           title="Students where Canvas holds a different score from the one here">Conflicts</button>
       </div>
+      <label class="rosterSort">Organize
+        <select id="rosterSort" aria-label="Organize the class list">
+          <option value="submitted">Turned in, then name</option>
+          <option value="name">Name A–Z</option>
+          <option value="name-desc">Name Z–A</option>
+          <option value="grade-desc">Grade, highest first</option>
+          <option value="grade-asc">Grade, lowest first</option>
+          <option value="late">Most late first</option>
+        </select>
+      </label>
     </div>
     <div class="roster" id="roster"></div>
     <div class="bulkBar" id="bulkBar"></div>
@@ -147,21 +158,22 @@
 <!-- Load order matters: the shell, the components, then every area, then the
      boot call. An area script that does not exist yet is a 404 the page
      shrugs off; its hub card says "Not installed". -->
-<script src="js/core.js"></script>
+<script src="js/core.js?v=students-1"></script>
 <script src="js/components.js"></script>
-<script src="js/grade.js?v=ann-preview-1"></script>
-<script src="js/hub.js"></script>
+<script src="js/grade.js?v=rubric-step-1"></script>
+<script src="js/hub.js?v=students-1"></script>
 <script src="js/a11y.js"></script>
 <script src="js/files.js"></script>
 <script src="js/docs.js"></script>
 <script src="js/pdf.js"></script>
-<script src="js/content.js"></script>
+<script src="js/content.js?v=state-persist-1"></script>
 <script src="js/courseops.js"></script>
-<script src="js/assistant.js"></script>
+<script src="js/assistant.js?v=state-persist-1"></script>
 <script src="js/record.js"></script>
 <script src="js/inbox.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/extend.js"></script>
+<script src="js/student.js?v=students-5"></script>
 <script src="js/boot.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>

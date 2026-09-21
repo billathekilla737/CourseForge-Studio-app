@@ -34,15 +34,34 @@ Three rules hold everywhere:
   comparison; fixed PDFs must survive an independent text and render check or
   they are deleted and queued for a person; documents that fail verification
   are never uploaded.
-- **Student data stays on this machine.** Type a real name anywhere a model
-  is involved and it is swapped for a tag first -- `S-001` while grading,
-  `Student-1` in the Assistant -- and swapped back on the way to your screen.
-  The list of who is who never leaves your computer. Every area except grading
-  works through a Canvas client that cannot reach submissions, grades or
-  rosters at all. Type `@` in the Assistant for the roster, so the spelling is
-  never yours to get wrong, and a name typed a keystroke off is stopped and
-  queried rather than sent as written. The details, and the one thing this
-  does not cover, are in [docs/NAMES.md](docs/NAMES.md).
+- **Student data stays on this machine** except the few blobs copied to your
+  own Canvas user files so a second computer can pick them up. Type a real
+  name anywhere a model is involved and it is swapped for a tag first --
+  `S-001` while grading, `Student-1` in the Assistant -- and swapped back on
+  the way to your screen. The list of who is who never leaves your computer.
+  Every area except grading works through a Canvas client that cannot reach
+  submissions, grades or rosters at all. Type `@` in the Assistant for the
+  roster, so the spelling is never yours to get wrong, and a name typed a
+  keystroke off is stopped and queried rather than sent as written. The
+  details are in [docs/NAMES.md](docs/NAMES.md).
+
+### What follows you to another PC
+
+Logging into Canvas on a second computer is not the same as having Studio
+state. A token still has to be pasted there, and Claude still has to be
+signed in.
+
+| Follows you | How |
+|---|---|
+| Posted grades, applied quiz extras, deadline overrides, Inbox threads, pushed pages | Live Canvas |
+| Standing accommodations roster | Copied to **Files → courseforge-studio → state** |
+| Instructor notes on a student | Same folder, `students-<id>.json` |
+| Assistant chats | Same folder, `assistant-<course>.json` (tags, not names). The transcript follows you; Claude's session id does not resume on another PC |
+| Unpublished Build drafts | Same folder, `build-<course>.json` |
+| Grade drafts in progress | Only if you handed that assignment off (`canvas-grader/`) |
+| Identity maps (`names.json`, `map.json`) | Never. Rebuilt from the live roster |
+| Accessibility work in progress | This PC only |
+| Record / audit chain | Uploaded as evidence; the other PC does not yet boot from it |
 - **What it did is written down.** Every Canvas write goes into a chained,
   tamper-evident record kept in your own Canvas files, with accommodations and
   grades named by student. See [docs/RECORD.md](docs/RECORD.md).

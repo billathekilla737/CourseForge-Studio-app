@@ -148,19 +148,41 @@ def doctor() -> dict:
 
 
 IMAGE_MEDIA = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+               ".jpe": "image/jpeg", ".jfif": "image/jpeg",
                ".webp": "image/webp", ".gif": "image/gif"}
 MAX_IMAGE_BYTES = 3_500_000        # base64 inflates 4/3 against the 5 MB API limit
-MAX_IMAGES = 4
+MAX_IMAGES = 8
+
+
+def _shrink_image(path: Path) -> tuple[bytes, str] | None:
+    """A phone screenshot is often over the API size cap. Shrink it to JPEG."""
+    try:
+        import io
+        from PIL import Image
+        with Image.open(path) as im:
+            im = im.convert("RGB")
+            im.thumbnail((1600, 1600))
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=72)
+        raw = buf.getvalue()
+        if raw and len(raw) <= MAX_IMAGE_BYTES:
+            return raw, "image/jpeg"
+    except Exception:  # noqa: BLE001
+        return None
+    return None
 
 
 def _image_block(path: Path) -> dict | None:
     """Base64 image content block, or None if unusable."""
+    if not path.is_file():
+        return None
     media = IMAGE_MEDIA.get(path.suffix.lower())
-    if not media or not path.is_file():
-        return None
-    raw = path.read_bytes()
-    if not raw or len(raw) > MAX_IMAGE_BYTES:
-        return None
+    raw = path.read_bytes() if media else b""
+    if not media or not raw or len(raw) > MAX_IMAGE_BYTES:
+        shrunk = _shrink_image(path)
+        if not shrunk:
+            return None
+        raw, media = shrunk
     return {"type": "image",
             "source": {"type": "base64", "media_type": media,
                        "data": base64.b64encode(raw).decode("ascii")}}

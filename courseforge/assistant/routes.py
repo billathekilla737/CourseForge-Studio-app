@@ -19,6 +19,7 @@ own session and not from another local process.
 from __future__ import annotations
 
 from ..routing import HTTPError, route
+from . import sync as asst_sync
 from .manager import Manager, NameProblem
 
 
@@ -116,6 +117,18 @@ def stop(req):
 @route("POST", "/api/assistant/{cid}/new", area="assistant")
 def new(req):
     return _mgr(req).new(req.params["cid"])
+
+
+@route("POST", "/api/assistant/{cid}/sync", area="assistant")
+def sync_resolve(req):
+    """Settle a diverged Assistant replica. take is local or remote."""
+    take = str((req.body or {}).get("take") or "")
+    try:
+        return asst_sync.resolve(req.app, req.params["cid"], take)
+    except ValueError as exc:
+        raise HTTPError(400, str(exc)) from None
+    except RuntimeError as exc:
+        raise HTTPError(503, str(exc)) from None
 
 
 @route("POST", "/api/assistant/{cid}/mode", area="assistant")

@@ -7,8 +7,9 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import unquote_plus
 
-from . import audit, blender, curve, gradesync, llm, overlap, teaching
+from . import audit, blender, curve, gradesync, latepolicy, llm, overlap, teaching
 from .canvas import CanvasClient
 from .config import Config
 from .extract import (ARCHIVE_EXT, Extracted, Submission, expand_archive,
@@ -18,6 +19,13 @@ from .store import Store
 from .style import HUMANIZE_RULES
 
 MAX_WORK_CHARS = 60_000        # keep one student's work well inside a single turn
+
+
+def _file_name(name: str) -> str:
+    """A Canvas link often stores the filename still percent-encoded."""
+    name = unquote_plus(name or "").strip()
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip("._")
+    return name[:80]
 
 # Appended to the prompt for the one retry a malformed reply gets. Models fail
 # this way occasionally and at random: the same prompt that failed usually
@@ -237,35 +245,40 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
 
         files: list[Path] = []
         failed: list[str] = []
-        for att in (sub.get("attachments") or []):
-            safe = re.sub(r"[^A-Za-z0-9._-]", "_", att.get("filename", "file"))
-            dest = adir / "files" / f"{uid}_{safe}"
-            if not dest.exists() and att.get("url"):
-                try:
-                    client.download(att["url"], dest)
-                except Exception as exc:  # noqa: BLE001
-                    progress(f"  WARNING could not download {safe}: {exc}")
-                    failed.append(f"{att.get('filename', safe)} ({exc})")
-                    continue
-            if dest.exists():
-                files.append(dest)
+        # A student who never submitted has a roster row and nothing to fetch.
+        # Downloading that row is what used to fill the sync log with errors.
+        turned_in = bool(sub.get("submitted_at") or sub.get("attempt") or (sub.get("body") or "").strip()
+                         or sub.get("attachments"))
+        if turned_in:
+            for att in (sub.get("attachments") or []):
+                safe = _file_name(att.get("filename") or "") or "file"
+                dest = adir / "files" / f"{uid}_{safe}"
+                if not dest.exists() and att.get("url"):
+                    try:
+                        client.download(att["url"], dest)
+                    except Exception as exc:  # noqa: BLE001
+                        progress(f"  could not download {safe} — the rest of the assignment is still read")
+                        failed.append(f"{safe} ({exc})")
+                        continue
+                if dest.exists():
+                    files.append(dest)
 
-        # Students often link or embed a file from the Canvas editor instead of
-        # attaching it, so the .cs or the screenshot lives in their personal
-        # files and never appears in sub["attachments"]. Follow those too.
-        for ref in rce_file_refs(sub.get("body"), cfg.base_url,
-                                 getattr(cfg, "canvas_hosts", None)):
-            safe = re.sub(r"[^A-Za-z0-9._-]", "_", ref["name"])[:80] or f"file_{ref['file_id']}"
-            dest = adir / "files" / f"{uid}_rce{ref['file_id']}_{safe}"
-            if dest.exists():
-                files.append(dest)
-                continue
-            try:
-                client.download(ref["url"], dest)
-                files.append(dest)
-            except Exception as exc:  # noqa: BLE001
-                progress(f"  WARNING embedded file {ref['name']}: {exc}")
-                failed.append(f"{ref['name']} (embedded, {exc})")
+            # Students often paste a screenshot or a Word file into the text
+            # box instead of attaching it. Those live in the student's files
+            # and never appear in sub["attachments"].
+            for ref in rce_file_refs(sub.get("body"), cfg.base_url,
+                                     getattr(cfg, "canvas_hosts", None)):
+                safe = _file_name(ref["name"]) or f"file_{ref['file_id']}"
+                dest = adir / "files" / f"{uid}_rce{ref['file_id']}_{safe}"
+                if dest.exists():
+                    files.append(dest)
+                    continue
+                try:
+                    client.download(ref["url"], dest)
+                    files.append(dest)
+                except Exception as exc:  # noqa: BLE001
+                    progress(f"  could not download embedded file {safe}")
+                    failed.append(f"{safe} (embedded, {exc})")
 
         # A zipped folder of scripts is one attachment holding the whole
         # submission, so unpack it and grade the contents rather than reporting
@@ -525,6 +538,9 @@ def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
         meta.append(f"submitted: {entry['submitted_at']}")
     if entry.get("late"):
         meta.append("LATE")
+        meta.append(
+            "Grade the work as if it were on time. Do not dock points for "
+            "lateness; the Studio applies the syllabus late policy after you score.")
     meta.append(f"word count: {entry.get('words', 0)}")
     if entry.get("filenames"):
         files = list(entry["filenames"])
@@ -535,6 +551,12 @@ def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
     if entry.get("unreadable"):
         lines.append("NOTE - these parts could not be converted to text: "
                      + "; ".join(entry["unreadable"]))
+    if entry.get("images") and len((entry.get("text") or "").split()) < 40:
+        lines.append(
+            "NOTE - the student's work is in the attached images: screenshots, "
+            "photos, scanned PDF pages, or pictures pasted into a Word, "
+            "PowerPoint or Excel file. Grade from what is visible in them. A "
+            "short text extract is not the whole submission.")
     if entry.get("videos"):
         # A submission that is part write-up, part screen recording still gets
         # graded on the write-up. Without this the model scores the video it
@@ -668,17 +690,19 @@ def grade_one(cfg: Config, assignment: dict, rubric: list[dict], entry: dict,
     prompt = build_prompt(assignment, rubric, entry, instructions, label,
                           pseud=Pseudonymizer(students or [], enabled=cfg.pseudonymize))
 
-    # Our contact sheet first, then up to a few of the student's own screenshots.
+    # Student screenshots always go. The Blender contact sheet is optional:
+    # blend_vision is about that render, not about whether a PNG submission
+    # gets read.
     images: list[Path] = []
+    files_dir = Path(entry.get("_files_dir") or "")
     if getattr(cfg, "blend_vision", True):
-        files_dir = Path(entry.get("_files_dir") or "")
         for name in (entry.get("sheets") or [])[:1]:
             if files_dir:
                 images.append(files_dir / name)
-        for path in (entry.get("images") or []):
-            images.append(Path(path))
-        cap = int(getattr(cfg, "max_images_per_student", 4))
-        images = [p for p in images if p.is_file()][:cap]
+    for path in (entry.get("images") or []):
+        images.append(Path(path))
+    cap = int(getattr(cfg, "max_images_per_student", 8) or 8)
+    images = [p for p in images if p.is_file()][:cap]
 
     # Vision on opus is several times the price for no better judgment of whether
     # a chair looks like a chair. Never the other way round: see vision_model_for.
@@ -1056,7 +1080,8 @@ def class_summary(cfg: Config, store: Store, course_id, assignment_id,
 
 def grade_assignment(cfg: Config, store: Store, course_id, assignment_id,
                      only: list[str] | None = None,
-                     progress: Progress = _noop) -> dict:
+                     progress: Progress = _noop,
+                     late_policy: dict | None = None) -> dict:
     """Grade every student (or just `only`) and merge results into the draft."""
     adir = store.assignment_dir(course_id, assignment_id)
     assignment = store.assignment(course_id, assignment_id)
@@ -1064,6 +1089,7 @@ def grade_assignment(cfg: Config, store: Store, course_id, assignment_id,
     draft = store.draft(course_id, assignment_id)
     rubric = draft.get("rubric") or _rubric_of(assignment)
     instructions = store.instructions(course_id, assignment_id)
+    possible = draft.get("points_possible") or assignment.get("points_possible") or 0
 
     if not extracted:
         raise RuntimeError("Nothing synced for this assignment yet -- run Sync first.")
@@ -1081,6 +1107,8 @@ def grade_assignment(cfg: Config, store: Store, course_id, assignment_id,
     swap = f", {vision} for work with images" if vision != cfg.model else ""
     progress(f"grading {_plural(total, 'student')} with {cfg.model} ({lane}){swap}",
              0, total)
+    if late_policy and late_policy.get("summary") and late_policy.get("kind") not in (None, "none"):
+        progress(late_policy["summary"], 0, total)
 
     roster = store.students(course_id)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
@@ -1104,6 +1132,9 @@ def grade_assignment(cfg: Config, store: Store, course_id, assignment_id,
                 label = (info.get("pseudonym") if cfg.pseudonymize
                          else info.get("name")) or uid
                 _item(progress, label, "failed", str(exc)[:80], finished=True)
+            if late_policy:
+                result = latepolicy.attach(result, extracted.get(uid) or {},
+                                           late_policy, possible)
             # Write through the store, which re-reads under a lock. Holding a
             # local snapshot here let two overlapping jobs erase each other.
             store.put_student(course_id, assignment_id, uid, result)
@@ -1113,11 +1144,25 @@ def grade_assignment(cfg: Config, store: Store, course_id, assignment_id,
     draft = store.draft(course_id, assignment_id)
     entries = draft.get("students", {})
     spend = sum(float((e or {}).get("cost_usd") or 0) for e in entries.values())
-    # A curve that survived the re-grade sits on top of a score that just
-    # changed, so the curved total has to be worked out again.
+    # A curve or late dock that survived the re-grade sits on top of a score
+    # that just changed, so the posted total has to be worked out again.
     possible = draft.get("points_possible") or 0
+    if late_policy:
+        draft["late_policy"] = {
+            "kind": late_policy.get("kind"),
+            "percent": late_policy.get("percent"),
+            "interval": late_policy.get("interval"),
+            "grace_hours": late_policy.get("grace_hours"),
+            "floor_percent": late_policy.get("floor_percent"),
+            "max_days": late_policy.get("max_days"),
+            "canvas_applies": bool(late_policy.get("canvas_applies")),
+            "summary": late_policy.get("summary") or "",
+            "source": late_policy.get("source") or "",
+            "passage": (late_policy.get("passage") or "")[:1500],
+        }
     for entry in entries.values():
-        if entry and entry.get("curve") and curve.is_scored(entry):
+        if entry and curve.is_scored(entry) and (
+                entry.get("curve") or (entry.get("late_penalty") or {}).get("applied")):
             entry["final_total"] = curve.final_total(entry, rubric, possible)
     draft["last_graded_at"] = datetime.now().isoformat(timespec="seconds")
     draft["estimated_cost_usd"] = round(spend, 4)

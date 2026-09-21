@@ -12,7 +12,8 @@ the transcript. Before it starts, the permission gate is proven to fail closed
     system-prompt.md    the rules of the house, templated per course
     session.json        {session_id, started, last_used}, so a conversation resumes
     conversation.txt    what the transcript showed: the person's words, Claude's
-                        prose, one line per tool. Never tool output.
+                        prose, one line per tool. Never tool output. Copied to
+                        Canvas user files so another PC can show the same chat.
     events.jsonl        the redacted trace: which tools ran on what, how each
                         turn ended. Never tool output, never Claude's prose.
 

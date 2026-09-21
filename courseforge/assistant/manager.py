@@ -25,6 +25,7 @@ from typing import Callable
 
 from .. import claude_cli, identity, ledger
 from . import gate, session as S
+from . import sync as asst_sync
 
 RING = 4000                 # transcript events kept in memory per course
 CONVERSATION_TAIL = 12_000  # bytes of conversation.txt shown after a restart
@@ -316,8 +317,19 @@ class Manager:
             self._gate_checked = S.verify_hook_gate() or ""
         return self._gate_checked or None
 
+    def _replicate(self, course_id, force: bool = False) -> dict:
+        """Copy this course's chat to Canvas user files. Never raises."""
+        try:
+            return asst_sync.push(self.app, course_id, force=force) or {}
+        except Exception:  # noqa: BLE001
+            return {}
+
     # ---- state for the page
     def state(self, course_id) -> dict:
+        try:
+            sync_info = asst_sync.hydrate(self.app, course_id) or {}
+        except Exception as exc:  # noqa: BLE001
+            sync_info = {"did": "error", "reason": f"{type(exc).__name__}: {exc}"}
         c = self.course(course_id)
         st = S.load_session_state(c.assistant_dir) or {}
         with c.lock:
@@ -348,6 +360,7 @@ class Manager:
             # After a server restart the ring is empty; the page shows the log
             # tail as "earlier" so the conversation does not look lost.
             out["history"] = names.unmask(c.history_tail()) if not c.ring else ""
+            out["sync"] = sync_info
         return out
 
     def events(self, course_id, since: int) -> dict:
@@ -417,6 +430,7 @@ class Manager:
                 raise RuntimeError("Could not hand the message to Claude Code: %s" % exc)
             S.save_session_state(c.assistant_dir, c.session.session_id,
                                  started=(S.load_session_state(c.assistant_dir) or {}).get("started"))
+        self._replicate(course_id)
         return {"ok": True, "seq": c.seq, "session_id": c.session.session_id,
                 **masked.view()}
 
@@ -498,6 +512,8 @@ class Manager:
                         self._settle(p, "deny", "The Claude session ended before anyone answered.",
                                      via="timeout")
             c.push(ev)
+        if kind in ("result", "exit"):
+            self._replicate(c.id)
 
     def _restream(self, c: Course, ev: dict):
         """Hold back the end of a chunk while it could still become a tag.
@@ -522,6 +538,7 @@ class Manager:
                 c.session.stop()
             c.busy = False
             c.push({"kind": "notice", "text": "Stopped. Your conversation is kept; just send your next message."})
+        self._replicate(course_id)
         return {"ok": True}
 
     def new(self, course_id) -> dict:
@@ -545,6 +562,7 @@ class Manager:
             c.model = ""
             c.last_error = ""
             c.push({"kind": "notice", "text": "New conversation. Claude does not remember the last one."})
+        self._replicate(course_id, force=True)
         return {"ok": True, "seq": c.seq}
 
     # ---- permissions
@@ -650,6 +668,7 @@ class Manager:
             else:
                 c.push({"kind": "notice", "text": "Model is now %s." % label})
             out["model"] = model
+        self._replicate(course_id)
         return out
 
     def _course_for_session(self, session_id, cwd) -> str:

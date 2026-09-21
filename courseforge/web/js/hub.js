@@ -210,6 +210,11 @@
         <span><span class="t">Term schedule</span>
         <span class="m">Every dated assignment in the term, week by week, with
           reminders and announcements.</span></span></a>
+      <a class="acrossItem" href="#/students">
+        <span class="ic grade"></span>
+        <span><span class="t">Students</span>
+        <span class="m">Search one person across every course: accommodations,
+          extensions, grades, mail and notes.</span></span></a>
       <a class="acrossItem" href="#/roster">
         <span class="ic grade"></span>
         <span><span class="t">Accommodations roster</span>

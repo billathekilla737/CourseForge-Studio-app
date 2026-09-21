@@ -2,9 +2,9 @@
    quiz or study guide with Claude, read it, edit it, and place it in a module.
    Also the two bulk paths: the manifest and the rubric definitions.
 
-   A draft lives on this computer until someone presses Place, and Place is
-   refused once by the server so the sentence it answers with is the one shown
-   here, word for word. Routes:
+   A draft is saved on this computer and copied to your Canvas files so another
+   PC can pick it up. Place is refused once by the server so the sentence it
+   answers with is the one shown here, word for word. Routes:
 
      #/c/<cid>/build                home: the New cards and the drafts table
      #/c/<cid>/build/new/<kind>     the draft form
@@ -72,9 +72,45 @@
     return buildHome(courseId, body);
   }
 
+  function buildSyncBanner(courseId, state) {
+    const host = $('#bdSync');
+    if (!host) return;
+    const sync = (state && state.sync) || {};
+    const did = sync.did || sync.action || '';
+    if (did === 'diverged') {
+      const who = sync.remote_machine || 'another computer';
+      host.innerHTML = `<div class="callout warn">Unpublished drafts also changed on
+        ${esc(String(who))}. Nothing was overwritten.
+        <div class="foot" style="margin-top:.6rem">
+          <button class="btn" id="bdTakeRemote" type="button">Use the Canvas copy</button>
+          <button class="btn" id="bdTakeLocal" type="button">Keep this computer's drafts</button>
+        </div></div>`;
+      const remote = $('#bdTakeRemote'), local = $('#bdTakeLocal');
+      if (remote) remote.onclick = () => buildResolveSync(courseId, 'remote');
+      if (local) local.onclick = () => buildResolveSync(courseId, 'local');
+      return;
+    }
+    if (did === 'error') {
+      host.innerHTML = `<div class="callout warn">Could not copy drafts to your Canvas
+        files: ${esc(sync.reason || sync.detail || 'unknown error')}. They are still saved here.</div>`;
+      return;
+    }
+    if (did === 'picked_up' || did === 'seeded' || did === 'sent' || did === 'in_sync') {
+      host.innerHTML = '<p class="hint">Drafts are saved here and in your Canvas files, so another PC signed in as you can pick them up.</p>';
+      return;
+    }
+    host.innerHTML = '';
+  }
+
+  function buildResolveSync(courseId, take) {
+    api(buildBase(courseId) + '/sync', { body: { take } })
+      .then(() => openBuild(courseId, []))
+      .catch(err => setStatus('could not settle the two copies: ' + firstLine(err.message), 'err'));
+  }
+
   /* ------------------------------------------------------------- the home */
   async function buildHome(courseId, body) {
-    body.innerHTML = '<p class="muted">Reading the drafts on this computer…</p>';
+    body.innerHTML = '<p class="muted">Reading drafts…</p>';
     let state;
     try { state = await api(buildBase(courseId) + '/state'); }
     catch (err) {
@@ -85,10 +121,12 @@
     S.buildArea.state = state;
     const drafts = state.drafts || [];
     body.innerHTML = `
+      <div id="bdSync"></div>
       <section aria-labelledby="bdNewH">
         <div class="sectionHead"><h2 id="bdNewH">Something new</h2>
           <span class="hint">Claude writes the first version in the school's house style.
-            It stays on this computer.</span></div>
+            It is saved here and copied to your Canvas files. Nothing in the course
+            changes until you place it.</span></div>
         <div class="cards bdNew">${BUILD_KINDS.map(k => `
           <a class="card bdCard" href="#/c/${esc(courseId)}/build/new/${esc(k.id)}">
             <div class="t">${esc(k.label)}</div><div class="m">${esc(k.blurb)}</div></a>`).join('')}</div>
@@ -99,6 +137,7 @@
             + drafts.filter(d => d.placed).length + ' already placed') : ''}</span></div>
         <div id="bdDrafts"></div>
       </section>`;
+    buildSyncBanner(courseId, state);
     const host = $('#bdDrafts');
     if (!drafts.length) {
       host.replaceChildren(emptyState('No drafts yet. Pick one of the cards above and Claude '
@@ -120,7 +159,7 @@
           ${d.points != null && d.points !== '' ? `<span class="muted"> · ${esc(d.points)} points</span>` : ''}</td>
         <td>${d.scan_ok ? pill('checks pass', 'v-pass')
           : pill((d.scan_failed || 0) + ' to fix', 'v-fail')}</td>
-        <td>${d.placed ? pill('placed in Canvas', 'st-pushed') : pill('draft only', 'st-scanned')}</td>
+        <td>${d.placed ? pill('placed in Canvas', 'st-pushed') : pill('unpublished draft', 'st-scanned')}</td>
         <td class="muted">${esc(fmtDate(d.updated_at || d.created_at) || '')}</td>
         <td><a class="btn sm" href="#/c/${esc(courseId)}/build/draft/${esc(d.id)}">Open</a></td>
       </tr>`).join('')}</tbody></table></div>`;
@@ -343,12 +382,12 @@
 
     $('#bdDelete').onclick = () => {
       askConfirm({ summary: 'Delete the draft “' + (record.title || '') + '” from this '
-        + 'computer. Nothing in Canvas changes.' },
+        + 'computer and from your Canvas files replica. The live course is not touched.' },
       () => api(buildBase(courseId) + '/drafts/' + encodeURIComponent(draftId) + '/delete', { body: {} })
         .then(() => { S.buildArea.state = null; setStatus('draft deleted', 'ok'); location.hash = '#/c/' + courseId + '/build'; })
         .catch(err => setStatus('could not delete: ' + firstLine(err.message), 'err')),
       { title: 'Delete this draft?', verb: 'Yes, delete it',
-        note: 'The draft only exists on this computer. Canvas is not touched.' });
+        note: 'Removes the draft here and the copy in your Canvas files. Nothing in the course changes.' });
     };
   }
 

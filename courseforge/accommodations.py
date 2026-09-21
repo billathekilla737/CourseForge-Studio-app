@@ -162,20 +162,25 @@ class Roster:
         self.path = Path(path)
 
     def load(self) -> list[Student]:
+        students, _dropped = self.load_report()
+        return students
+
+    def load_report(self) -> tuple[list[Student], int]:
         if not self.path.exists():
-            return []
+            return [], 0
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError):
-            return []
+            return [], 0
         out: list[Student] = []
+        dropped = 0
         for row in (raw.get("students") or []):
             try:
                 out.append(parse_student(row))
             except ValueError:
-                continue                # a row that no longer parses is dropped
+                dropped += 1
         out.sort(key=lambda s: _sort_name(s.name) or s.user_id)
-        return out
+        return out, dropped
 
     def save(self, students: list[Student]) -> None:
         if len(students) > MAX_ROSTER:
@@ -194,6 +199,38 @@ class Roster:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(body, indent=2), encoding="utf-8")
         tmp.replace(self.path)
+
+
+def _grant_key(s: Student) -> tuple:
+    return (s.kind, int(s.percent), int(s.minutes), int(s.extra_attempts),
+            bool(s.manually_unlocked), s.note)
+
+
+def merge_students(local: list[Student], remote: list[Student]
+                   ) -> tuple[list[Student], list[dict]]:
+    """Union by user_id. Newer `updated` wins. Disagreements are listed."""
+    conflicts: list[dict] = []
+    by: dict[str, Student] = {str(s.user_id): s for s in local}
+    for other in remote:
+        uid = str(other.user_id)
+        have = by.get(uid)
+        if have is None:
+            by[uid] = other
+            continue
+        if _grant_key(have) == _grant_key(other):
+            if other.updated > have.updated:
+                by[uid] = other
+            continue
+        winner = other if other.updated >= have.updated else have
+        loser = have if winner is other else other
+        conflicts.append({
+            "user_id": uid, "name": winner.name or uid,
+            "kept": winner.to_json(), "other": loser.to_json(),
+        })
+        by[uid] = winner
+    out = list(by.values())
+    out.sort(key=lambda s: _sort_name(s.name) or s.user_id)
+    return out, conflicts
 
 
 def _sort_name(name: str) -> str:

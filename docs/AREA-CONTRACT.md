@@ -21,6 +21,21 @@ Never edit: `server.py`, `routing.py`, `areas.py`, `canvas*.py`, `config.py`,
 `llm.py`, `web/index.html`, `web/js/core.js`, `web/js/components.js`,
 `web/style.css`. If you need something there, write it down in your report.
 
+### Pre-authorized exceptions (multi-device sync)
+
+These files may be edited for the Canvas user-files state backend and the
+student dossier, and only for that:
+
+| File | Why |
+|---|---|
+| `web/js/core.js` | Student page hash route |
+| `courseforge/server.py` | Roster hydrate/save through `StateSyncer`; thin shims |
+| `courseforge/config.py` / `config.example.json` | State-sync and handoff keys |
+| `courseforge/web/index.html` | Script tags for `student.js` and cache-bust on sync copy |
+
+Prefer new packages (`statesync.py`, `studentsarea/`) over growing `server.py`.
+Student / roster / inbox / extend code must use `app.client`, not `app.content`.
+
 ## Routes
 
 ```python

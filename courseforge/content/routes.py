@@ -30,6 +30,7 @@ from .. import htmlclean, ledger
 from ..routing import HTTPError, route
 from . import check_style, generate, manifest as mf, push_pages, push_project
 from . import place as placemod, rubrics as rubricsmod, state as statemod, verify_slots
+from . import sync as build_sync
 from .common import course_url, publish_word
 from .paths import BuildDir
 
@@ -37,8 +38,14 @@ AREA = "build"
 
 
 def install(app) -> None:
-    """Nothing to hang on the App yet; importing registered the routes."""
+    """Register routes and copy drafts to Canvas user files after a local save."""
     app.build_area = {"installed_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    from . import paths as build_paths
+
+    def _changed(cid):
+        build_sync.push(app, cid)
+
+    build_paths.on_change = _changed
 
 
 # ---------------------------------------------------------------- helpers
@@ -118,6 +125,10 @@ def _ago(iso: str | None) -> str:
 @route("GET", "/api/build/{cid}/state", AREA)
 def state(req):
     cid = req.params["cid"]
+    try:
+        sync_info = build_sync.hydrate(req.app, cid) or {}
+    except Exception as exc:  # noqa: BLE001
+        sync_info = {"did": "error", "reason": f"{type(exc).__name__}: {exc}"}
     build = _build(req.app, cid)
     manifest = build.manifest()
     summary = mf.summary(manifest) if manifest else None
@@ -141,7 +152,20 @@ def state(req):
         "default_look": getattr(req.app.cfg, "a11y_look", "hybrid") or "hybrid",
         "model": req.app.cfg.model, "models": req.app.cfg.models,
         "needs": [],
+        "sync": sync_info,
     }
+
+
+@route("POST", "/api/build/{cid}/sync", AREA)
+def sync_resolve(req):
+    """Settle a diverged Build replica. take is local or remote."""
+    take = str((req.body or {}).get("take") or "")
+    try:
+        return build_sync.resolve(req.app, req.params["cid"], take)
+    except ValueError as exc:
+        raise HTTPError(400, str(exc)) from None
+    except RuntimeError as exc:
+        raise HTTPError(503, str(exc)) from None
 
 
 # ----------------------------------------------------------------- drafts

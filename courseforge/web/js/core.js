@@ -305,6 +305,8 @@ const TITLES = {
   files: 'ADA file compliance · CourseForge Studio',
   extensions: 'Deadline extensions · CourseForge Studio',
   roster: 'Accommodation roster · CourseForge Studio',
+  students: 'Students · CourseForge Studio',
+  student: 'Student · CourseForge Studio',
 };
 function route() {
   const r = parseRoute();
@@ -333,6 +335,18 @@ function route() {
       if (typeof openRoster === 'function') return openRoster();
       return missingOpener('the accommodations roster');
     });
+  } else if (parts[0] === 'students') {
+    opened = typeof openStudents === 'function'
+      ? openStudents()
+      : missingOpener('the student search');
+  } else if (parts[0] === 'student' && parts[1]) {
+    opened = typeof openStudent === 'function'
+      ? openStudent(parts[1], parts[2] || '')
+      : missingOpener('the student page');
+  } else if (parts[0] === 'c' && parts[2] === 'student' && parts[3]) {
+    opened = typeof openStudent === 'function'
+      ? openStudent(parts[3], parts[1])
+      : missingOpener('the student page');
   } else if (parts[0] === 'c' && parts[2] === 'a' && parts[3]) {
     rememberAssignment(parts[1], parts[3]);
     opened = openAssignment(parts[1], parts[3], { arriving: true });

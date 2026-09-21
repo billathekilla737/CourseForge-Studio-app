@@ -28,8 +28,8 @@ from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, urlparse
 
 from . import (accommodations, areas, audit, blender, confirm, curve, grader,
-               llm, gradesync, handoff, htmlclean, instruct, overlap, quizedit,
-               routing, schedule, teaching, terms)
+               latepolicy, llm, gradesync, handoff, htmlclean, instruct, overlap,
+               quizedit, routing, schedule, statesync, teaching, terms)
 from .canvas import CanvasClient, CanvasError
 from . import config
 from .config import Config
@@ -297,6 +297,8 @@ class App:
         self._item_cache: dict[tuple[str, str], dict] = {}
         # Course pages/syllabus about how to take a test (SmarterProctoring).
         self._policy_cache: dict[str, str] = {}
+        # Late-work rule from the syllabus (and Canvas, if it already deducts).
+        self._late_cache: dict[str, dict] = {}
         self._doctor: dict | None = None
         self._me_id: int | str | None = None
         # Every Canvas write passes through here twice: refused once with a
@@ -310,6 +312,10 @@ class App:
         # worker only ever looks at assignments that have been handed off once,
         # so nothing is uploaded until it has been asked for.
         self.machine = handoff.machine(config.user_dir())
+        self.state_sync = statesync.StateSyncer(
+            self, every_s=int(getattr(cfg, "state_sync_s", 45) or 45))
+        self.state = self.state_sync
+        self.state_sync.start()
         self._handoff_lock = threading.Lock()
         self._handoff_note: dict[str, dict] = {}
         self._handoff_stop = threading.Event()
@@ -379,6 +385,9 @@ class App:
             "pull_interval_s": self.cfg.pull_interval_s,
             "assignment_max_age_min": self.cfg.assignment_max_age_min,
             "grade_scale": self.cfg.grade_scale,
+            "machine": self.machine,
+            "state_sync": (self.state_sync.status()
+                           if getattr(self, "state_sync", None) else {}),
             "canvas": {"ok": False},
             "claude": self._doctor or {"logged_in": None, "detail": "not checked yet"},
             "blender": blender.probe(self.cfg.blender_path),
@@ -494,11 +503,14 @@ class App:
         return out
 
     def workspace(self, course_id, assignment_id) -> dict:
+        draft = self.store.draft(course_id, assignment_id)
+        policy = draft.get("late_policy") or self.course_late_policy(course_id)
         return {
             "assignment": self.store.assignment(course_id, assignment_id),
-            "draft": self.store.draft(course_id, assignment_id),
+            "draft": draft,
             "extracted": self.store.extracted(course_id, assignment_id),
             "instructions": self.store.instructions(course_id, assignment_id),
+            "late_policy": policy,
             "pseudonymize": self.cfg.pseudonymize,
             # Measured locally and cheap, so the teaching bar can say something
             # useful the moment the page opens rather than waiting to be asked.
@@ -675,17 +687,21 @@ class App:
             changes["total_only"] = False
         draft = self.store.update_student(course_id, assignment_id, user_id, **changes)
         entry = draft["students"][str(user_id)]
-        # The curve sits on top of the earned score, and a slider just moved
-        # the earned score. The curved total is what the roster shows and what
-        # a push writes, so it has to follow, or the two disagree until the
-        # next curve or re-grade happens to recompute it.
-        if entry.get("curve") and curve.is_scored(entry):
-            want = curve.final_total(entry, draft.get("rubric") or [],
-                                     draft.get("points_possible") or 0)
-            if entry.get("final_total") != want:
-                draft = self.store.update_student(course_id, assignment_id, user_id,
-                                                  final_total=want)
-                entry = draft["students"][str(user_id)]
+        # The curve and the syllabus late dock sit on top of the earned score.
+        # A slider just moved the earned score, so the posted total has to follow.
+        rubric = draft.get("rubric") or []
+        possible = draft.get("points_possible") or 0
+        extra = {}
+        if entry.get("late_penalty") and curve.is_scored(entry):
+            extra["late_penalty"] = latepolicy.refresh(
+                entry, curve.earned_total(entry, rubric))
+            entry = {**entry, **extra}
+        if curve.is_scored(entry) and (
+                entry.get("curve") or (entry.get("late_penalty") or {}).get("applied")):
+            extra["final_total"] = curve.final_total(entry, rubric, possible)
+        if extra and any(entry.get(k) != v for k, v in extra.items()):
+            draft = self.store.update_student(course_id, assignment_id, user_id, **extra)
+            entry = draft["students"][str(user_id)]
         if (not flag_only
                 and (was_total != entry.get("total")
                      or was_comment != (entry.get("comment") or ""))):
@@ -710,12 +726,14 @@ class App:
         return entry
 
     def _refresh_totals(self, course_id, assignment_id) -> None:
-        """Recompute the curved total on every entry that has a curve."""
+        """Recompute the posted total on every entry that has a curve or late dock."""
         draft = self.store.draft(course_id, assignment_id)
         rubric = draft.get("rubric") or []
         possible = draft.get("points_possible") or 0
         for uid, entry in (draft.get("students") or {}).items():
-            if not entry or entry.get("total") is None:
+            if not entry or not curve.is_scored(entry):
+                continue
+            if not (entry.get("curve") or (entry.get("late_penalty") or {}).get("applied")):
                 continue
             want = curve.final_total(entry, rubric, possible)
             if entry.get("final_total") != want:
@@ -1799,6 +1817,18 @@ class App:
         self._policy_cache[key] = text
         return text
 
+    def course_late_policy(self, course_id) -> dict:
+        """The late-work rule for this course, from the syllabus (or Canvas)."""
+        key = str(course_id)
+        if key in self._late_cache:
+            return self._late_cache[key]
+        try:
+            policy = latepolicy.load(self.client, course_id, self._plain_html)
+        except Exception as exc:  # noqa: BLE001
+            policy = latepolicy.empty(f"Could not read the syllabus: {type(exc).__name__}")
+        self._late_cache[key] = policy
+        return policy
+
     def schedule_item(self, course_id, assignment_id) -> dict:
         """One assignment's own page: the description, as Canvas has it now.
 
@@ -2420,14 +2450,25 @@ class App:
 
     # ------------------------------------------------------- the saved roster
     def accommodation_roster(self) -> dict:
-        students = self.roster.load()
+        students, dropped = self.roster.load_report()
+        sync = {}
+        if getattr(self, "state_sync", None):
+            try:
+                sync = self.state_sync.status(statesync.ROSTER_KEY)
+            except Exception:  # noqa: BLE001
+                sync = {"state": "error"}
         return {"students": [s.to_json() for s in students],
                 "count": len(students),
-                "path": str(self.roster.path)}
+                "dropped": dropped,
+                "path": str(self.roster.path),
+                "sync": sync}
 
     def accommodation_save(self, rows: list[dict]) -> dict:
-        """Replace the saved list. Local only -- nothing reaches Canvas here,
-        so this needs no confirmation; applying it does."""
+        """Replace the standing list and push it to Canvas user files.
+
+        Saving the list is not a Canvas course write (no quiz is changed), so
+        it needs no confirm token. Applying extras to quizzes still does.
+        """
         parsed, bad = [], []
         for row in (rows or []):
             try:
@@ -2439,6 +2480,17 @@ class App:
             raise ValueError("; ".join(b["why"] for b in bad))
         before = {str(s.user_id): s.label() for s in self.roster.load()}
         self.roster.save(parsed)
+        pushed = None
+        if getattr(self, "state_sync", None):
+            self.state_sync.mark_dirty(statesync.ROSTER_KEY)
+            try:
+                pushed = self.state_sync.push(statesync.ROSTER_KEY)
+            except statesync.Conflict as exc:
+                pushed = {"state": "diverged", "did": "diverged", "error": str(exc),
+                          "remote_rev": (exc.remote or {}).get("rev"),
+                          "remote_machine": ((exc.remote or {}).get("machine") or {}).get("name")}
+            except Exception as exc:  # noqa: BLE001
+                pushed = {"state": "error", "did": "error", "error": str(exc)[:200]}
         # Who was added, dropped or changed, and to what. The list is the
         # college's approvals as this tool understands them, so the moment it
         # changes is worth a line: "it was never on the list" and "it was taken
@@ -2456,9 +2508,24 @@ class App:
                          f"{len(moved)} student(s) added, removed or altered. "
                          f"{len(parsed)} on the list now.",
                          students=moved, count=len(moved))
-        return {**self.accommodation_roster(), "rejected": bad}
+        out = {**self.accommodation_roster(), "rejected": bad}
+        if pushed:
+            out["sync"] = {**(out.get("sync") or {}), **pushed}
+        return out
 
-    def taught_students(self, refresh: bool = False) -> dict:
+    def accommodation_hydrate(self) -> dict:
+        """Pull the standing roster from Canvas user files onto this machine."""
+        if not getattr(self, "state_sync", None):
+            return {"did": "skipped", "detail": "state sync is not running"}
+        return self.state_sync.hydrate_roster()
+
+    def accommodation_resolve(self, take: str) -> dict:
+        """Keep this computer's roster or the one waiting in Canvas."""
+        if not getattr(self, "state_sync", None):
+            raise ValueError("state sync is not running")
+        return self.state_sync.resolve(statesync.ROSTER_KEY, take)
+
+    def taught_students(self, refresh: bool = False, term: str | None = None) -> dict:
         """Every student across every course this token teaches, deduplicated.
 
         A Canvas user id is global to the instance, so the same person in three
@@ -2467,6 +2534,8 @@ class App:
         per section.
         """
         courses = [c for c in self.courses(refresh) if not c.get("excluded")]
+        if term:
+            courses = [c for c in courses if (c.get("term_label") or "") == term]
         people: dict[str, dict] = {}
         failed = []
         for course in courses:
@@ -2495,6 +2564,13 @@ class App:
                 })
                 if label not in row["courses"]:
                     row["courses"].append(label)
+                refs = row.setdefault("course_refs", [])
+                if not any(str(r.get("id")) == cid for r in refs):
+                    refs.append({
+                        "id": cid,
+                        "name": label,
+                        "term": course.get("term_label") or "",
+                    })
 
         listed = {str(s.user_id) for s in self.roster.load()}
         out = sorted(people.values(),
@@ -3002,6 +3078,10 @@ def make_handler(app: App):
                 if parts[1:] == ["accommodations"]:
                     return self._json(app.accommodation_roster())
 
+                # /api/accommodations/sync   -- Canvas replica + hydrate
+                if parts[1:] == ["accommodations", "sync"]:
+                    return self._json(app.accommodation_hydrate())
+
                 # /api/accommodations/students   -- everyone you teach, deduped
                 if parts[1:] == ["accommodations", "students"]:
                     return self._json(app.taught_students(refresh))
@@ -3068,10 +3148,15 @@ def make_handler(app: App):
                         parts[2], parts[3], body.get("changes") or {},
                         body.get("confirm")))
 
-                # /api/accommodations  {students: [...]}   -- local list only
+                # /api/accommodations  {students: [...]}   -- list + Canvas replica
                 if parts[1:] == ["accommodations"]:
                     return self._json(app.accommodation_save(
                         body.get("students") or []))
+
+                # /api/accommodations/resolve  {take: local|remote}
+                if parts[1:] == ["accommodations", "resolve"]:
+                    return self._json(app.accommodation_resolve(
+                        body.get("take") or ""))
 
                 # /api/accommodations/plan  {scope, course_id, quiz_id, ...}
                 if parts[1:] == ["accommodations", "plan"]:
@@ -3155,8 +3240,10 @@ def make_handler(app: App):
 
                     if action == "grade":
                         only = body.get("only") or None
+                        policy = app.course_late_policy(cid)
                         job = app.jobs.start("grade", lambda log: grader.grade_assignment(
-                            app.cfg, app.store, cid, aid, only=only, progress=log))
+                            app.cfg, app.store, cid, aid, only=only, progress=log,
+                            late_policy=policy))
                         return self._json({"job": job})
 
                     if action == "instructions":
@@ -3298,6 +3385,10 @@ def serve(cfg: Config) -> None:
     # background, still spending. Reap them on the way out.
     def reap() -> None:
         _app.stop_handoff_worker()
+        if getattr(_app, "state_sync", None):
+            _app.state_sync.close()
+        if getattr(_app, "audit_sync", None):
+            _app.audit_sync.close()
         killed = llm.shutdown_all()
         if killed:
             print(f"  cancelled {killed} in-flight Claude call(s)", flush=True)

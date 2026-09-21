@@ -70,7 +70,7 @@ class Config:
     handoff_folder: str = "canvas-grader"
     handoff_auto: bool = True           # keep Canvas current once handed off once
     handoff_debounce_s: int = 45        # how long to let edits settle first
-    max_images_per_student: int = 4
+    max_images_per_student: int = 8
 
     # How stale the term schedule may be before opening it refetches from
     # Canvas in the background. The cached copy shows immediately either way.
@@ -123,10 +123,17 @@ class Config:
     # College-specific syllabus statements. Empty = courseforge/knowledge/syllabus-policies.json.
     syllabus_policies_path: str = ""
     # The account of what the Studio did (audit.py), kept in your own Canvas
-    # user files so it outlives this laptop. The chained local copy is written
-    # either way; this only decides whether Canvas gets one.
+    # user files as evidence. That copy is not a replica you resume from on
+    # another PC. The chained local copy is written either way; this only
+    # decides whether Canvas gets one.
     audit_to_canvas: bool = True
     audit_sync_s: int = 180
+    # Standing roster, student notes and other small JSON blobs, kept in your
+    # own Canvas user files (Files → courseforge-studio → state) so a second
+    # computer signed into the same account can pick them up. Hydrate still
+    # runs when allow_canvas_writes is false; upload does not.
+    state_to_canvas: bool = True
+    state_sync_s: int = 45
     # Where the launcher looks for a newer version, and whether it looks at
     # all. The updater refuses any update_repo other than the public app
     # source. A GitHub token is never stored here; the public source needs none.

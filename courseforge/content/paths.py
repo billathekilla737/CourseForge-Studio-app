@@ -11,13 +11,28 @@
     last_push.json    the last push result, for the hub card
     backups/          the syllabus body before it was replaced
 
-Nothing here is student data.
+Drafts, state, manifest and rubrics also copy to Canvas user files
+(courseforge-studio/state/build-<cid>.json) so another PC can pick them up.
+backups/ and last_push.json stay on this computer. Nothing here is student data.
 """
 from __future__ import annotations
 
 import json
 import re
 from pathlib import Path
+
+
+# Set by content.routes.install so a draft save also copies to Canvas user files.
+on_change = None
+
+
+def notify(course_id) -> None:
+    fn = on_change
+    if callable(fn):
+        try:
+            fn(str(course_id))
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def build_dir(course_dir: Path) -> Path:
@@ -75,12 +90,15 @@ class BuildDir:
         return self.read_json(self.draft_path(draft_id))
 
     def save_draft(self, draft: dict) -> Path:
-        return self.write_json(self.draft_path(draft["id"]), draft)
+        path = self.write_json(self.draft_path(draft["id"]), draft)
+        notify(self.course_id)
+        return path
 
     def delete_draft(self, draft_id: str) -> bool:
         path = self.draft_path(draft_id)
         if path.is_file():
             path.unlink()
+            notify(self.course_id)
             return True
         return False
 
@@ -89,13 +107,17 @@ class BuildDir:
         return self.read_json(self.manifest_path)
 
     def save_manifest(self, manifest: dict) -> Path:
-        return self.write_json(self.manifest_path, manifest)
+        path = self.write_json(self.manifest_path, manifest)
+        notify(self.course_id)
+        return path
 
     def rubrics(self) -> list | None:
         return self.read_json(self.rubrics_path)
 
     def save_rubrics(self, entries) -> Path:
-        return self.write_json(self.rubrics_path, entries)
+        path = self.write_json(self.rubrics_path, entries)
+        notify(self.course_id)
+        return path
 
     def last_push(self) -> dict | None:
         return self.read_json(self.last_push_path)

@@ -49,9 +49,11 @@ neither reads this.
 Two places, and both matter.
 
 **On this computer**, at `data/<course>/audit/<YYYY-MM>.jsonl`, one file a
-month, one JSON object a line. The account-wide record — the standing
-accommodation list, which is one list across every section you teach — is at
-`data/audit/`.
+month, one JSON object a line. The account-wide audit chain (every course
+together) is at `data/audit/`. That folder is **not** the standing
+accommodation roster. The roster is `data/accommodations.json`, and a copy
+is kept in your Canvas user files under `courseforge-studio/state/` so a
+second computer can pick it up.
 
 **In Canvas**, in your own user files under **Files → courseforge-studio →
 record**. Not the course's files: a course copy, a term rollover and a sandbox
@@ -100,7 +102,7 @@ Studio:
 python -m courseforge record --course 734975 --verify
 python -m courseforge record --course 734975 --student 900111
 python -m courseforge record --course 734975 --sync     # push to Canvas now
-python -m courseforge record --course account           # the accommodation list
+python -m courseforge record --course account           # the account-wide audit chain, not the roster
 ```
 
 **From Canvas**: download the month file from your user files. It is

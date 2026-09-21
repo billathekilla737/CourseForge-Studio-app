@@ -37,7 +37,7 @@
   "blend_max_mb": 300,
   "blend_vision": true,
   "vision_model": "sonnet",
-  "max_images_per_student": 4,
+  "max_images_per_student": 8,
 
   "_schedule_max_age_min": "The term schedule refetches from Canvas in the background when the cached copy is older than this many minutes. The cache is shown immediately either way, with its age in the footer.",
   "schedule_max_age_min": 30,
@@ -52,5 +52,17 @@
   "pull_interval_s": 120,
 
   "_assignment_max_age_min": "Opening an assignment syncs it from Canvas by itself. One that has never been synced always does; one synced more recently than this many minutes opens straight away. Files already downloaded are not fetched twice, so a re-sync is mostly API calls. 0 syncs on every open.",
-  "assignment_max_age_min": 15
+  "assignment_max_age_min": 15,
+
+  "_state_to_canvas": "Keep the standing roster and student notes in your Canvas user files (Files / courseforge-studio/state) so a second computer can pick them up. Hydrate still runs if allow_canvas_writes is false; upload does not.",
+  "state_to_canvas": true,
+  "_state_sync_s": "How often the background replica checks the roster.",
+  "state_sync_s": 45,
+
+  "_handoff_folder": "Canvas user-files folder for in-progress grade drafts. Legacy name canvas-grader; do not put names.json or map.json here.",
+  "handoff_folder": "canvas-grader",
+  "_handoff_auto": "Once an assignment has been handed off, keep rewriting the Canvas copy as you edit.",
+  "handoff_auto": true,
+  "_handoff_debounce_s": "Seconds to wait after an edit before rewriting the handoff draft.",
+  "handoff_debounce_s": 45
 }

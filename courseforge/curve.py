@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import math
 
+from . import latepolicy
+
 # Cutoffs are the minimum percent for each letter, highest first. F is whatever
 # falls below the lowest cutoff.
 DEFAULT_SCALE = {"A": 90.0, "B": 80.0, "C": 70.0, "D": 60.0}
@@ -127,33 +129,34 @@ def earned_total(entry: dict, rubric: list[dict]) -> float:
 
 
 def final_total(entry: dict, rubric: list[dict], possible: float | None = None) -> float:
-    """The score to show and to post: earned, plus any curve, clamped.
+    """The score to show and to post: earned, minus a late dock, plus any curve.
 
     Per-criterion adjustments are capped at that criterion's points, and the
     whole thing at the assignment's points possible, so a curve cannot invent a
-    score above full marks.
+    score above full marks. A syllabus late penalty is taken off the earned
+    score; the rubric cells themselves stay as graded.
     """
     curve = entry.get("curve") or {}
     by_criterion = curve.get("by_criterion") or {}
     flat = float(curve.get("flat") or 0)
+    earned = earned_total(entry, rubric)
     if not curve:
-        base = earned_total(entry, rubric)
-        return round(min(base, float(possible)) if possible else base, 2)
-
-    scores = entry.get("scores") or {}
-    # A typed Canvas total with no rubric cells must not be rebuilt from zeros
-    # plus the curve; that posts the delta as the grade.
-    if rubric and not entry.get("total_only"):
-        total = 0.0
-        for crit in rubric:
-            cid = str(crit.get("id"))
-            top = float(crit.get("points") or 0)
-            value = float(scores.get(cid) or 0) + float(by_criterion.get(cid) or 0)
-            total += max(0.0, min(value, top))
+        total = earned
     else:
-        total = float(entry.get("total") or 0)
-    total += flat
-    total = max(0.0, total)
+        scores = entry.get("scores") or {}
+        # A typed Canvas total with no rubric cells must not be rebuilt from zeros
+        # plus the curve; that posts the delta as the grade.
+        if rubric and not entry.get("total_only"):
+            total = 0.0
+            for crit in rubric:
+                cid = str(crit.get("id"))
+                top = float(crit.get("points") or 0)
+                value = float(scores.get(cid) or 0) + float(by_criterion.get(cid) or 0)
+                total += max(0.0, min(value, top))
+        else:
+            total = float(entry.get("total") or 0)
+        total += flat
+    total = max(0.0, total - latepolicy.deduction(entry, earned))
     if possible:
         total = min(total, float(possible))
     return round(total, 2)

@@ -144,7 +144,14 @@ FILE_HOSTS = (
     "*.instructure.com",
     "*.canvas-user-content.com",
     "*.inscloudgate.net",
+    # Canvas file storage. The last hop is often a regional bucket
+    # (instructure-uploads.s3.us-east-1.amazonaws.com) or path-style
+    # s3.amazonaws.com, not the one global host.
     "instructure-uploads.s3.amazonaws.com",
+    "*.s3.amazonaws.com",
+    "*.s3.*.amazonaws.com",
+    "s3.amazonaws.com",
+    "s3.*.amazonaws.com",
 )
 
 

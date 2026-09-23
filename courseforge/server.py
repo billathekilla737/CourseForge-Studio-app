@@ -139,6 +139,20 @@ for _ext, _ctype in ((".mov", "video/quicktime"), (".mp4", "video/mp4"),
                      (".avi", "video/x-msvideo"), (".wmv", "video/x-ms-wmv"),
                      (".3gp", "video/3gpp"), (".flv", "video/x-flv")):
     mimetypes.add_type(_ctype, _ext)
+# The page's own files. On Windows, Python reads these from the registry too,
+# and a machine where some program has claimed .js (Notepad, a code editor,
+# an old Windows Script Host association) reports it as text/plain. The
+# browser then refuses to run a single script, and the first screen sits on
+# "checking Canvas…" forever with nothing in any log: the server served every
+# file with a 200. Pin every type the page loads so the registry has no say.
+for _ext, _ctype in ((".js", "text/javascript"), (".mjs", "text/javascript"),
+                     (".css", "text/css"), (".html", "text/html"),
+                     (".json", "application/json"), (".map", "application/json"),
+                     (".svg", "image/svg+xml"), (".wasm", "application/wasm"),
+                     (".woff", "font/woff"), (".woff2", "font/woff2"),
+                     (".ttf", "font/ttf"), (".ico", "image/x-icon"),
+                     (".png", "image/png"), (".webp", "image/webp")):
+    mimetypes.add_type(_ctype, _ext)
 
 
 class JobSink:

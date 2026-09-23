@@ -395,10 +395,12 @@ class App:
             "blender": blender.probe(self.cfg.blender_path),
         }
         try:
-            me = self.client.whoami()
+            # One short try. Four retries here held the first screen on
+            # "Loading…" for minutes, with nothing on the page to say why.
+            me = self.client.get("/users/self/profile", attempts=1, timeout=12)
             out["canvas"] = {"ok": True, "name": me.get("name"), "id": me.get("id")}
         except Exception as exc:  # noqa: BLE001
-            out["canvas"] = {"ok": False, "error": str(exc)}
+            out["canvas"] = {"ok": False, "error": str(exc).splitlines()[0][:300]}
         return out
 
     def check_claude(self) -> dict:
@@ -452,7 +454,15 @@ class App:
                     {"id": c.get("id"), "name": c.get("name", ""),
                      "course_code": c.get("code", "")})
             return cached
-        raw = self.client.courses(self.cfg.enrollment_types)
+        try:
+            raw = self.client.courses(self.cfg.enrollment_types)
+        except Exception as exc:  # noqa: BLE001
+            # A new computer has no courses.json, so this call is the whole
+            # first screen. Say what Canvas did, instead of a bare exception name.
+            line = str(exc).splitlines()[0].strip()[:300]
+            raise RuntimeError(
+                line or "Could not read your courses from Canvas."
+            ) from exc
         courses = []
         for c in raw:
             if not c.get("id"):
@@ -3181,7 +3191,7 @@ def make_handler(app: App):
                 return self._json({"error": str(exc), "status": exc.status}, 502)
             except Exception as exc:  # noqa: BLE001
                 log_server_error(exc, getattr(app.cfg, "data_dir", None))
-                return self._json({"error": type(exc).__name__}, 500)
+                return self._json({"error": _public_error(exc)}, 500)
 
         # -------------------------------------------------------------- POST
         def do_POST(self):
@@ -3434,9 +3444,18 @@ def make_handler(app: App):
                 return self._json({"error": str(exc)}, 403)
             except Exception as exc:  # noqa: BLE001
                 log_server_error(exc, getattr(app.cfg, "data_dir", None))
-                return self._json({"error": type(exc).__name__}, 500)
+                return self._json({"error": _public_error(exc)}, 500)
 
     return Handler
+
+
+def _public_error(exc: BaseException) -> str:
+    """The one line the page can show. The type name alone hid a Canvas failure."""
+    line = str(exc).splitlines()[0].strip()
+    name = type(exc).__name__
+    if not line or line == name:
+        return name
+    return line[:300]
 
 
 class ThreadedServer(ThreadingMixIn, HTTPServer):

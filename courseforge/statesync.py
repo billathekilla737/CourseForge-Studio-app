@@ -627,10 +627,24 @@ class StateSyncer:
                 continue
         roster.save(parsed)
 
+    def _course_list_ready(self) -> bool:
+        """The home page reads courses.json. Until it exists, leave Canvas
+        alone so that first read is not competing with a sync."""
+        try:
+            return (Path(self.root) / "courses.json").is_file()
+        except Exception:  # noqa: BLE001
+            return True
+
     def _run(self) -> None:
+        import time
+        started = time.monotonic()
         if self._stop.wait(8):
             return
         while not self._stop.is_set():
+            if not self._course_list_ready() and time.monotonic() - started < 90:
+                if self._stop.wait(2):
+                    return
+                continue
             try:
                 if self.enabled:
                     self.hydrate_roster()

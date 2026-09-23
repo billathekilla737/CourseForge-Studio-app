@@ -67,6 +67,8 @@ class CanvasError(RuntimeError):
         hint = ""
         if status == 401:
             hint = "  (token rejected -- expired, revoked, or wrong Canvas host)"
+        elif status == 403 and "Rate Limit" in (body or ""):
+            hint = "  (Canvas is limiting requests; wait a moment and try again)"
         elif status == 403:
             hint = "  (token lacks permission for this course or endpoint)"
         elif status == 404:
@@ -95,7 +97,8 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
 
     # ------------------------------------------------------------ transport
     def _request(self, method: str, url: str, data: bytes | None = None,
-                 content_type: str | None = None) -> tuple[Any, dict]:
+                 content_type: str | None = None, attempts: int = 4,
+                 timeout: int | None = None) -> tuple[Any, dict]:
         if url.startswith("/"):
             url = f"{self.base}/api/v1{url}"
         # Two rules, checked on every request: the token stays on the Canvas
@@ -110,9 +113,11 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
             req.add_header("Content-Type", content_type)
 
         last_error: Exception | None = None
-        for attempt in range(1, 5):
+        tries = max(1, int(attempts))
+        wait = self.timeout if timeout is None else timeout
+        for attempt in range(1, tries + 1):
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                with urllib.request.urlopen(req, timeout=wait) as resp:
                     raw = resp.read().decode("utf-8", "replace")
                     headers = dict(resp.headers)
                     payload = json.loads(raw) if raw.strip() else None
@@ -121,28 +126,37 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
                 body = exc.read().decode("utf-8", "replace")
                 # Canvas throttles with 403 + a Rate Limit body, and 5xx is transient.
                 transient = exc.code >= 500 or (exc.code == 403 and "Rate Limit" in body)
-                if not transient or attempt == 4:
+                if not transient or attempt == tries:
                     raise CanvasError(exc.code, url, body) from None
                 last_error = exc
             except (urllib.error.URLError, TimeoutError) as exc:
-                if attempt == 4:
+                if attempt == tries:
                     raise RuntimeError(f"Cannot reach Canvas at {url}: {exc}") from None
                 last_error = exc
             time.sleep(min(2 ** attempt, 8))
         raise RuntimeError(f"Canvas request failed: {last_error}")
 
-    def get(self, path: str, **params) -> Any:
+    def get(self, path: str, *, attempts: int = 4, timeout: int | None = None,
+            **params) -> Any:
         url = path
         if params:
             url += ("&" if "?" in path else "?") + _encode(params)
-        payload, _ = self._request("GET", url)
+        payload, _ = self._request("GET", url, attempts=attempts, timeout=timeout)
         return payload
 
     def paged(self, path: str, **params) -> Iterator[dict]:
-        """Follow Canvas Link-header pagination and yield each item."""
+        """Follow Canvas Link-header pagination and yield each item.
+
+        A repeated next link, or more than 40 pages, stops the walk. A broken
+        Link header must not leave the course list spinning with no error.
+        """
         params.setdefault("per_page", 100)
         url = path + ("&" if "?" in path else "?") + _encode(params)
-        while url:
+        seen: set[str] = set()
+        pages = 0
+        while url and url not in seen and pages < 40:
+            seen.add(url)
+            pages += 1
             payload, headers = self._request("GET", url)
             if isinstance(payload, list):
                 yield from payload

@@ -35,6 +35,7 @@ async function api(path, opts = {}) {
     method: opts.body ? 'POST' : (opts.method || 'GET'),
     headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
+    signal: opts.signal,
   });
   noticeBuild(res.headers.get('X-App-Build'));
   const data = await res.json().catch(() => ({ error: 'bad JSON from server' }));
@@ -246,18 +247,29 @@ function renderBanners() {
   const h = S.health;
   if (!h) return;
   if (!h.canvas.ok) {
-    // The token error is written as several short lines naming the exact file
-    // to create; collapsing them into one paragraph is what made this
-    // unreadable in the first place.
-    // One button beats a paragraph of instructions: the fix is right here.
-    banner('err', '<b>Canvas is not connected.</b>' +
-      '<span class="bannerHint">Paste your Canvas access token and this will ' +
-      'save it for you.</span>' +
-      '<button class="btn sm" id="bnSetup">Connect to Canvas…</button>' +
-      '<details class="bannerWhy"><summary>details</summary>' +
-      '<span class="bannerDetail">' + esc(h.canvas.error || '') + '</span></details>');
-    const bn = $('#bnSetup');
-    if (bn) bn.onclick = () => openSetup();
+    // A missing token and a Canvas outage used the same sentence, so a rate
+    // limit or a failed address lookup looked like the token had vanished.
+    const err = h.canvas.error || '';
+    const reached = /Rate Limit|getaddrinfo|Cannot reach Canvas|timed out|urlopen error|11001/i.test(err);
+    if (reached) {
+      banner('err', '<b>Canvas did not answer.</b>' +
+        '<span class="bannerHint">The saved token is still there. This was the ' +
+        'connection, not a missing token.</span>' +
+        '<button class="btn sm" id="bnRetry" type="button">Try again</button>' +
+        '<details class="bannerWhy"><summary>details</summary>' +
+        '<span class="bannerDetail">' + esc(err) + '</span></details>');
+      const again = $('#bnRetry');
+      if (again) again.onclick = () => boot();
+    } else {
+      banner('err', '<b>Canvas is not connected.</b>' +
+        '<span class="bannerHint">Paste your Canvas access token and this will ' +
+        'save it for you.</span>' +
+        '<button class="btn sm" id="bnSetup">Connect to Canvas…</button>' +
+        '<details class="bannerWhy"><summary>details</summary>' +
+        '<span class="bannerDetail">' + esc(err) + '</span></details>');
+      const bn = $('#bnSetup');
+      if (bn) bn.onclick = () => openSetup();
+    }
   }
   const c = h.claude || {};
   if (c.logged_in === false) {

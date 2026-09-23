@@ -1970,7 +1970,7 @@ async function openCourses(refresh) {
   showView('picker');
   crumbs([{ label: 'Courses' }]);
   $('#pickerTitle').textContent = 'Your courses';
-  $('#pickerHint').textContent = 'Loading…';
+  $('#pickerHint').textContent = 'Reading your courses from Canvas…';
   $('#pickerResume').innerHTML = '';
   $('#btnRefresh').onclick = () => openCourses(true);
   $('#headerActions').innerHTML =
@@ -1979,14 +1979,38 @@ async function openCourses(refresh) {
     + 'Canvas token…</button>';
   $('#btnToken').onclick = () => openSetup();
 
+  // A new computer has no saved list, so this wait is Canvas. Say so, and
+  // do not leave the hint on "Loading…" if the request never comes back.
+  const slow = setTimeout(() => {
+    const hint = $('#pickerHint');
+    if (hint && hint.textContent.indexOf('Reading your courses') === 0) {
+      hint.textContent = 'Still reading your courses from Canvas. The first time on a computer has no saved list.';
+    }
+  }, 4000);
+  const ctrl = new AbortController();
+  const kill = setTimeout(() => ctrl.abort(), 90000);
   let picked;
   try {
-    picked = await api('/picker' + (refresh ? '?refresh=1' : ''));
+    picked = await api('/picker' + (refresh ? '?refresh=1' : ''), { signal: ctrl.signal });
   } catch (err) {
-    $('#pickerHint').textContent = firstLine(err.message) + ' — see the banner above.';
+    const aborted = err && err.name === 'AbortError';
+    const msg = aborted
+      ? 'Canvas did not answer with the course list. Wait a moment, then press Refresh.'
+      : firstLine(err.message);
+    $('#pickerHint').textContent = msg;
+    setStatus(msg, 'err');
     return;
+  } finally {
+    clearTimeout(slow);
+    clearTimeout(kill);
   }
-  paintHome(picked);
+  try {
+    paintHome(picked);
+  } catch (err) {
+    const msg = 'Could not draw the course list: ' + firstLine(err.message);
+    $('#pickerHint').textContent = msg;
+    setStatus(msg, 'err');
+  }
 }
 
 /* Drawn again after one course is re-read, without rebuilding the whole page. */

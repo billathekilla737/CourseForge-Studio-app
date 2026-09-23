@@ -273,6 +273,33 @@ class TheSourceIsPinned(Base):
         self.assertIn("pinned", out["message"].lower())
         self.assertEqual((self.tmp / "courseforge" / "server.py").read_text(), "# old\n")
 
+    def test_the_old_private_repo_name_follows_the_public_one(self):
+        self.cfg.update_repo = "billathekilla737/CourseForge-Studio"
+        called = []
+
+        def fake(url, token="", accept=""):
+            called.append(url)
+            return FakeResponse(json.dumps({"sha": "abcdef0aaaa"}).encode())
+
+        self.addCleanup(setattr, update, "_get", update._get)
+        update._get = fake
+        status = update.check(self.cfg, root=self.tmp)
+        self.assertTrue(status.checked)
+        self.assertTrue(any("CourseForge-Studio-app" in url for url in called))
+        self.assertFalse(any(url.rstrip("/").endswith("CourseForge-Studio/commits/main")
+                             for url in called))
+        self.assertTrue(status.available)
+
+    def test_a_copy_that_does_not_know_its_version_offers_an_update(self):
+        def fake(url, token="", accept=""):
+            return FakeResponse(json.dumps({"sha": "abcdef0aaaa"}).encode())
+
+        self.addCleanup(setattr, update, "_get", update._get)
+        update._get = fake
+        status = update.check(self.cfg, root=self.tmp)
+        self.assertTrue(status.available)
+        self.assertIn("does not record", status.why_not)
+
     def test_a_foreign_repo_cannot_check(self):
         self.cfg.update_repo = "attacker/malware"
         called = []

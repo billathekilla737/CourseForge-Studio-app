@@ -47,6 +47,10 @@ API = "https://api.github.com"
 # The only repository this copy will fetch. A config.json that names anything
 # else is refused, not followed: the updater overwrites the install.
 ALLOWED_REPO = "billathekilla737/CourseForge-Studio-app"
+# The private repo this app replaced. A config.json or an old default that
+# still names it must follow the public one, not the archived repository,
+# or the launcher says "up to date" forever.
+LEGACY_REPOS = {"billathekilla737/courseforge-studio"}
 # Written into the install directory whenever an update is applied, so a folder
 # that was never a git checkout still knows which revision it is running.
 STAMP = "installed.json"
@@ -157,11 +161,12 @@ def write_stamp(root: Path, revision: str, version: str = __version__) -> None:
 def _repo(cfg) -> str:
     """The public app repo, or a ValueError if config.json tried to retarget it."""
     got = (getattr(cfg, "update_repo", "") or ALLOWED_REPO).strip("/")
-    if got.lower() != ALLOWED_REPO.lower():
-        raise ValueError(
-            f"Updates are pinned to {ALLOWED_REPO}. This copy names {got}, "
-            "which will not be fetched.")
-    return ALLOWED_REPO
+    got = got[:-4] if got.lower().endswith(".git") else got
+    if got.lower() in LEGACY_REPOS or got.lower() == ALLOWED_REPO.lower():
+        return ALLOWED_REPO
+    raise ValueError(
+        f"Updates are pinned to {ALLOWED_REPO}. This copy names {got}, "
+        "which will not be fetched.")
 
 
 def _branch(cfg) -> str:
@@ -217,14 +222,18 @@ def check(cfg, root: Path | None = None) -> Status:
     status.checked = True
     status.latest_sha = str(head.get("sha") or "")
     status.latest = status.latest_sha[:7]
+    if not status.latest_sha:
+        status.error = "GitHub did not name a version."
+        return status
     if not status.current:
-        # A folder with no git and no stamp cannot be compared, only replaced.
-        # Saying "update available" there would nag forever, so it says nothing
-        # and leaves the button available for somebody who wants it anyway.
-        status.available = False
-        status.why_not = ("This copy does not record which version it is, so it "
-                          "cannot tell whether it is behind. Updating will fetch "
-                          "the current version either way.")
+        # No git answer and no stamp. That used to be reported as "up to date",
+        # so a new computer never showed the Update button. Offer the fetch.
+        # After it runs, the stamp matches and the offer goes away.
+        status.available = True
+        status.why_not = (
+            "This copy does not record which version it is, so it cannot tell "
+            "whether it is behind. Update will fetch the current public version."
+        )
     else:
         status.available = status.latest != status.current
 

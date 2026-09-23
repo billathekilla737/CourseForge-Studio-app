@@ -78,8 +78,8 @@ Three steps. The token is the only fiddly one, so it gets its own section.
 ### 1. Get the code and the one dependency
 
 ```bash
-git clone https://github.com/billathekilla737/CourseForge-Studio
-cd CourseForge-Studio
+git clone https://github.com/billathekilla737/CourseForge-Studio-app
+cd CourseForge-Studio-app
 pip install -e .[pdf]
 ```
 

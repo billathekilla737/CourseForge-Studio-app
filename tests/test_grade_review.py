@@ -310,7 +310,7 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         # Bulk bar and context menu share one action list, so a new verb cannot
         # land on shift-click and be missing from right-click (or the reverse).
         self.assertIn("selectionItems(st)", self.src)
-        self.assertIn("js/grade.js?v=load-1",
+        self.assertIn("js/grade.js?v=load-2",
                       (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn('step="1"', self.src)
         self.assertNotIn("data-tiers", self.src)

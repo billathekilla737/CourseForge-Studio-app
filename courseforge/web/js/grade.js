@@ -1970,7 +1970,10 @@ async function openCourses(refresh) {
   showView('picker');
   crumbs([{ label: 'Courses' }]);
   $('#pickerTitle').textContent = 'Your courses';
-  $('#pickerHint').textContent = 'Reading your courses from Canvas…';
+  const canvasDown = S.health && S.health.canvas && S.health.canvas.ok === false;
+  $('#pickerHint').textContent = canvasDown
+    ? 'Canvas did not answer. Looking for a course list already saved on this computer…'
+    : 'Reading your courses from Canvas…';
   $('#pickerResume').innerHTML = '';
   $('#btnRefresh').onclick = () => openCourses(true);
   $('#headerActions').innerHTML =
@@ -1988,7 +1991,7 @@ async function openCourses(refresh) {
     }
   }, 4000);
   const ctrl = new AbortController();
-  const kill = setTimeout(() => ctrl.abort(), 90000);
+  const kill = setTimeout(() => ctrl.abort(), canvasDown ? 12000 : 40000);
   let picked;
   try {
     picked = await api('/picker' + (refresh ? '?refresh=1' : ''), { signal: ctrl.signal });

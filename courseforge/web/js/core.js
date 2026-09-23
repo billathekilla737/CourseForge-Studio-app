@@ -200,15 +200,31 @@ document.addEventListener('keydown', ev => {
 
 /* ------------------------------------------------------------------ boot */
 async function boot() {
+  const ctrl = new AbortController();
+  const kill = setTimeout(() => ctrl.abort(), 12000);
+  let localDown = false;
   try {
-    S.health = await api('/health');
+    S.health = await api('/health', { signal: ctrl.signal });
     $('#hostLine').textContent = S.health.canvas.ok
       ? `${S.health.canvas.name} · ${S.health.base_url.replace(/^https?:\/\//, '')}`
       : 'Canvas not connected';
   } catch (err) {
-    banner('err', 'Cannot reach the local server: ' + esc(err.message));
-    return;
+    const aborted = err && err.name === 'AbortError';
+    if (!aborted) {
+      banner('err', 'Cannot reach the local server: ' + esc(err.message));
+      localDown = true;
+    } else {
+      S.health = {
+        canvas: { ok: false, error: 'Canvas did not answer. The connection is stuck.' },
+        claude: { logged_in: null },
+        pseudonymize: false,
+      };
+      $('#hostLine').textContent = 'Canvas not connected';
+    }
+  } finally {
+    clearTimeout(kill);
   }
+  if (localDown) return;
   renderBanners();
   const skip = $('#skipLink');
   if (skip) skip.onclick = skipToContent;
@@ -250,7 +266,7 @@ function renderBanners() {
     // A missing token and a Canvas outage used the same sentence, so a rate
     // limit or a failed address lookup looked like the token had vanished.
     const err = h.canvas.error || '';
-    const reached = /Rate Limit|getaddrinfo|Cannot reach Canvas|timed out|urlopen error|11001/i.test(err);
+    const reached = /Rate Limit|getaddrinfo|Cannot reach Canvas|timed out|urlopen error|11001|did not answer/i.test(err);
     if (reached) {
       banner('err', '<b>Canvas did not answer.</b>' +
         '<span class="bannerHint">The saved token is still there. This was the ' +

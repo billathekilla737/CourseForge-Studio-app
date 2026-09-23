@@ -395,9 +395,11 @@ class App:
             "blender": blender.probe(self.cfg.blender_path),
         }
         try:
-            # One short try. Four retries here held the first screen on
-            # "Loading…" for minutes, with nothing on the page to say why.
-            me = self.client.get("/users/self/profile", attempts=1, timeout=12)
+            # A stuck address lookup ignores the socket timeout on Windows and
+            # holds this request forever. The first screen never gets past
+            # "local · not connected" while that is happening.
+            me = _within(10, lambda: self.client.get(
+                "/users/self/profile", attempts=1, timeout=8))
             out["canvas"] = {"ok": True, "name": me.get("name"), "id": me.get("id")}
         except Exception as exc:  # noqa: BLE001
             out["canvas"] = {"ok": False, "error": str(exc).splitlines()[0][:300]}
@@ -455,7 +457,7 @@ class App:
                      "course_code": c.get("code", "")})
             return cached
         try:
-            raw = self.client.courses(self.cfg.enrollment_types)
+            raw = _within(25, lambda: self.client.courses(self.cfg.enrollment_types))
         except Exception as exc:  # noqa: BLE001
             # A new computer has no courses.json, so this call is the whole
             # first screen. Say what Canvas did, instead of a bare exception name.
@@ -3447,6 +3449,27 @@ def make_handler(app: App):
                 return self._json({"error": _public_error(exc)}, 500)
 
     return Handler
+
+
+def _within(seconds: float, fn):
+    """Run fn on a daemon thread and stop waiting. A Canvas call whose address
+    lookup never returns must not pin the course list."""
+    box: dict = {}
+
+    def run():
+        try:
+            box["value"] = fn()
+        except BaseException as exc:  # noqa: BLE001
+            box["error"] = exc
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    if thread.is_alive():
+        raise TimeoutError("Canvas did not answer within %d seconds." % int(seconds))
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
 
 
 def _public_error(exc: BaseException) -> str:

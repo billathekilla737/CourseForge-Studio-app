@@ -31,12 +31,28 @@ async function api(path, opts = {}) {
   const key = studioKey();
   if (key) headers['X-Studio-Key'] = key;
   if (opts.body) headers['Content-Type'] = 'application/json';
-  const res = await fetch('/api' + path, {
-    method: opts.body ? 'POST' : (opts.method || 'GET'),
-    headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal,
-  });
+  let res;
+  try {
+    res = await fetch('/api' + path, {
+      method: opts.body ? 'POST' : (opts.method || 'GET'),
+      headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      signal: opts.signal,
+    });
+  } catch (err) {
+    // The browser could not reach 127.0.0.1 at all. That is not Canvas and not
+    // a bug in the page: the little CourseForge Studio window that owns the
+    // server has been closed, or the server it was pointing at has gone. The
+    // browser's own words for this are "Failed to fetch", which reads as a
+    // Canvas problem and sends people off to check their token.
+    if (err && err.name === 'AbortError') throw err;
+    noticeServerDown();
+    const down = new Error('CourseForge Studio is not running on this computer. '
+      + 'Open CourseForge Studio again (the small window) and keep it open, then reload this page.');
+    down.serverDown = true;
+    throw down;
+  }
+  if ($('#downBar')) $('#downBar').remove();
   noticeBuild(res.headers.get('X-App-Build'));
   const data = await res.json().catch(() => ({ error: 'bad JSON from server' }));
   if (!res.ok) {
@@ -57,6 +73,20 @@ async function api(path, opts = {}) {
    above it. The server stamps every reply with what it is currently serving.
    The moment that stops matching what we started with, say so plainly rather
    than letting someone try to reconcile two versions of the truth. */
+function noticeServerDown() {
+  if ($('#downBar')) return;
+  const bar = document.createElement('div');
+  bar.id = 'downBar';
+  bar.className = 'staleBar';
+  bar.innerHTML = `<b>CourseForge Studio is not running.</b> This page cannot
+    reach the app on this computer. The small CourseForge Studio window that
+    runs it has been closed, or was never opened. Open CourseForge Studio again,
+    keep that window open, then reload this page. Nothing here is a Canvas or
+    token problem.
+    <button class="btn" onclick="location.reload()">Reload</button>`;
+  document.body.prepend(bar);
+}
+
 function noticeBuild(build) {
   if (!build) return;
   if (!S.build) { S.build = build; return; }

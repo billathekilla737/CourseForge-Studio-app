@@ -39,6 +39,22 @@ from .common import AREA, Refused, area_dir, course_label, load_json
 PREFIX = "/api/tools/{cid}"
 
 
+@route("GET", "/api/term-calendar", area=AREA)
+def term_calendar(req):
+    """Campus breaks for the term on the schedule page.
+
+    Read from the college academic calendar. Nothing is written to a course.
+    """
+    from . import schoolcal
+    term = req.q("term")
+    if not term:
+        try:
+            term = req.app.default_term()
+        except Exception:  # noqa: BLE001
+            term = ""
+    return schoolcal.for_term(req.app, term)
+
+
 def install(app) -> None:
     """Importing this module registered the routes; the App only needs to know
     the area is here."""

@@ -53,6 +53,24 @@ class ParseSyllabus(unittest.TestCase):
         self.assertEqual(policy["percent"], 10.0)
 
 
+class InstructionsOverrideTheDock(unittest.TestCase):
+    def test_a_class_sentence_waives_everyone(self):
+        text = "Ignore late grades for this assignment."
+        self.assertTrue(latepolicy.waives_everyone(text))
+        self.assertIn("assignment", latepolicy.waiver(text, {"name": "Jane Doe"}))
+
+    def test_a_named_sentence_waives_only_that_student(self):
+        text = "Ignore Jane Doe's tardy submission for this assignment."
+        self.assertFalse(latepolicy.waives_everyone(text))
+        self.assertIn("this student", latepolicy.waiver(text, {
+            "name": "Jane Doe", "sortable_name": "Doe, Jane"}))
+        self.assertEqual(latepolicy.waiver(text, {"name": "Alex Kim"}), "")
+
+    def test_ordinary_instructions_do_not_waive(self):
+        text = "Be lenient if they used a game that was not on the list."
+        self.assertEqual(latepolicy.waiver(text, {"name": "Jane Doe"}), "")
+
+
 class ApplyToAScore(unittest.TestCase):
     def test_one_day_at_ten_percent(self):
         policy = latepolicy.parse("10% per day late.")

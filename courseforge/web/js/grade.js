@@ -459,7 +459,7 @@ function taAccom() {
     ${rows.length ? `<table class="acTable"><thead><tr>
         <th>Student</th><th>Approved</th><th>On this test</th><th>In Canvas</th>
       </tr></thead><tbody>${rows.map(r => `<tr class="${r.in_sync ? '' : 'off'}">
-        <td>${esc(r.name)}</td>
+        <td>${esc(studentLabel(r))}</td>
         <td class="acWhat">${esc(r.accommodation)}</td>
         <td class="acMin">${r.would_be == null
           ? '<span class="muted">n/a — untimed</span>'
@@ -479,7 +479,7 @@ function taAccom() {
     ${(d.unlisted || []).length ? `<details class="acUnlisted">
       <summary>${d.unlisted.length} student(s) have an extension in Canvas but
         are not on your list</summary>
-      <ul>${d.unlisted.map(u => `<li>${esc(u.name)} —
+      <ul>${d.unlisted.map(u => `<li>${esc(studentLabel(u))} —
         ${u.extra_time ? '+' + u.extra_time + ' min' : ''}
         ${u.extra_attempts ? ' +' + u.extra_attempts + ' attempts' : ''}
         ${u.manually_unlocked ? ' can start while locked' : ''}</li>`).join('')}</ul>
@@ -567,7 +567,7 @@ function showAccomPlan(plan, scope, courseId, quizId, afterwards) {
         ? ` · ${plan.quizzes_in_scope} quiz(zes) looked at` : ''}</div>
 
       <div class="acPeople">${(plan.students || []).map(s =>
-        `<span class="acChip">${esc(s.name || s.user_id)}
+        `<span class="acChip">${esc(studentLabel(s))}
           <b>${esc(s.label)}</b></span>`).join('')}</div>
 
       <div class="apList">${[...byQuiz.values()].map(items => {
@@ -577,7 +577,7 @@ function showAccomPlan(plan, scope, courseId, quizId, afterwards) {
             esc(schedColour(head.course_id))}">${esc(head.course_label)}</span>
             <b>${esc(head.quiz_title)}</b>
             <span class="muted">${head.time_limit} min</span></div>
-          <ul>${items.map(r => `<li>${esc(r.name)}
+          <ul>${items.map(r => `<li>${esc(studentLabel(r))}
             <span class="apArrow">→</span>
             <b>+${r.extra_time} min</b>
             ${r.extra_attempts ? `<span class="apExtra">+${r.extra_attempts}
@@ -591,11 +591,11 @@ function showAccomPlan(plan, scope, courseId, quizId, afterwards) {
 
       ${already.length ? `<details class="apSkipped">
         <summary>${already.length} already correct in Canvas — left alone</summary>
-        <ul>${already.slice(0, 40).map(s => `<li>${esc(s.name)} · ${
+        <ul>${already.slice(0, 40).map(s => `<li>${esc(studentLabel(s))} · ${
           esc(s.quiz_title)}</li>`).join('')}</ul></details>` : ''}
       ${noTime.length ? `<details class="apSkipped">
         <summary>${noTime.length} could not take extra time</summary>
-        <ul>${noTime.slice(0, 40).map(s => `<li>${esc(s.name)} · ${
+        <ul>${noTime.slice(0, 40).map(s => `<li>${esc(studentLabel(s))} · ${
           esc(s.quiz_title)} — ${esc(s.why)}</li>`).join('')}</ul></details>` : ''}
 
       <div class="cfNote">Canvas takes extra time as minutes, not a multiplier,
@@ -676,16 +676,40 @@ function syncSaveMessage(r) {
    the student is in, and students repeat term after term. */
 async function openRoster(afterwards) {
   const host = $('#modalHost');
+  // Closing used to empty the dialog and leave #/roster in the address. A
+  // refresh then opened it again, and the dim layer from that route sat over
+  // the page so nothing else would take a click.
+  let gone = false;
+  const dismiss = () => {
+    if (gone) return;
+    gone = true;
+    host.innerHTML = '';
+    if (typeof afterwards === 'function') {
+      afterwards();
+      return;
+    }
+    const top = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean)[0];
+    if (top === 'roster') location.hash = '#/';
+  };
   host.innerHTML = `<div class="modalBack"><div class="modal wide">
       <h3>Accommodation roster</h3>
-      <div class="sub">loading…</div></div></div>`;
+      <div class="sub">loading…</div>
+      <div class="foot"><span class="spacer"></span>
+        <button class="btn" type="button" id="roClose">Close</button></div>
+      </div></div>`;
+  $('#roClose').onclick = dismiss;
   let saved, everyone;
   try {
     await api('/accommodations/sync').catch(() => null);
+    if (gone) return;
     [saved, everyone] = await Promise.all([
       api('/accommodations'), api('/accommodations/students'),
     ]);
-  } catch (err) { setStatus(firstLine(err.message), 'err'); return; }
+  } catch (err) {
+    if (!gone) setStatus(firstLine(err.message), 'err');
+    return;
+  }
+  if (gone) return;
 
   const state = {
     rows: (saved.students || []).map(s => ({ ...s })), query: '',
@@ -702,13 +726,14 @@ async function openRoster(afterwards) {
     return (everyone.students || []).filter(s =>
       !listed.has(s.user_id)
       && (!q || s.name.toLowerCase().includes(q)
+             || studentLabel(s).toLowerCase().includes(q)
              || (s.sis_user_id || '').toLowerCase().includes(q)));
   };
 
   const poolHtml = (pool) => `
     <div class="roPool">${pool.slice(0, 60).map(s => `
       <button class="roPick" data-uid="${esc(s.user_id)}">
-        <b>${esc(s.name)}</b>
+        <b>${esc(studentLabel(s))}</b>
         <span>${esc(s.courses.slice(0, 3).join(', '))}${
           s.courses.length > 3 ? ` +${s.courses.length - 3} more` : ''}</span>
       </button>`).join('') || '<div class="muted">no match</div>'}</div>
@@ -716,6 +741,7 @@ async function openRoster(afterwards) {
       more — narrow the search</div>` : ''}`;
 
   const draw = () => {
+    if (gone) return;
     const pool = poolFor();
 
     host.innerHTML = `<div class="modalBack"><div class="modal wide rosterModal">
@@ -738,7 +764,7 @@ async function openRoster(afterwards) {
             <th title="Can start a quiz that is locked for everyone else">Unlock</th>
             <th>Note</th><th></th></tr></thead>
           <tbody>${state.rows.map((r, i) => `<tr>
-            <td class="acName"><a href="#/student/${esc(r.user_id)}">${esc(r.name || r.user_id)}</a>
+            <td class="acName"><a href="#/student/${esc(r.user_id)}">${esc(studentLabel(r))}</a>
               <span class="muted">${esc(r.sis_user_id || r.user_id)}</span></td>
             <td><select data-i="${i}" data-k="kind">
               <option value="percent" ${r.kind === 'percent' ? 'selected' : ''}
@@ -772,9 +798,9 @@ async function openRoster(afterwards) {
 
         <div class="foot">
           <span class="spacer"></span>
-          <button class="btn" id="roClose">Close</button>
-          <button class="btn" id="roSave">Save list</button>
-          <button class="btn danger" id="roApply" ${state.rows.length ? '' : 'disabled'}
+          <button class="btn" type="button" id="roClose">Close</button>
+          <button class="btn" type="button" id="roSave">Save list</button>
+          <button class="btn danger" type="button" id="roApply" ${state.rows.length ? '' : 'disabled'}
             title="Saves the list, then asks before it changes any quiz in Canvas"
             >Save, then apply everywhere…</button>
         </div>
@@ -844,6 +870,7 @@ async function openRoster(afterwards) {
                   : (r.did === 'picked_up' ? 'Loaded the list from Canvas'
                   : (r.did === 'sent' || r.did === 'seeded' ? 'Uploaded this list to Canvas'
                   : (r.did || 'synced'))), 'ok');
+        if (gone) return;
         host.innerHTML = '';
         return openRoster(afterwards);
       } catch (err) { setStatus(firstLine(err.message), 'err'); }
@@ -854,10 +881,11 @@ async function openRoster(afterwards) {
     if (takeRemote) takeRemote.onclick = () => hydrate('remote');
     if (takeLocal) takeLocal.onclick = () => hydrate('local');
     if (tryAgain) tryAgain.onclick = () => hydrate('');
-    $('#roClose').onclick = () => { host.innerHTML = ''; if (afterwards) afterwards(); };
+    $('#roClose').onclick = dismiss;
     $('#roSave').onclick = () => save().then(r => {
-      if (r) { setStatus(syncSaveMessage(r), r.sync && r.sync.state === 'error' ? 'err' : 'ok');
-               host.innerHTML = ''; if (afterwards) afterwards(); }
+      if (!r || gone) return;
+      setStatus(syncSaveMessage(r), r.sync && r.sync.state === 'error' ? 'err' : 'ok');
+      dismiss();
     });
     $('#roApply').onclick = () => save().then(r => {
       if (r) applyAccommodations('all', null, null, () => openRoster(afterwards));
@@ -1373,7 +1401,7 @@ async function openRemind(courseId, assignmentId, only) {
   $('#rmBody').innerHTML = `
     <div class="rmWho">${rows.map(r => `
       <label class="tick"><input type="checkbox" class="rmPick" value="${esc(r.user_id)}" checked>
-        <span>${esc(r.name)}${r.graded
+        <span>${esc(studentLabel(r))}${r.graded
           ? ` <span class="rmNote">already scored ${num(r.score)}</span>` : ''}</span>
       </label>`).join('')}</div>
     <label class="rmField">Subject
@@ -1564,6 +1592,106 @@ function scheduleStats(items) {
            exams_left, needs_grading: waiting };
 }
 
+function schedPad(n) { return String(n).padStart(2, '0'); }
+function schedIso(d) {
+  return d.getFullYear() + '-' + schedPad(d.getMonth() + 1) + '-' + schedPad(d.getDate());
+}
+function schedLocalDay(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return schedIso(d);
+}
+
+async function loadTermBreaks() {
+  const term = (S.sched && S.sched.term) || '';
+  const mine = term;
+  try {
+    const data = await api('/term-calendar?term=' + encodeURIComponent(term));
+    if (!S.schedCalOn || ((S.sched && S.sched.term) || '') !== mine) return;
+    S.termBreaks = data;
+  } catch (err) {
+    if (!S.schedCalOn) return;
+    S.termBreaks = { term, days: [], live: false, note: firstLine(err.message) };
+  }
+  renderSchedule();
+}
+
+function renderTermCalendar() {
+  const sc = S.sched || {};
+  const pack = S.termBreaks || {};
+  const breaks = {};
+  (pack.days || []).forEach(row => {
+    if (!row || !row.date) return;
+    if (!breaks[row.date]) breaks[row.date] = [];
+    if (!breaks[row.date].includes(row.name)) breaks[row.date].push(row.name);
+  });
+  const byDay = {};
+  (sc.items || []).filter(schedPicked).forEach(it => {
+    if (S.schedFilter.hidePast && new Date(it.due_at).getTime() < Date.now()
+        && !S.schedFilter.gradeOnly) return;
+    if (S.schedFilter.examOnly && !it.exam) return;
+    if (S.schedFilter.gradeOnly && !it.needs_grading) return;
+    const key = schedLocalDay(it.due_at);
+    if (!key) return;
+    if (!byDay[key]) byDay[key] = [];
+    byDay[key].push(it);
+  });
+  const keys = Object.keys(byDay).concat(Object.keys(breaks)).sort();
+  const today = schedIso(new Date());
+  let startKey = keys[0] || today;
+  let endKey = keys[keys.length - 1] || today;
+  if (S.schedMonth && S.schedMonth >= startKey.slice(0, 7) && S.schedMonth <= endKey.slice(0, 7)) {
+    /* keep the month the person is looking at */
+  } else if (today >= startKey && today <= endKey) {
+    S.schedMonth = today.slice(0, 7);
+  } else {
+    S.schedMonth = startKey.slice(0, 7);
+  }
+  const month = S.schedMonth;
+  const [y, m] = month.split('-').map(Number);
+  const firstDow = new Date(y, m - 1, 1).getDay();
+  const count = new Date(y, m, 0).getDate();
+  const label = new Date(y, m - 1, 1).toLocaleDateString([], { month: 'long', year: 'numeric' });
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += '<div></div>';
+  for (let d = 1; d <= count; d++) {
+    const iso = month + '-' + schedPad(d);
+    const names = breaks[iso] || [];
+    const items = byDay[iso] || [];
+    const shown = items.slice(0, 3);
+    const more = items.length - shown.length;
+    const cls = ['scDay'];
+    if (iso === today) cls.push('today');
+    if (names.length) cls.push('break');
+    cells += `<div class="${cls.join(' ')}">
+      <span class="scNum">${d}</span>
+      ${names.map(name => `<span class="scBreak">${esc(name)}</span>`).join('')}
+      ${shown.map(it => `<button type="button" class="scItem" data-course="${esc(it.course_id)}"
+        data-asg="${esc(it.assignment_id)}" title="${esc(it.name)}">
+        <i style="background:${esc(it.colour || '#888')}"></i>${esc(it.name)}</button>`).join('')}
+      ${more > 0 ? `<span class="scMore">+${more} more</span>` : ''}
+    </div>`;
+  }
+  const prev = schedIso(new Date(y, m - 2, 1)).slice(0, 7);
+  const next = schedIso(new Date(y, m, 1)).slice(0, 7);
+  const host = $('#schedBody');
+  host.innerHTML = `<div class="scCalHead">
+      <button class="btn sm" type="button" id="scPrev">Previous</button>
+      <h2>${esc(label)}</h2>
+      <span class="spacer"></span>
+      <button class="btn sm" type="button" id="scNext">Next</button>
+    </div>
+    <p class="hint">${esc(pack.note || 'Loading campus breaks…')}</p>
+    <div class="scDow"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+    <div class="scCal" role="group" aria-label="${esc(label)}">${cells}</div>`;
+  const shift = (ym) => { S.schedMonth = ym; renderTermCalendar(); };
+  $('#scPrev').onclick = () => shift(prev);
+  $('#scNext').onclick = () => shift(next);
+  host.querySelectorAll('.scItem').forEach(btn => {
+    btn.onclick = () => openScheduleItem(btn.dataset.course, btn.dataset.asg);
+  });
+}
+
 function renderSchedule() {
   const sc = S.sched;
   const f = S.schedFilter;
@@ -1608,6 +1736,8 @@ function renderSchedule() {
         <span class="ctlLabel">Actions</span>
         <button class="btn sm ai" id="scInstruct"
           title="Say what you want changed, in plain words">Tell it what to change…</button>
+        <button class="btn sm" id="scCal" type="button" aria-pressed="${!!S.schedCalOn}"
+          title="Month view of this term, with campus breaks from the college calendar">Calendar</button>
       </div>
       <div class="ctlGroup ctlShow">
         <span class="ctlLabel">Show</span>
@@ -1631,9 +1761,21 @@ function renderSchedule() {
     };
   });
   $('#scInstruct').onclick = openInstruct;
+  $('#scCal').onclick = () => {
+    S.schedCalOn = !S.schedCalOn;
+    if (!S.schedCalOn) { renderSchedule(); return; }
+    $('#schedBody').innerHTML = '<p class="schedNote">Loading the college calendar…</p>';
+    loadTermBreaks();
+  };
   $('#scPast').onclick = () => { f.hidePast = !f.hidePast; renderSchedule(); };
   $('#scExam').onclick = () => { f.examOnly = !f.examOnly; renderSchedule(); };
   $('#scGrade').onclick = () => { f.gradeOnly = !f.gradeOnly; renderSchedule(); };
+
+  if (S.schedCalOn) {
+    renderTermCalendar();
+    renderSchedFoot();
+    return;
+  }
 
   const rows = schedRows();
   if (!rows.length) {
@@ -1844,6 +1986,11 @@ async function openCourses(refresh) {
     $('#pickerHint').textContent = firstLine(err.message) + ' — see the banner above.';
     return;
   }
+  paintHome(picked);
+}
+
+/* Drawn again after one course is re-read, without rebuilding the whole page. */
+function paintHome(picked) {
   S.courses = picked.courses || [];
   S.termInfo = picked.terms || { terms: [] };
 
@@ -1877,6 +2024,7 @@ async function openCourses(refresh) {
     ? '<div class="pickList">' + list.map(courseRow).join('') + '</div>'
     : `<p class="hint">${resume ? 'That is every course in this term.'
         : 'No courses in this term.'}</p>`;
+  wireCourseTools($('#pickerBody'));
 
   renderStorage();
   $('#selTerm').onchange = ev => { S.term = ev.target.value; openCourses(false); };
@@ -1893,25 +2041,138 @@ function courseCount(list, resume) {
 /* One row per course: the catalogue code, what the course is actually called,
    and the state this machine knows about. A course nobody has opened here says
    so plainly rather than showing a zero that would read as "nothing to do". */
+/* The same four figures the course page shows in its band. Folded until asked:
+   a course list that always showed them was taller than the tools beside it.
+   Remembering an open row matters because changing the term redraws the list. */
+function glanceMap() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('cg.glance') || '{}');
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch (_) { return {}; }
+}
+function glanceIsOpen(id) {
+  return !!glanceMap()[String(id || '')];
+}
+function glanceCards(c, onBand) {
+  const waiting = +c.waiting || 0;
+  const cards = [
+    [c.assignments || 0, 'Assignments', ''],
+    [waiting, 'Waiting to grade', waiting ? 'warn' : ''],
+    [c.graded || 0, 'Graded here', ''],
+    [c.writes_today || 0, 'Canvas writes today', ''],
+  ];
+  const gid = 'glance-' + String(c.course_id || c.id || '');
+  return `<span class="pickStats${onBand ? ' onBand' : ''}" id="${esc(gid)}">${cards.map(([n, label, kind]) =>
+    `<span class="pickStat ${kind}"><b>${esc(n)}</b><span>${esc(label)}</span></span>`
+  ).join('')}</span>`;
+}
+function glanceFold(c, onBand) {
+  const id = String(c.course_id || c.id || '');
+  const open = glanceIsOpen(id);
+  return `<button type="button" class="pickFold${onBand ? ' onBand' : ''}" data-cid="${esc(id)}"
+    aria-expanded="${open ? 'true' : 'false'}" aria-controls="glance-${esc(id)}"
+    aria-label="${open ? 'Collapse' : 'Expand'}"><span class="pickChevron" aria-hidden="true">▾</span></button>`;
+}
+function wireGlance(root) {
+  if (!root) return;
+  root.querySelectorAll('.pickFold').forEach(btn => {
+    btn.onclick = () => {
+      const open = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.setAttribute('aria-label', open ? 'Collapse' : 'Expand');
+      const box = btn.closest('.pickRow, .resumeBand');
+      if (box) box.classList.toggle('open', open);
+      const all = glanceMap();
+      const id = String(btn.dataset.cid || '');
+      if (open) all[id] = 1;
+      else delete all[id];
+      try { localStorage.setItem('cg.glance', JSON.stringify(all)); } catch (_) { /* private mode */ }
+    };
+  });
+}
+
+/* A circular arrow. One course, not the whole list: re-read its assignment
+   list from Canvas and draw the figures again. Reads only. */
+const REFRESH_ICON = `<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+  <path d="M21 12a9 9 0 1 1-2.6-6.3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M21 3.5V9h-5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+function refreshButton(c, onBand) {
+  const id = String(c.course_id || c.id || '');
+  const name = c.title || c.name || 'this course';
+  return `<button type="button" class="pickRefresh${onBand ? ' onBand' : ''}" data-cid="${esc(id)}"
+    aria-label="Refresh ${esc(name)} from Canvas"
+    title="Re-read this course's assignment list from Canvas. Reads only.">${REFRESH_ICON}</button>`;
+}
+
+function wireRefresh(root) {
+  if (!root) return;
+  root.querySelectorAll('.pickRefresh').forEach(btn => {
+    btn.onclick = () => refreshOneCourse(btn.dataset.cid, btn);
+  });
+}
+
+function wireCourseTools(root) {
+  wireGlance(root);
+  wireRefresh(root);
+}
+
+async function refreshOneCourse(cid, btn) {
+  cid = String(cid || '');
+  if (!cid || !btn || btn.dataset.busy === '1') return;
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  btn.classList.add('spin');
+  btn.setAttribute('aria-busy', 'true');
+  try {
+    const started = await api('/courses/' + encodeURIComponent(cid) + '/hub/refresh', { body: {} });
+    let info = null;
+    for (let i = 0; i < 180; i++) {
+      info = await api('/jobs/' + started.job);
+      if (!info || info.state !== 'running') break;
+      if (S.view !== 'picker') return;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    if (S.view !== 'picker') return;
+    if (!info || info.state === 'error') throw new Error((info && info.error) || 'The refresh failed.');
+    if (info.state !== 'done') throw new Error('The refresh did not finish.');
+    const picked = await api('/picker');
+    if (S.view !== 'picker') return;
+    paintHome(picked);
+    setStatus('Refreshed from Canvas', 'ok');
+  } catch (err) {
+    setStatus(firstLine(err.message), 'err');
+    btn.classList.remove('spin');
+    btn.disabled = false;
+    btn.removeAttribute('aria-busy');
+    delete btn.dataset.busy;
+  }
+}
+
 function courseRow(c) {
   const bits = [];
   if (c.students != null) bits.push(c.students + ' student' + (c.students === 1 ? '' : 's'));
   if (c.excluded) bits.push('excluded in config.json');
+  else if (c.known && c.touched_at) bits.push(ago(c.touched_at));
   const right = [];
   if (c.excluded) right.push('<span class="pill warn">excluded</span>');
-  else if (c.waiting) right.push(`<span class="pill warn">${c.waiting} to grade</span>`);
   else if (!c.known) right.push('<span class="pill">not opened yet</span>');
-  else right.push('<span class="pill ok">nothing waiting</span>');
-  if (c.touched_at) right.push(`<span class="pill">${esc(ago(c.touched_at))}</span>`);
+  else if (c.waiting) right.push(`<span class="pill warn">${c.waiting} to grade</span>`);
 
-  const inner = `<span class="pickCode">${esc(c.code || '')}</span>
+  const main = `<span class="pickCode">${esc(c.code || '')}</span>
     <span><span class="nm">${esc(c.title || c.name)}</span>
       <span class="sub">${esc(bits.join(' · '))}</span></span>
-    <span class="rt">${right.join('')}</span>`;
+    ${right.length ? `<span class="rt">${right.join('')}</span>` : ''}`;
   if (c.excluded) {
-    return `<div class="pickRow off" title="${esc(c.name)}">${inner}</div>`;
+    return `<div class="pickRow off" title="${esc(c.name)}"><div class="pickMain">${main}</div></div>`;
   }
-  return `<a class="pickRow" href="#/c/${esc(c.id)}" title="${esc(c.name)}">${inner}</a>`;
+  const show = c.known ? glanceIsOpen(c.id) : false;
+  return `<div class="pickRow${show ? ' open' : ''}">
+    <a class="pickMain" href="#/c/${esc(c.id)}" title="${esc(c.name)}">${main}</a>
+    <div class="pickActs">${c.known ? glanceFold(c) : ''}${refreshButton(c)}</div>
+    ${c.known ? glanceCards(c) : ''}
+  </div>`;
 }
 
 /* Where you left off, or nothing at all. A band that said "no recent work"
@@ -1924,19 +2185,23 @@ function renderResume(r) {
   const what = r.assignment_name
     ? `${r.waiting ? r.waiting + ' waiting on ' : 'last on '}"${r.assignment_name}"`
     : (r.waiting ? r.waiting + ' submissions waiting' : 'no submissions waiting');
-  host.innerHTML = `<section class="resumeBand" aria-labelledby="resumeH">
+  const open = r.known === false ? false : glanceIsOpen(r.course_id);
+  host.innerHTML = `<section class="resumeBand${open ? ' open' : ''}" aria-labelledby="resumeH">
     <div>
       <div class="kicker">Where you left off</div>
       <h2 id="resumeH">${esc(r.title)}</h2>
       <p>${esc(where)}${where ? ' · ' : ''}${esc(what)}, ${esc(r.ago || 'earlier')}.</p>
+      ${r.known === false ? '' : glanceCards(r, true)}
     </div>
     <div class="go">
+      <div class="pickActs">${r.known === false ? '' : glanceFold(r, true)}${refreshButton(r, true)}</div>
       <a class="btn primary" href="${r.assignment_id
         ? `#/c/${esc(r.course_id)}/a/${esc(r.assignment_id)}`
         : `#/c/${esc(r.course_id)}/grade`}">Carry on grading</a>
       <a class="btn" href="#/c/${esc(r.course_id)}">Open the course</a>
     </div>
   </section>`;
+  wireCourseTools(host);
 }
 
 /* "5 hours ago". The hub says the same thing about the same timestamps; this
@@ -2083,6 +2348,7 @@ async function openAssignment(courseId, assignmentId, opts = {}) {
   setStatus('loading…');
   try {
     S.ws = await api(`/a/${courseId}/${assignmentId}`);
+    if (typeof loadNicks === 'function') await loadNicks();
   } catch (err) { setStatus('failed: ' + err.message, 'err'); return; }
   setStatus('');
   const a = S.ws.assignment || {};
@@ -2128,7 +2394,7 @@ function openRelease(only) {
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const hidden = rows.filter(s => !s.canvas_posted_at);
   const live = rows.filter(s => s.canvas_posted_at);
-  const list = arr => arr.map(s => `  ${s.name}: ${num(s.canvas_score)}`).join('\n') || '  none';
+  const list = arr => arr.map(s => `  ${studentLabel(s)}: ${num(s.canvas_score)}`).join('\n') || '  none';
   host.innerHTML = `<div class="modalBack"><div class="modal">
       <h3>Make grades live${scope ? ` — ${scope.length} selected` : ''}</h3>
       <div class="sub">This is Canvas's own <b>Post grades</b> button. It changes nothing about
@@ -2550,8 +2816,11 @@ function openInstructions() {
       <h3>Custom grading instructions</h3>
       <div class="sub">Anything Claude should know that is not in the Canvas description or rubric —
         a requirement you changed in class, an extension you granted, a common misreading to be lenient about,
-        how strictly to treat length floors. These override the rubric wording where they conflict.</div>
-      <textarea class="instructions" id="instrText" placeholder="e.g. I told the class in person they could use any game, not just the five on the list — do not dock the edge-case table for off-list cases this time.">${esc(S.ws.instructions || '')}</textarea>
+        how strictly to treat length floors. These override the rubric where they conflict.
+        They also override the syllabus late penalty: “ignore late grades for this assignment”
+        lifts it for the class, and “ignore Jane Doe’s tardy submission” lifts it for that student only.
+        Saving applies that to grades already on this screen. You do not have to re-grade.</div>
+      <textarea class="instructions" id="instrText" placeholder="e.g. Ignore late grades for this assignment. Or: ignore Jane Doe’s tardy submission — do not dock points for it.">${esc(S.ws.instructions || '')}</textarea>
       <div class="foot">
         <button class="btn" id="instrCancel">Cancel</button>
         <button class="btn primary" id="instrSave">Save</button>
@@ -2560,11 +2829,12 @@ function openInstructions() {
   $('#instrSave').onclick = async () => {
     const text = $('#instrText').value;
     try {
-      await api(`/a/${courseId}/${assignmentId}/instructions`, { body: { text } });
-      S.ws.instructions = text;
+      const saved = await api(`/a/${courseId}/${assignmentId}/instructions`, { body: { text } });
+      S.ws = await api(`/a/${courseId}/${assignmentId}`);
       host.innerHTML = '';
-      renderHeaderActions();
-      setStatus('instructions saved', 'ok');
+      render();
+      const n = (saved && saved.late_waived) || 0;
+      setStatus(n ? `instructions saved — late penalty changed for ${n}` : 'instructions saved', 'ok');
     } catch (err) { setStatus('save failed: ' + err.message, 'err'); }
   };
 }
@@ -2586,7 +2856,7 @@ function openAsk(student) {
   const history = S.askHistory[key] = S.askHistory[key] || [];
 
   host.innerHTML = `<div class="modalBack"><div class="modal wide">
-      <h3>Ask about ${esc(student.name)}'s work</h3>
+      <h3>Ask about ${esc(studentLabel(student))}'s work</h3>
       <div class="sub">Claude answers from this submission only, and says so when the
         answer is not in there. Nothing here changes the grade.</div>
       <div class="askThread" id="askThread"></div>
@@ -2946,7 +3216,7 @@ function voiceHTML(voice) {
       `<span class="tag">${b.count} × ${esc(b.label)}</span>`).join('')}</div>
     <div class="voiceList">${voice.students.map(p => `
       <div class="voicePerson">
-        <div class="voiceWho">${esc(p.name)}</div>
+        <div class="voiceWho">${esc(studentLabel(p))}</div>
         ${p.items.map(i => `<div class="voiceQuote">
           <span class="voiceCat">${esc(i.category)}${
             i.source === 'comment' ? ' · Canvas comment' : ''}</span>
@@ -3275,7 +3545,7 @@ function curvePreviewHTML(p) {
         <h4>Who changes${rows.length > 12 ? ` (top 12 of ${rows.length})` : ''}</h4>
         <table class="cvRows"><tbody>
         ${rows.slice(0, 12).map(r => `<tr>
-          <td>${esc(r.name || r.user_id)}</td>
+          <td>${esc(studentLabel(r))}</td>
           <td class="mono">${num(r.before)} → ${num(r.after)}</td>
           <td class="mono up">+${num(r.delta)}</td>
           <td>${r.letter_before !== r.letter_after
@@ -3372,9 +3642,9 @@ function openPush(only) {
               : 'SCORES ONLY (no comments)'),
           `WILL WRITE ${write.length} · HELD BACK ${held.length}`,
           held.length ? '\nHELD BACK - nothing is written for these:\n'
-            + held.map(s => `  ${s.name}: ${s.why}`).join('\n') : '',
+            + held.map(s => `  ${studentLabel(s)}: ${s.why}`).join('\n') : '',
           write.length ? '\nWILL WRITE:\n'
-            + write.map(s => `  ${s.name}: ${s.score}`
+            + write.map(s => `  ${studentLabel(s)}: ${s.score}`
               + (s.curved_by ? `   (${s.earned} earned ${s.curved_by > 0 ? '+' : ''}${
                   s.curved_by}${s.curved_by > 0 ? ' curve' : ' late'})` : '')
               + (s.comment ? '   + comment' : '')).join('\n') : '',
@@ -3592,7 +3862,8 @@ function students() {
   const all = Object.values(S.ws.extracted || {});
   all.sort(rosterOrder);
   return all.filter(s => {
-    if (S.query && !String(s.name).toLowerCase().includes(S.query)) return false;
+    if (S.query && ![s.name, s.sortable_name, studentLabel(s)].join(' ')
+      .toLowerCase().includes(S.query)) return false;
     const e = entryOf(s.user_id);
     if (S.filter === 'review') return !!(e && e.needs_human);
     if (S.filter === 'human') return !!(e && (e.source === 'human' || e.source === 'canvas'));
@@ -3706,7 +3977,7 @@ function openRosterMenu(ev, ids) {
   const items = selectionItems(st);
   const one = st.n === 1;
   const head = one
-    ? esc(((Object.values(S.ws.extracted || {}).find(s => String(s.user_id) === st.ids[0]) || {}).name) || st.ids[0])
+    ? esc(studentLabel(Object.values(S.ws.extracted || {}).find(s => String(s.user_id) === st.ids[0]) || { name: st.ids[0] }))
     : esc(st.n + ' students');
   const menu = document.createElement('div');
   menu.id = 'rosterMenu';
@@ -3840,7 +4111,9 @@ function renderRoster() {
     const note = document.createElement('p');
     note.className = 'sub';
     note.style.cssText = 'margin:0 0 8px;padding:0 4px';
-    note.textContent = policy.summary;
+    note.textContent = S.ws.late_waiver
+      ? policy.summary + ' Your instructions waive that for this assignment.'
+      : policy.summary;
     host.appendChild(note);
   }
   list.forEach((s, i) => {
@@ -3870,7 +4143,9 @@ function renderRoster() {
     const curveMark = bump
       ? `<span class="curveMark" title="includes a curve of +${num(bump)}">↑</span>` : '';
     const lateMark = lateOff(e)
-      ? `<span class="tag warn" title="${esc((e.late_penalty && e.late_penalty.summary) || '')}">−${num(lateOff(e))}</span>` : '';
+      ? `<span class="tag warn" title="${esc((e.late_penalty && e.late_penalty.summary) || '')}">−${num(lateOff(e))}</span>`
+      : ((e && e.late_penalty && e.late_penalty.waived)
+        ? `<span class="tag" title="${esc(e.late_penalty.summary || '')}">late waived</span>` : '');
     // Video never gets an automatic score, so the roster has to say which rows
     // are waiting on someone to sit and watch them.
     const vidMark = (s.videos || []).length
@@ -3883,7 +4158,7 @@ function renderRoster() {
         : '<span class="postMark hidden" title="in Canvas, hidden from the student">◌</span>';
     const cmtMark = e && e.post_comment && (e.comment || '').trim()
       ? '<span class="cmtMark" title="this comment will be included on the next push">cmt</span>' : '';
-    b.innerHTML = `<span><span class="nm">${dot}${esc(s.name)}${ok}${clash}${vidMark}${cmtMark}</span><span class="sub">${esc(sub)}</span></span>
+    b.innerHTML = `<span><span class="nm">${dot}${esc(studentLabel(s))}${ok}${clash}${vidMark}${cmtMark}</span><span class="sub">${esc(sub)}</span></span>
                    <span class="sc">${postMark}${lateMark}${curveMark}${total}</span>`;
     b.onclick = ev => onRowClick(ev, i, s.user_id);
     host.appendChild(b);
@@ -3917,7 +4192,7 @@ function unscoredRows() {
     const why = unscoredReason(s, e);
     const bucket = why === 'no submission' ? 'no_submission'
       : why === 'not graded yet' ? 'not_graded_yet' : 'nothing_readable';
-    out[bucket].push(s.name);
+    out[bucket].push(studentLabel(s));
   });
   return out;
 }
@@ -4038,7 +4313,8 @@ function heatSVG(per, pool) {
     font-weight="700" fill="var(--muted)">Tot</text>`;
   rows.forEach((r, row) => {
     const y = top + row * ch;
-    const name = r.s.name.length > 20 ? r.s.name.slice(0, 19) + '…' : r.s.name;
+    const label = studentLabel(r.s);
+    const name = label.length > 20 ? label.slice(0, 19) + '…' : label;
     g += `<text x="0" y="${y + 14}" font-size="11" fill="var(--ink)">${esc(name)}</text>`;
     per.forEach((c, i) => {
       const v = +(r.e.scores || {})[c.id] || 0;
@@ -4188,7 +4464,7 @@ function renderInsights() {
     <div class="chartGrid">
       <figure class="chart" id="fig-radar">
         <figcaption>Criterion achievement
-          <span>class mean${useStudent ? `, dashed = ${esc(selected.name)}` : ''}</span></figcaption>
+          <span>class mean${useStudent ? `, dashed = ${esc(studentLabel(selected))}` : ''}</span></figcaption>
         ${radarSVG(per, useStudent)}
       </figure>
       <figure class="chart" id="fig-hist">
@@ -4299,6 +4575,7 @@ function renderDetail() {
   }
   if (bump) tags += `<span class="tag ai">curved +${num(bump)}</span>`;
   if (lateOff(e)) tags += `<span class="tag warn" title="${esc((e.late_penalty && e.late_penalty.summary) || '')}">late −${num(lateOff(e))}</span>`;
+  else if (e.late_penalty && e.late_penalty.waived) tags += `<span class="tag" title="${esc(e.late_penalty.summary || '')}">late penalty waived</span>`;
   if (e.human_ok) tags += '<span class="tag ok">reviewed by you</span>';
   if (e.source === 'human') tags += '<span class="tag edit">edited by you</span>';
   else if (e.source === 'canvas') tags += '<span class="tag edit">pulled from Canvas</span>';
@@ -4309,9 +4586,20 @@ function renderDetail() {
   (e.flags || []).forEach(f => { tags += `<span class="tag warn">${esc(f)}</span>`; });
   if (e.confidence && e.confidence !== 'high') tags += `<span class="tag">confidence: ${esc(e.confidence)}</span>`;
 
-  let html = `<div class="who"><h2>${esc(s.name)}</h2>
+  let html = `<div class="who"><h2>${esc(studentLabel(s))}</h2>
       <span class="id">user ${esc(s.user_id)}${S.ws.pseudonymize ? ' · sent as ' + esc(s.pseudonym) : ''}
-        · <a href="#/student/${esc(s.user_id)}">Full record</a></span></div>
+        · <a href="#/student/${esc(s.user_id)}">Full record</a></span>
+      <div class="nickRow">
+        <label>Nickname
+          <input id="gdNick" maxlength="40" autocomplete="off"
+            value="${esc((typeof nickById !== 'undefined' && nickById[String(s.user_id)]) || '')}"
+            placeholder="Jack">
+        </label>
+        <button class="btn sm" id="gdNickSave" type="button">Save</button>
+        <span class="muted" id="gdNickNote">${s.name && studentLabel(s) !== s.name
+          ? 'Canvas name: ' + esc(s.name) : ''}</span>
+      </div>
+    </div>
     <div class="tags">${tags || '<span class="tag">not graded yet</span>'}</div>`;
 
   if (e.total !== undefined && !isScored(e)) {
@@ -4366,17 +4654,29 @@ function renderDetail() {
       || 'A late penalty from the syllabus was applied.')} The rubric above is the
       score the work earned.</div>` : ''}`;
 
+  if (e.quiz_auto_score != null) {
+    html += `<div class="callout">Canvas already scored the multiple choice at
+      <b>${num(e.quiz_auto_score)}</b>. The bars below are only the written answers,
+      and the total adds the two together.</div>`;
+  }
+
   crits.forEach(c => {
     const top = +c.points || 0;
     const v = Math.max(0, Math.min(top, Math.round(+(scores[c.id] || 0))));
-    // Whole points, one at a time. The Canvas ratings stay as marks under the
-    // bar so you can see them, but the bar is not limited to those jumps.
-    const tiers = (c.ratings || []).map(r => Math.round(+r.points))
-      .filter(p => p >= 0 && p <= top);
-    const marks = [...new Set([0, ...tiers, top])].sort((a, b) => a - b);
-    const input = `<input type="range" min="0" max="${top}" step="1" value="${v}"
+    let input, ticks;
+    if (c.locked) {
+      input = `<p class="muted">Already scored by Canvas. Not graded again.</p>`;
+      ticks = '';
+    } else {
+      // Whole points, one at a time. The Canvas ratings stay as marks under the
+      // bar so you can see them, but the bar is not limited to those jumps.
+      const tiers = (c.ratings || []).map(r => Math.round(+r.points))
+        .filter(p => p >= 0 && p <= top);
+      const marks = [...new Set([0, ...tiers, top])].sort((a, b) => a - b);
+      input = `<input type="range" min="0" max="${top}" step="1" value="${v}"
                  data-cid="${esc(c.id)}">`;
-    const ticks = `<div class="ticks">${marks.map(t => '<span>' + num(t) + '</span>').join('')}</div>`;
+      ticks = `<div class="ticks">${marks.map(t => '<span>' + num(t) + '</span>').join('')}</div>`;
+    }
     const why = (e.rationales || {})[c.id];
     html += `<div class="crit">
         <div class="critHead"><span class="lbl">${esc(c.label)}</span>
@@ -4400,6 +4700,31 @@ function renderDetail() {
 
   host.innerHTML = html;
   host.scrollTop = 0;
+
+  const gdNick = $('#gdNick');
+  const gdNickSave = $('#gdNickSave');
+  if (gdNickSave && gdNick) {
+    gdNickSave.onclick = async () => {
+      gdNickSave.disabled = true;
+      const note = $('#gdNickNote');
+      try {
+        const saved = await saveNickname(s.user_id, gdNick.value);
+        const shown = saved.display_name || formatNick(s.name || '', saved.nickname || '');
+        gdNick.value = saved.nickname || '';
+        const head = host.querySelector('.who h2');
+        if (head) head.textContent = shown || s.name || '';
+        if (note) note.textContent = saved.nickname
+          ? ('Saved. Canvas name: ' + (s.name || ''))
+          : 'Cleared. Canvas name stays.';
+        renderRoster();
+        setStatus(saved.nickname ? 'nickname saved' : 'nickname cleared', 'ok');
+      } catch (err) {
+        if (note) note.textContent = err.message;
+      } finally {
+        gdNickSave.disabled = false;
+      }
+    };
+  }
 
   host.querySelectorAll('input[type=range]').forEach(r => {
     r.addEventListener('input', ev => {
@@ -4533,6 +4858,10 @@ function toggleWork() {
   document.body.classList.toggle('showWork', S.showWork);
   const b = $('#btnWork'); if (b) b.textContent = S.showWork ? 'Hide work' : 'Show work';
   const i = $('#btnWorkInline'); if (i) i.textContent = (S.showWork ? 'Hide' : 'View') + ' submitted work';
+  if (!S.showWork || !S.ws) return;
+  const list = students();
+  const s = list[Math.min(S.sel, Math.max(list.length - 1, 0))];
+  if (s) renderWork(s, entryOf(s.user_id) || {});
 }
 
 /* -------------------------------------------------------- code rendering */
@@ -4820,12 +5149,29 @@ function renderWork(s, e) {
     body = `<div class="callout bad">Canvas shows this student as <b>unsubmitted</b> — there is nothing to read.
       <br><br><a href="${sgUrl(s.user_id)}" target="_blank" rel="noopener">Confirm in SpeedGrader ↗</a></div>`;
   } else {
+    if (s.quiz_review && s.quiz_review.length) {
+      body += s.quiz_review.map(q => {
+        const mark = q.manual ? 'Written'
+          : (q.correct === true ? 'Correct' : q.correct === false ? 'Incorrect' : '');
+        const pts = (q.points != null && q.points !== '')
+          ? ` <span class="wc">${num(q.points)} / ${num(q.points_possible)}</span>` : '';
+        return `<div class="workSec"><h4>${esc(q.name || ('Question ' + (q.position || '')))}${pts}`
+          + (mark ? ` <span class="pill ${q.correct === false ? 'warn' : 'good'}">${mark}</span>` : '')
+          + `</h4><div class="prose"><b>Question</b><br>${esc(q.prompt || '')}</div>`
+          + `<div class="prose"><b>${q.manual ? 'Response' : 'Their answer'}</b><br>${
+            esc(q.response || '')}</div></div>`;
+      }).join('');
+    }
     if (s.filenames && s.filenames.length) {
       body += `<div class="workSec"><h4>Attachments</h4>
         <div style="font:11.5px var(--mono);color:var(--muted);word-break:break-all">
         ${s.filenames.map(f => esc(decodeURIComponent(f))).join('<br>')}</div></div>`;
     }
     (s.parts || []).forEach(p => {
+      if (s.quiz_review && s.quiz_review.length) {
+        const stub = (p.text || '').trim();
+        if (stub.indexOf('- user:') === 0 && stub.indexOf('quiz:') >= 0) return;
+      }
       if (p.kind === 'text' && p.text && p.text.trim()) {
         body += `<div class="workSec"><h4>${esc(p.label)} <span class="wc">${p.words} words</span></h4>
           ${renderProse(p.text)}</div>`;

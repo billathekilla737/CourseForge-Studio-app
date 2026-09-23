@@ -167,7 +167,13 @@ class Store:
             draft = self.draft(course_id, assignment_id)
             entries = draft.setdefault("students", {})
             existing = entries.get(str(user_id)) or {}
-            if keep_human and existing.get("source") in ("human", "canvas"):
+            # A Canvas score on a half-graded quiz is only the multiple choice.
+            # The incoming result is the written portion added to that, and it
+            # has to replace the partial, not hide under it.
+            quiz_finish = (bool(entry.get("quiz_submission_id"))
+                           and existing.get("source") == "canvas"
+                           and existing.get("total_only"))
+            if keep_human and existing.get("source") in ("human", "canvas") and not quiz_finish:
                 existing.setdefault("ai", entry)
                 entries[str(user_id)] = existing
             else:

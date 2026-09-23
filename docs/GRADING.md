@@ -324,7 +324,9 @@ For each student the prompt contains:
 3. Your custom instructions, marked as overriding the rubric
 4. Submission metadata — status, timestamp, late flag, word count, filenames,
    and an explicit note listing any parts that could not be converted to text
-5. The student's work. Word, PowerPoint, Excel and text PDFs are read as
+5. The student's work. On a quiz, Canvas has already scored the multiple
+   choice; the written answers are read from the quiz and scored on their own,
+   then added to that. Word, PowerPoint, Excel and text PDFs are read as
    text. Screenshots (PNG, JPEG and the other common picture types), pictures
    pasted inside those Office files, and scanned PDFs are sent as images and
    graded from what is on the page. Video is not sent; you watch that.

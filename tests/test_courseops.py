@@ -195,6 +195,48 @@ class CalendarTest(unittest.TestCase):
         self.assertIsNone(cal.lookup("2099-08-20"))
 
 
+class SchoolCalendar(unittest.TestCase):
+    PAGE = """
+    <h3>Fall 2026 Academic Schedule</h3>
+    <table>
+      <tr><td>Thursday, August 20, 2026</td><td>All full term face-to-face classes begin</td></tr>
+      <tr><td>Monday, September 7, 2026</td><td>Labor Day holiday</td></tr>
+      <tr><td>Monday, October 12, 2026</td><td>Fall Break BEGINS; offices closed</td></tr>
+      <tr><td>Tuesday, October 13, 2026</td><td>Fall Break ENDS</td></tr>
+      <tr><td>Monday, November 23, 2026</td><td>Thanksgiving holidays BEGIN</td></tr>
+      <tr><td>Friday, November 27, 2026</td><td>Thanksgiving holidays END</td></tr>
+      <tr><td>Monday, December 7, 2026</td><td>Final examinations BEGIN</td></tr>
+      <tr><td>Friday, December 18, 2026</td><td>Winter Break BEGINS</td></tr>
+    </table>
+    <h3>Spring 2027 Academic Schedule</h3>
+    <table>
+      <tr><td>Monday, January 18, 2027</td><td>Martin Luther King, Jr. holiday</td></tr>
+      <tr><td>Monday, February 8, 2027</td><td>Mardi Gras holidays BEGIN; night class</td></tr>
+      <tr><td>Tuesday, February 9, 2027</td><td>Mardi Gras holidays END</td></tr>
+      <tr><td>Friday, March 26, 2027</td><td>Good Friday holiday (residence halls remain open)</td></tr>
+    </table>
+    """
+
+    def test_only_campus_breaks_come_off_the_college_page(self):
+        from courseforge.courseops import schoolcal
+        days = {(row["date"], row["name"]) for row in schoolcal.parse_calendar(self.PAGE)
+                if row["term"] == "Fall 2026"}
+        self.assertIn(("2026-09-07", "Labor Day"), days)
+        self.assertIn(("2026-10-12", "Fall Break"), days)
+        self.assertIn(("2026-10-13", "Fall Break"), days)
+        self.assertIn(("2026-11-23", "Thanksgiving"), days)
+        self.assertIn(("2026-11-27", "Thanksgiving"), days)
+        self.assertIn(("2026-12-18", "Winter Break"), days)
+        self.assertNotIn("2026-08-20", {d for d, _n in days})
+        self.assertNotIn("2026-12-07", {d for d, _n in days})
+        spring = {row["date"]: row["name"] for row in schoolcal.parse_calendar(self.PAGE)
+                  if row["term"] == "Spring 2027"}
+        self.assertEqual(spring["2027-01-18"], "Martin Luther King, Jr.")
+        self.assertEqual(spring["2027-02-08"], "Mardi Gras")
+        self.assertEqual(spring["2027-02-09"], "Mardi Gras")
+        self.assertEqual(spring["2027-03-26"], "Good Friday")
+
+
 # ================================================================ due dates
 class DueDateTest(unittest.TestCase):
     def table(self, start, weeks=15):

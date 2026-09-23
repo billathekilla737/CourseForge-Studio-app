@@ -3,10 +3,31 @@
 .studentPage h3{margin:0 0 .4rem}
 .stIdentity{display:flex;flex-wrap:wrap;gap:12px 24px;margin:0 0 1.2rem;
   padding:.8rem 1rem;border:1px solid var(--line);border-radius:8px}
+.nickRow{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin:.45rem 0 0}
+.nickRow label{font-size:.85rem;font-weight:600}
+.nickRow input{display:block;margin-top:.25rem;font:16px/1.4 var(--sans);padding:.35rem .55rem;min-width:10rem}
+.nickPreview{margin:.35rem 0 0;color:var(--muted)}
+.who .nickRow{margin-top:.35rem}
 .stSearchRow{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;margin-bottom:.4rem}
 .stSearch{display:block;font-weight:600;flex:1;min-width:16rem}
 .stSearch input{display:block;width:100%;max-width:28rem;margin:.35rem 0 .4rem;
   font:16px/1.4 var(--sans);padding:.45rem .6rem}
+.stBar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:.4rem 0 .6rem}
+.stBar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s ease}
+.riskChip{display:inline-flex;align-items:center;gap:8px;font-size:12px;text-decoration:none;
+  border:1px solid var(--line);border-radius:99px;padding:4px 10px;color:inherit}
+.riskChip.lit{border-color:var(--warn);background:var(--warn-soft)}
+.riskChip.bad{border-color:var(--danger);color:var(--danger)}
+.riskChipBar{display:inline-block;width:52px;height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.riskChipBar i{display:block;height:100%;background:var(--accent)}
+.stRiskBox{margin:0 0 1.2rem;padding:.8rem 1rem;border:1px solid var(--line);border-radius:8px}
+.stScore{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;margin-right:.35rem}
+.stKey{font-size:11px;font-weight:650;color:var(--muted);letter-spacing:.02em}
+.stHint{font-size:12px;color:var(--muted)}
+.stRisk{display:inline-block;font:600 12px var(--mono);padding:1px 7px;border-radius:99px;margin-right:.15rem}
+.stRisk-high{background:var(--danger-soft);color:var(--danger)}
+.stRisk-medium{background:var(--warn-soft);color:var(--warn)}
+.stRisk-low{background:var(--accent-soft);color:var(--accent)}
 .stCount{font:600 12px var(--mono);min-width:1.3rem;text-align:center;
   padding:1px 6px;border-radius:99px;background:var(--accent-soft);color:var(--accent)}
 .stGroup{margin:1.1rem 0 .2rem;font-size:1rem}

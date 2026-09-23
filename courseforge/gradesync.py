@@ -148,6 +148,13 @@ def merge_canvas_grades(store: Store, course_id, assignment_id,
                 out["unsubmitted"].append(uid)
                 continue
 
+            if placeholder and info.get("quiz_needs_written"):
+                # Canvas scored the multiple choice and left the essay open.
+                # Adopting that partial score would look like the test was
+                # finished, and the written answer would never be graded.
+                out.setdefault("quiz_open", []).append(uid)
+                continue
+
             if placeholder:
                 entries[uid] = _adopted(local, uid, info, rubric)
                 out["adopted"].append(uid)

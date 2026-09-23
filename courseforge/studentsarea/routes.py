@@ -1,9 +1,12 @@
 """Routes for the per-student page."""
 from __future__ import annotations
 
-from .. import statesync
+from .. import nicknames, statesync
 from ..routing import HTTPError, route
-from . import assemble
+from . import assemble, risk
+# Attendance is its own package. Importing it here registers its routes
+# without a new line in the area list.
+from ..attendance import routes as _attendance_routes  # noqa: F401
 
 AREA = "student"
 MAX_NOTE = 8000
@@ -11,6 +14,56 @@ MAX_NOTE = 8000
 
 def install(app) -> None:  # noqa: ARG001
     return None
+
+
+# RISK-INDEX: these two routes, plus studentsarea/risk.py. See docs/RISK-INDEX.md.
+@route("GET", "/api/students/risk", area=AREA)
+def risk_saved(req):
+    """The last scan, if there is one. Does not call Canvas."""
+    saved = risk.load_for_use(req.app)
+    return risk.public_view(risk.refresh_attendance(req.app, saved))
+
+
+@route("POST", "/api/students/risk", area=AREA)
+def risk_scan(req):
+    """Read this term's classes and score who needs a look. A job, so the
+    page can show which class it is on."""
+
+    def job(log):
+        return risk.scan(req.app, log)
+
+    return req.job("student.risk", job)
+
+
+@route("GET", "/api/nicknames", area=AREA)
+def nick_list(req):
+    """Every nickname this instructor has set. Display only."""
+    try:
+        book = nicknames.reconcile(req.app)
+    except Exception:  # noqa: BLE001
+        root = getattr(getattr(req.app, "store", None), "root", None)
+        book = nicknames.Book(root).read() if root else {}
+    return {"by_id": nicknames.plain(book)}
+
+
+@route("POST", "/api/student/{uid}/nickname", area=AREA)
+def nick_save(req):
+    uid = str(req.params["uid"])
+    if not uid.isdigit():
+        raise HTTPError(400, "That is not a Canvas user id.")
+    body = req.body if isinstance(req.body, dict) else {}
+    try:
+        saved = nicknames.save(req.app, uid, body.get("nickname"))
+    except ValueError as exc:
+        raise HTTPError(400, str(exc)) from None
+    legal = ""
+    try:
+        legal = assemble.person(req.app, uid).get("name") or ""
+    except Exception:  # noqa: BLE001
+        legal = ""
+    saved["legal_name"] = legal
+    saved["display_name"] = nicknames.format_name(legal, saved.get("nickname") or "")
+    return saved
 
 
 @route("GET", "/api/students", area=AREA)

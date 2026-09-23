@@ -18,6 +18,8 @@ This is separate from:
 | `students-<uid>.json` | Instructor notes on that student (slashes flatten to dashes) |
 | `assistant-<cid>.json` | That course's Assistant transcript, mode and model |
 | `build-<cid>.json` | Unpublished Build drafts, plus the saved manifest, rubrics and `state.json` |
+| `nicknames.json` | Instructor nicknames, keyed by Canvas user id. Display only |
+| `attendance-<cid>.json` | Attendance marks for that course, keyed by Canvas user id. No names |
 
 Applied quiz extras and `Extension:` deadline overrides already live in Canvas
 itself. They do not need this replica.

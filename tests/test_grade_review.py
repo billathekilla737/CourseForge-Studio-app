@@ -276,6 +276,13 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         calls = re.findall(r"(?<![\w.$])(confirm|alert)\(", self.src)
         self.assertEqual(calls, [])
 
+    def test_closing_the_roster_does_not_leave_it_in_the_address(self):
+        """Close used to empty the dialog and leave #/roster, so a refresh
+        opened it again and the dim layer kept eating clicks."""
+        self.assertIn("if (top === 'roster') location.hash = '#/';", self.src)
+        self.assertIn("let gone = false;", self.src)
+        self.assertIn('type="button" id="roClose"', self.src)
+
     def test_no_location_reload(self):
         self.assertNotIn("location.reload(", self.src)
 
@@ -303,7 +310,7 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         # Bulk bar and context menu share one action list, so a new verb cannot
         # land on shift-click and be missing from right-click (or the reverse).
         self.assertIn("selectionItems(st)", self.src)
-        self.assertIn("js/grade.js?v=rubric-step-1",
+        self.assertIn("js/grade.js?v=schedcal-1",
                       (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn('step="1"', self.src)
         self.assertNotIn("data-tiers", self.src)

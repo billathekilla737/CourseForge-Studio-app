@@ -23,6 +23,7 @@
 
   /* ------------------------------------------------------------- the area */
   async function openAssistant(courseId, rest) {
+    if (typeof loadNicks === 'function') loadNicks();
     const mem = asstMem();
     mem.courseId = String(courseId);
     mem.seq = 0;
@@ -188,7 +189,7 @@
     if (!q) return people.slice(0, 8);
     const scored = [];
     for (const p of people) {
-      const name = (p.name || '').toLowerCase();
+      const name = [p.name, p.sortable, studentLabel(p)].join(' ').toLowerCase();
       const words = name.split(/\s+/);
       let rank = null;
       if (name.startsWith(q)) rank = 0;
@@ -227,7 +228,7 @@
     }
     list.hidden = false;
     list.innerHTML = hits.map((p, i) => `<li role="option" data-i="${i}"
-      id="asstMention-${i}" aria-selected="${i === 0}">${esc(p.name)}</li>`).join('');
+      id="asstMention-${i}" aria-selected="${i === 0}">${esc(studentLabel(p))}</li>`).join('');
     list.querySelectorAll('[data-i]').forEach(li => {
       li.onmousedown = ev => { ev.preventDefault(); mentionTake(+li.dataset.i); };
     });
@@ -257,13 +258,14 @@
     if (!person || !box) { mentionClose(); return; }
     const head = box.value.slice(0, st.from);
     const tail = box.value.slice(st.to);
-    const insert = person.name + (tail.startsWith(' ') ? '' : ' ');
+    const shown = studentLabel(person);
+    const insert = shown + (tail.startsWith(' ') ? '' : ' ');
     box.value = head + insert + tail;
     const caret = head.length + insert.length;
     box.setSelectionRange(caret, caret);
     mentionClose();
     box.focus();
-    setStatus(person.name + ' goes out as ' + (person.tag || 'a tag'), 'ok');
+    setStatus(shown + ' goes out as ' + (person.tag || 'a tag'), 'ok');
   }
 
   /* True when the key belonged to the menu, so the composer leaves it alone.
@@ -284,6 +286,7 @@
 
   async function asstRoster(courseId) {
     try {
+      if (typeof loadNicks === 'function') await loadNicks();
       const out = await api(asstBase(courseId) + '/roster');
       const mem = asstMem();
       if (String(mem.courseId) === String(courseId)) mem.roster = out.students || [];

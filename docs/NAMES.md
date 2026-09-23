@@ -127,6 +127,21 @@ Studio dry-run verbs are not reads of grading files; a brief that says
 The Allow card says so, on the card, for the kinds of call where it is true.
 That is the honest place for it: the decision is being made right there.
 
+## Nicknames
+
+An instructor can set a nickname on the student page, or on the grading
+panel. John Doe with the nickname Jack is shown as John "Jack" Doe on
+Studio screens: the roster, the student list, Inbox, extensions, the
+record, and Assistant replies. Sorting stays on the Canvas last name.
+
+The Canvas name is what gets saved, pushed, and matched for a late-policy
+waiver that uses the legal spelling. A waiver can also name the nickname
+("Ignore Jack's tardy submission"). The nickname is one more spelling the
+Assistant swaps for a tag, so typing it does not send the nickname out.
+`names.json` and `map.json` still store the Canvas name and still never
+leave this computer. The nickname book does travel, in your Canvas user
+files as `nicknames.json`, the same way notes do.
+
 ## Turning it off
 
 `pseudonymize: false` in `config.json` sends names as typed, everywhere. There

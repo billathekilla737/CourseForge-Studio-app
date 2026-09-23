@@ -21,6 +21,7 @@
   function base(cid) { return '/record/' + encodeURIComponent(cid); }
 
   async function openRecord(courseId, rest) {
+    if (typeof loadNicks === 'function') loadNicks();
     const cid = String(courseId);
     S.record.cid = cid;
     S.record.filter = { student: '', area: '', month: '' };
@@ -56,6 +57,7 @@
       return;
     }
     if (String(S.record.cid) !== String(cid)) return;
+    if (typeof loadNicks === 'function') await loadNicks();
     S.record.data = data;
     drawWhere(cid, data);
     drawFilters(cid, data);
@@ -165,7 +167,7 @@
           <option value="">everyone</option>
           ${people.map(p => `<option value="${esc(p.id || p.name)}"${
             String(f.student) === String(p.id || p.name) ? ' selected' : ''
-          }>${esc(p.name || p.id)}</option>`).join('')}
+          }>${esc(studentLabel(p))}</option>`).join('')}
         </select>
       </label>
       <label>Part of the Studio
@@ -221,7 +223,7 @@
   function rowHtml(r) {
     const people = r.students || [];
     const who = people.length
-      ? people.map(p => `<span class="pill">${esc(p.name || p.id)}${
+      ? people.map(p => `<span class="pill">${esc(studentLabel(p))}${
           p.extra_time ? esc(' +' + p.extra_time + ' min') : ''}${
           p.score != null && p.score !== '' ? esc(' ' + p.score) : ''}</span>`).join(' ')
       : '<span class="muted">—</span>';
@@ -229,8 +231,8 @@
     return `<tr${bad ? ' class="warnRow"' : ''}>
       <td class="nowrap">${esc(fmtDate(r.at))}</td>
       <td>${esc(AREA_WORDS[r.area] || r.area || '')}</td>
-      <td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.sentence)}</a>`
-        : esc(r.sentence)}${bad ? ' <span class="pill warn">Canvas refused it</span>' : ''}</td>
+      <td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(nickSentence(r.sentence, people))}</a>`
+        : esc(nickSentence(r.sentence, people))}${bad ? ' <span class="pill warn">Canvas refused it</span>' : ''}</td>
       <td>${who}</td>
       <td class="muted nowrap">${esc((r.actor || {}).name || '')}</td>
     </tr>`;

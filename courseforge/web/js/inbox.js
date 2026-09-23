@@ -57,6 +57,7 @@
 
   /* ------------------------------------------------------------ the screen */
   async function openInbox(threadId) {
+    const nicks = (typeof loadNicks === 'function') ? loadNicks() : null;
     showView('inbox');
     crumbs([{ label: 'Courses', href: '#/' }, { label: 'Inbox' }]);
     $('#headerActions').innerHTML =
@@ -107,6 +108,7 @@
        S.view still saying 'inbox' and write into a screen that is no longer
        there. */
     if (!(S.route && S.route.parts && S.route.parts[0] === 'inbox')) return;
+    if (nicks) await nicks;
     mem().threads = data.threads || [];
     $('#ibHint').textContent = `${mem().threads.length} thread${
       mem().threads.length === 1 ? '' : 's'}`
@@ -134,7 +136,7 @@
       return;
     }
     host.innerHTML = '<div class="ibList">' + rows.map((t, i) => {
-      const who = (t.with || []).map(p => p.name || p.tag).join(', ') || 'someone';
+      const who = (t.with || []).map(p => studentLabel(p) || p.tag).join(', ') || 'someone';
       const sel = mem().picked.has(String(t.id));
       return `<div class="ibRow${t.unread ? ' unread' : ''}${sel ? ' sel' : ''}${
         String(mem().open) === String(t.id) ? ' open' : ''}">
@@ -296,7 +298,7 @@
 
   function drawThread(t) {
     const pane = $('#ibPane');
-    const who = (t.with || []).map(p => p.name || p.tag).join(', ');
+    const who = (t.with || []).map(p => studentLabel(p) || p.tag).join(', ');
     const read = mem().read[t.id];
     pane.innerHTML = `<div class="ibThread">
       <div class="ibHead">
@@ -308,7 +310,8 @@
       <div class="ibMsgs">${(t.transcript || []).map(m => `
         <div class="ibMsg${m.from === 'you' ? ' mine' : ''}">
           <div class="ibFrom">${esc(m.from === 'you' ? 'You' : nameFor(t, m.from))}</div>
-          <div class="ibBody">${esc(m.body)}</div>
+          ${m.body ? `<div class="ibBody">${esc(m.body)}</div>` : ''}
+          ${fileHtml(t, m)}
         </div>`).join('')}</div>
       <div class="ibVerbs">
         <button class="btn ai" type="button" id="ibRead">Draft a reply with Claude</button>
@@ -317,6 +320,14 @@
       </div>
       <div id="ibAsk"></div>
       <div id="ibDraft"></div>`;
+    pane.querySelectorAll('img.ibImg, video.ibVid, audio.ibAudio').forEach(el => {
+      el.onerror = () => {
+        const note = document.createElement('p');
+        note.className = 'hint';
+        note.textContent = 'Could not show this file. Open the thread in Canvas.';
+        el.replaceWith(note);
+      };
+    });
     $('#ibRead').onclick = () => askFirst(t);
     $('#ibManual').onclick = () => {
       /* No model call at all. An empty box and the cursor in it. */
@@ -334,7 +345,31 @@
      true and the pairing is the point: you read a name, Anthropic read a tag. */
   function nameFor(t, tag) {
     const hit = (t.with || []).find(p => p.tag === tag);
-    return hit ? (hit.name || tag) : tag;
+    return hit ? (studentLabel(hit) || tag) : tag;
+  }
+
+  /* Pictures and files ride through this app. A Canvas address in the message
+     would not carry the token, so the browser asks us and we ask Canvas. */
+  function fileHtml(t, m) {
+    const files = m.files || [];
+    if (!files.length) return '';
+    return `<div class="ibFiles">${files.map(f => {
+      const href = '/api/inbox/' + encodeURIComponent(t.id) + '/file/' + encodeURIComponent(f.key);
+      const name = f.name || 'file';
+      if (f.kind === 'image') {
+        return `<figure class="ibFile"><img class="ibImg" alt="${esc(name)}" src="${esc(href)}">
+          <figcaption>${esc(name)}</figcaption></figure>`;
+      }
+      if (f.kind === 'video') {
+        return `<video class="ibVid" controls preload="metadata" src="${esc(href)}"></video>
+          <div class="hint">${esc(name)}</div>`;
+      }
+      if (f.kind === 'audio') {
+        return `<audio class="ibAudio" controls preload="metadata" src="${esc(href)}"></audio>
+          <div class="hint">${esc(name)}</div>`;
+      }
+      return `<a class="ibFileLink" href="${esc(href)}" target="_blank" rel="noopener">${esc(name)}</a>`;
+    }).join('')}</div>`;
   }
 
   function canvasLink(t) {
@@ -354,6 +389,7 @@
     host.dataset.open = '1';
     host.innerHTML = `<div class="ibAskBox">
       <label for="ibTell">How should this be answered? <span class="muted">Optional.
+        This is a direction for the draft, not the words that get sent.
         Leave it empty and the draft comes from the student's message alone.</span></label>
       <textarea id="ibTell" rows="2"
         placeholder="No extensions this week. Point them at the rubric on the module page."
@@ -422,7 +458,7 @@
         <button class="btn" type="button" id="ibRedo">Draft it again…</button>
         <button class="btn" type="button" id="ibClear">Discard</button>
         <span class="spacer"></span>
-        <span class="hint">Goes to ${esc((t.with || []).map(p => p.name || p.tag).join(', '))}
+        <span class="hint">Goes to ${esc((t.with || []).map(p => studentLabel(p) || p.tag).join(', '))}
           as you, from your Canvas account.</span>
       </div>
     </div>`;

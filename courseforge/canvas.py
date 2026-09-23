@@ -214,10 +214,16 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
         return list(self.paged(f"/courses/{course_id}/users",
                                enrollment_type=["student"], enrollment_state=["active"]))
 
-    def submissions(self, course_id: int | str, assignment_id: int | str) -> list[dict]:
+    def submissions(self, course_id: int | str, assignment_id: int | str,
+                    history: bool = False) -> list[dict]:
+        include = ["user", "submission_comments", "rubric_assessment"]
+        # A quiz keeps the chosen answers and the essay on the attempt, not in
+        # the assignment body. The history is the only place they come back.
+        if history:
+            include.append("submission_history")
         return list(self.paged(
             f"/courses/{course_id}/assignments/{assignment_id}/submissions",
-            include=["user", "submission_comments", "rubric_assessment"],
+            include=include,
         ))
 
     def submission_states(self, course_id: int | str, assignment_id: int | str) -> list[dict]:
@@ -417,6 +423,37 @@ class CanvasClient(ContentOps, FilesOps, CourseOps):
         if isinstance(raw, dict):
             return list(raw.get("quiz_submissions") or [])
         return list(raw or [])
+
+    def quiz_submission_questions(self, quiz_submission_id,
+                                  attempt=None) -> list[dict]:
+        """What this student answered, including essay text the assignment hides."""
+        params = {"quiz_submission_attempt": attempt} if attempt else None
+        raw = self.get(f"/quiz_submissions/{quiz_submission_id}/questions",
+                       **(params or {}))
+        if isinstance(raw, dict):
+            return list(raw.get("quiz_submission_questions") or [])
+        return list(raw or [])
+
+    def grade_quiz_questions(self, course_id, quiz_id, quiz_submission_id,
+                             attempt, questions: dict) -> dict:
+        """Score essay questions. Canvas adds them to the automatic score."""
+        body = {
+            "quiz_submissions": [{
+                "attempt": int(attempt or 1),
+                "questions": {
+                    str(qid): {
+                        "score": info.get("score"),
+                        "comment": info.get("comment") or "",
+                    }
+                    for qid, info in (questions or {}).items()
+                    if info.get("score") is not None
+                },
+            }],
+        }
+        return self._send_json(
+            "PUT",
+            f"/courses/{course_id}/quizzes/{quiz_id}/submissions/{quiz_submission_id}",
+            body)
 
     # ------------------------------------------------------- date overrides
     def assignment_overrides(self, course_id: int | str,

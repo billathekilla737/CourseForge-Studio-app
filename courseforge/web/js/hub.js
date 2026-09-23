@@ -23,6 +23,8 @@
       blurb: 'Ask for work in plain words. Every Canvas write stops for your Allow, with the exact command shown.' },
     { id: 'record', label: 'Record', zone: 'record', href: cid => `#/c/${cid}/record`,
       blurb: 'Every change the Studio makes in this course, written down as it happens and accommodations named by student. Kept in your own Canvas files, so it outlives this PC.' },
+    { id: 'attendance', label: 'Attendance', zone: 'record', href: cid => `#/c/${cid}/attendance`,
+      blurb: 'Mark who was here, tardy, or absent, and see it on the term calendar. Nothing is written to the gradebook.' },
   ];
 
   const stillHere = cid => S.view === 'hub' && S.route && String(S.route.courseId) === String(cid);

@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import unquote_plus
 
-from . import audit, blender, curve, gradesync, latepolicy, llm, overlap, teaching
+from . import (audit, blender, curve, gradesync, latepolicy, llm, nicknames,
+               overlap, quizgrade, teaching)
 from .canvas import CanvasClient
 from .config import Config
 from .extract import (ARCHIVE_EXT, Extracted, Submission, expand_archive,
@@ -221,7 +222,9 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
         store.save_students(course_id, students)
 
     progress("fetching submissions")
-    submissions = client.submissions(course_id, assignment_id)
+    submissions = client.submissions(
+        course_id, assignment_id,
+        history=bool(assignment.get("quiz_id")))
     store.write(adir / "submissions.json", submissions)
 
     pseud = Pseudonymizer(students, enabled=cfg.pseudonymize)
@@ -237,6 +240,18 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
         discussion = _discussion_by_user(view, {str(s["id"]): s.get("name", "") for s in students})
 
     names = {str(s["id"]): s.get("name", "") for s in students}
+    quiz_pack = None
+    quiz_id = assignment.get("quiz_id")
+    if quiz_id and quizgrade.is_quiz(assignment):
+        progress("reading written questions on the quiz")
+        try:
+            quiz_pack = quizgrade.prepare(client, course_id, quiz_id, assignment)
+        except Exception as exc:  # noqa: BLE001
+            progress(f"  could not read the quiz questions: {exc}")
+            quiz_pack = None
+        if quiz_pack:
+            progress(f"{len(quiz_pack['questions'])} written question(s); "
+                     "multiple choice stays as Canvas scored it")
     extracted: dict[str, dict] = {}
     for index, sub in enumerate(submissions, start=1):
         uid = str(sub.get("user_id"))
@@ -358,6 +373,11 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
             entry["discussion"] = discussion[uid]
             entry["text"] = (entry["text"] + "\n\n" + _discussion_text(discussion[uid])).strip()
             entry["words"] = len(entry["text"].split())
+        if quiz_pack and really_submitted:
+            try:
+                quizgrade.attach(entry, quiz_pack, sub)
+            except Exception as exc:  # noqa: BLE001
+                progress(f"  could not read written answers: {exc}")
         extracted[uid] = entry
 
     # Enrolled students with no submission row at all still need a card.
@@ -396,7 +416,9 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
         "assignment_id": str(assignment_id),
         "assignment_name": assignment.get("name", ""),
         "points_possible": assignment.get("points_possible"),
-        "rubric": _rubric_of(assignment),
+        "rubric": (quiz_pack["criteria"] if quiz_pack and quiz_pack.get("criteria")
+                   else _rubric_of(assignment)),
+        "quiz_id": str(quiz_id) if quiz_pack else None,
         "synced_at": datetime.now().isoformat(timespec="seconds"),
         "student_count": len(extracted),
     })
@@ -477,6 +499,14 @@ def _discussion_text(entry: dict, pseud: Pseudonymizer | None = None) -> str:
     return "\n\n".join(chunks)
 
 
+def _hide_nicks(cfg: Config, store: Store, course_id, text: str) -> str:
+    """Legal names and nicknames out of instructor text before it is sent."""
+    if not text or not cfg.pseudonymize:
+        return text or ""
+    pseud = Pseudonymizer(store.students(course_id) or [], enabled=True)
+    return nicknames.redact(pseud.scrub_roster(text), pseud)
+
+
 def _work_for_model(entry: dict, pseud: Pseudonymizer) -> str:
     """The copy of a submission that may leave the machine: tags, no PII."""
     work = entry.get("body_text")
@@ -498,6 +528,14 @@ def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
     lines: list[str] = []
     lines.append(f"# Assignment: {assignment.get('name','(untitled)')}")
     lines.append(f"Points possible: {assignment.get('points_possible')}")
+    quiz = entry.get("quiz") or {}
+    if quiz.get("questions") and not quiz.get("written_included"):
+        lines.append(
+            f"This is a quiz. Canvas already scored the multiple-choice and "
+            f"other automatic questions at {quiz.get('auto_score')} points. "
+            "Score ONLY the written questions below. Do not award points for "
+            "the automatic questions and do not fold them into these criteria."
+        )
     lines.append("")
     lines.append("## Assignment description as students saw it")
     description = html_to_text(assignment.get("description")) or "(no description in Canvas)"
@@ -528,7 +566,7 @@ def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
             "the student to fix it is the same mistake made twice.")
         noted = instructions.strip()
         if pseud is not None:
-            noted = pseud.scrub_roster(noted)
+            noted = nicknames.redact(pseud.scrub_roster(noted), pseud)
         lines.append(noted)
         lines.append("")
 
@@ -643,7 +681,8 @@ def grade_one(cfg: Config, assignment: dict, rubric: list[dict], entry: dict,
               students: list | None = None) -> dict:
     """Grade a single student. Returns a draft entry; never raises."""
     uid = entry["user_id"]
-    label = entry.get("pseudonym") if cfg.pseudonymize else entry.get("name", uid)
+    label = (entry.get("pseudonym") if cfg.pseudonymize
+             else nicknames.shown(entry.get("name") or "", uid)) or uid
     base = {"user_id": uid, "source": "claude",
             "graded_at": datetime.now().isoformat(timespec="seconds")}
 
@@ -685,6 +724,10 @@ def grade_one(cfg: Config, assignment: dict, rubric: list[dict], entry: dict,
                                    else reason + " - decide yourself whether it scores zero"),
         }
 
+    quiz = entry.get("quiz") or {}
+    grade_written = bool(quiz.get("questions")) and not quiz.get("written_included")
+    if grade_written:
+        rubric = quizgrade.criteria(quiz["questions"])
     _item(progress, label, "reading the submission",
           _brief(len(entry.get("text") or "")))
     prompt = build_prompt(assignment, rubric, entry, instructions, label,
@@ -825,6 +868,12 @@ def grade_one(cfg: Config, assignment: dict, rubric: list[dict], entry: dict,
     top = round(sum(float(c["points"] or 0) for c in rubric), 2)
     if rubric and top > 0 and total >= top - 1e-6:
         comment = ""
+    if grade_written:
+        folded = quizgrade.fold_auto(
+            {"scores": scores, "total": total, "flags": flags}, quiz)
+        scores = folded["scores"]
+        total = folded["total"]
+        flags = folded["flags"]
 
     _item(progress, label, "scored", f"{total} pts", finished=True)
     out = {
@@ -842,6 +891,17 @@ def grade_one(cfg: Config, assignment: dict, rubric: list[dict], entry: dict,
         "model": model,
         "images_sent": len(images),
     }
+    if grade_written:
+        out["quiz_auto_score"] = quiz.get("auto_score")
+        out["quiz_written_score"] = round(
+            sum(v for k, v in scores.items() if k != "_quiz_auto"), 2)
+        out["quiz_id"] = quiz.get("quiz_id")
+        out["quiz_submission_id"] = quiz.get("submission_id")
+        out["quiz_attempt"] = quiz.get("attempt") or 1
+        out["quiz_question_scores"] = {
+            q["id"]: scores.get(f"q{q['id']}")
+            for q in (quiz.get("questions") or [])
+        }
     if notes:
         out["attempts"] = notes
     if repaired:
@@ -863,7 +923,8 @@ def ask_about(cfg: Config, store: Store, course_id, assignment_id, user_id: str,
     draft = store.draft(course_id, assignment_id)
     graded = (draft.get("students") or {}).get(str(user_id)) or {}
     rubric = draft.get("rubric") or _rubric_of(assignment)
-    label = entry.get("pseudonym") if cfg.pseudonymize else entry.get("name", user_id)
+    label = entry.get("pseudonym") if cfg.pseudonymize else (entry.get("name") or user_id)
+    screen = label if cfg.pseudonymize else (nicknames.shown(entry.get("name") or "", user_id) or label)
 
     lines = [f"# Assignment: {assignment.get('name','(untitled)')}",
              f"Points possible: {assignment.get('points_possible')}", ""]
@@ -876,7 +937,7 @@ def ask_about(cfg: Config, store: Store, course_id, assignment_id, user_id: str,
     if instructions.strip():
         noted = instructions.strip()
         if cfg.pseudonymize:
-            noted = pseud.scrub_roster(noted)
+            noted = nicknames.redact(pseud.scrub_roster(noted), pseud)
         lines += ["", "## Instructor's custom grading instructions", noted]
 
     lines += ["", f"## Student {label}",
@@ -902,13 +963,13 @@ def ask_about(cfg: Config, store: Store, course_id, assignment_id, user_id: str,
         lines.append(f"## {role}\n{text}")
     asked = question.strip()
     if cfg.pseudonymize:
-        asked = pseud.scrub_roster(asked)
+        asked = nicknames.redact(pseud.scrub_roster(asked), pseud)
     lines += ["", "## The instructor's question", asked]
 
     result = llm.run("\n".join(lines), model=cfg.model,
                             timeout_s=cfg.claude_timeout_s, system=ASK_SYSTEM,
                             expect_json=False)
-    _item(progress, label, "done", "", finished=True)
+    _item(progress, screen, "done", "", finished=True)
     return {"answer": result.text.strip(), "cost_usd": result.cost_usd,
             "model": cfg.model, "asked_at": datetime.now().isoformat(timespec="seconds")}
 
@@ -1034,7 +1095,7 @@ def class_summary(cfg: Config, store: Store, course_id, assignment_id,
     instructions = store.instructions(course_id, assignment_id)
     if instructions.strip():
         lines += ["## Custom grading instructions that were in force",
-                  instructions.strip(), ""]
+                  _hide_nicks(cfg, store, course_id, instructions.strip()), ""]
 
     if picked:
         lines.append(
@@ -1060,6 +1121,8 @@ def class_summary(cfg: Config, store: Store, course_id, assignment_id,
             if tag and name:
                 # The name is text, not a replacement template: a backslash in
                 # it would otherwise be read as an escape and raise at unmask.
+                # The instructor reads the nickname spelling. The model saw the tag.
+                name = nicknames.shown(name, uid)
                 text = re.sub(rf"\b{re.escape(tag)}\b", lambda _m, n=name: n, text)
 
     summary = {
@@ -1130,11 +1193,18 @@ def grade_assignment(cfg: Config, store: Store, course_id, assignment_id,
                           "needs_human": True, "needs_human_reason": str(exc)}
                 info = extracted.get(uid, {})
                 label = (info.get("pseudonym") if cfg.pseudonymize
-                         else info.get("name")) or uid
+                         else nicknames.shown(info.get("name"), uid)) or uid
                 _item(progress, label, "failed", str(exc)[:80], finished=True)
-            if late_policy:
-                result = latepolicy.attach(result, extracted.get(uid) or {},
-                                           late_policy, possible)
+            info = extracted.get(uid) or {}
+            reason = latepolicy.waiver(instructions, info)
+            if reason:
+                result = dict(result)
+                result["late_penalty"] = {
+                    "applied": False, "waived": True, "points": 0,
+                    "summary": reason,
+                }
+            elif late_policy:
+                result = latepolicy.attach(result, info, late_policy, possible)
             # Write through the store, which re-reads under a lock. Holding a
             # local snapshot here let two overlapping jobs erase each other.
             store.put_student(course_id, assignment_id, uid, result)
@@ -1246,7 +1316,8 @@ def overlap_check(cfg: Config, store: Store, course_id, assignment_id,
                    else "nothing the student typed or wrote: only files this tool "
                         "summarised (a .blend scene report, an image)")
             no_text.append({"user_id": str(uid),
-                            "label": entry.get("name") or str(uid), "why": why})
+                            "label": nicknames.shown(entry.get("name"), uid) or str(uid),
+                            "why": why})
 
     if len(texts) < 2:
         raise RuntimeError(
@@ -1269,7 +1340,8 @@ def overlap_check(cfg: Config, store: Store, course_id, assignment_id,
     ])
     report = overlap.compare(texts, boilerplate=boiler)
 
-    names = {str(uid): ((extracted.get(str(uid)) or {}).get("name") or str(uid))
+    names = {str(uid): (nicknames.shown(
+        (extracted.get(str(uid)) or {}).get("name"), uid) or str(uid))
              for uid in texts}
     labels = {str(uid): ((extracted.get(str(uid)) or {}).get("pseudonym")
                          if cfg.pseudonymize
@@ -1475,7 +1547,8 @@ def teaching_read(cfg: Config, store: Store, course_id, assignment_id,
         lines += ["## What the assignment asked for", description[:2500], ""]
     instructions = store.instructions(course_id, assignment_id)
     if instructions.strip():
-        lines += ["## Extra grading instructions in force", instructions[:1200], ""]
+        lines += ["## Extra grading instructions in force",
+                  _hide_nicks(cfg, store, course_id, instructions.strip())[:1200], ""]
 
     lines.append("## Rubric rows, worst first")
     for row in health:
@@ -1595,7 +1668,7 @@ def teaching_read(cfg: Config, store: Store, course_id, assignment_id,
         for uid in graded:
             info = extracted.get(uid) or {}
             if info.get("pseudonym") and info.get("name"):
-                names[info["pseudonym"]] = info["name"]
+                names[info["pseudonym"]] = nicknames.shown(info["name"], uid)
         def unmask(text: str) -> str:
             for tag, name in names.items():
                 text = re.sub(rf"\b{re.escape(tag)}\b", lambda _m, n=name: n, text)

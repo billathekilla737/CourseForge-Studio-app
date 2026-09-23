@@ -634,6 +634,16 @@ class StateSyncer:
             try:
                 if self.enabled:
                     self.hydrate_roster()
+                    try:
+                        from . import nicknames
+                        nicknames.reconcile(self.app)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    try:
+                        from .attendance import book as attendance_book
+                        attendance_book.push_outstanding(self.app)
+                    except Exception:  # noqa: BLE001
+                        pass
                     self._flush_dirty()
             except Exception:  # noqa: BLE001
                 pass

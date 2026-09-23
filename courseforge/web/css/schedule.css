@@ -1,0 +1,26 @@
+/* Term schedule month. Campus breaks come from the college calendar. */
+.scCalHead{display:flex;align-items:center;gap:8px;margin:4px 0 8px}
+.scCalHead h2{margin:0;font-size:18px;font-weight:650}
+.scCalHead .spacer{flex:1}
+.scDow,.scCal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.scDow{margin-bottom:6px}
+.scDow span{font-size:11px;font-weight:650;color:var(--muted);text-align:center}
+.scDay{min-height:88px;padding:6px;border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);display:flex;flex-direction:column;gap:3px;min-width:0}
+.scDay.today{box-shadow:inset 0 0 0 1px var(--zone)}
+.scDay.break{background:var(--warn-soft);border-color:var(--warn)}
+.scNum{font:700 13px/1.2 var(--mono)}
+.scBreak{font-size:11px;font-weight:700;color:#8a5a00;line-height:1.25}
+.scItem{display:flex;align-items:center;gap:4px;width:100%;text-align:left;
+  border:0;background:transparent;color:var(--ink);font:11px/1.3 var(--sans);
+  padding:1px 0;cursor:pointer;min-width:0}
+.scItem i{flex:0 0 auto;width:7px;height:7px;border-radius:99px}
+.scItem{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scMore{font-size:10.5px;color:var(--muted)}
+@media (prefers-color-scheme:dark){
+  .scBreak{color:#e6c15a}
+}
+@media (max-width:720px){
+  .scDay{min-height:64px;padding:4px}
+  .scItem{font-size:10px}
+}

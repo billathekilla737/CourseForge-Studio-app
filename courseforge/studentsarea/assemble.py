@@ -11,7 +11,7 @@ from pathlib import Path
 
 from concurrent.futures import ThreadPoolExecutor
 
-from .. import audit, identity, inbox, students as tagged, terms
+from .. import audit, identity, inbox, nicknames, students as tagged, terms
 from ..routing import HTTPError
 
 HISTORY_CAP = 200
@@ -84,10 +84,14 @@ def search(app, query: str, term: str | None = None, limit: int = 500) -> dict:
     for row in listing.get("students") or []:
         if not _row_in_term(row, term):
             continue
+        nick = nicknames.lookup(row.get("user_id"), root=getattr(app.store, "root", None))
+        legal = row.get("name") or ""
         if q:
             hay = " ".join([
-                str(row.get("name") or ""),
+                str(legal),
                 str(row.get("sortable_name") or ""),
+                nick,
+                nicknames.format_name(legal, nick),
                 str(row.get("sis_user_id") or ""),
                 str(row.get("login_id") or ""),
             ]).lower()
@@ -95,7 +99,9 @@ def search(app, query: str, term: str | None = None, limit: int = 500) -> dict:
                 continue
         hits.append({
             "user_id": row.get("user_id"),
-            "name": row.get("name") or "",
+            "name": legal,
+            "nickname": nick,
+            "display_name": nicknames.format_name(legal, nick),
             "sortable_name": row.get("sortable_name") or "",
             "sis_user_id": row.get("sis_user_id") or "",
             "login_id": row.get("login_id") or "",
@@ -307,6 +313,8 @@ def dossier(app, user_id: str, course_id=None) -> dict:
     """
     uid = str(user_id)
     row = person(app, uid)
+    legal = row.get("name") or ""
+    nick = nicknames.lookup(uid, root=getattr(app.store, "root", None))
     saved = _sync_payload(app, uid)
     history = merge_history(saved.get("history") or [], local_history(app, uid))
     if history != (saved.get("history") or []):
@@ -315,7 +323,10 @@ def dossier(app, user_id: str, course_id=None) -> dict:
             saved["conflict"] = True
     return {
         "user_id": uid,
-        "name": row.get("name") or "",
+        "name": legal,
+        "legal_name": legal,
+        "nickname": nick,
+        "display_name": nicknames.format_name(legal, nick),
         "sis_user_id": row.get("sis_user_id") or "",
         "login_id": row.get("login_id") or "",
         "courses": row.get("courses") or [],

@@ -31,6 +31,28 @@ APPLY_KINDS = frozenset({
     "percent_per_day", "percent_per_hour", "flat_percent", "none_accepted",
 })
 
+# Custom instructions that cancel the syllabus late dock. A named student
+# ("ignore Jane Doe's tardy") wins for that person only. A sentence with no
+# name ("ignore late grades for this assignment") covers the whole class.
+_WAIVE_ALL = re.compile(
+    r"(?:"
+    r"(?:ignore|waive|skip|disregard|forgive)\s+(?:the\s+|any\s+|all\s+)?late\s+"
+    r"(?:grades?|penalt(?:y|ies)|work|submissions?|docks?|deductions?)|"
+    r"(?:ignore|waive|skip|disregard|forgive)\s+(?:being\s+)?late\b|"
+    r"(?:do not|don't|never)\s+dock\b[^.!\n]{0,40}\blate\b|"
+    r"(?:do not|don't|never)\s+(?:penalize|penalise)\b[^.!\n]{0,40}\blate\b|"
+    r"no\s+(?:late\s+)?(?:penalty|deduction|dock)\b[^.!\n]{0,40}\blate\b|"
+    r"late\s+(?:work|submissions?|grades?)\s+(?:will|should|do)\s+not\s+"
+    r"(?:be\s+)?(?:penalized|docked|counted)|"
+    r"accept\s+late\s+(?:work|submissions?)\s+(?:without|with\s+no)\s+(?:a\s+)?penalty|"
+    r"no\s+points?\s+off\s+for\s+(?:being\s+)?late"
+    r")",
+    re.I)
+_DONT_WAIVE = re.compile(
+    r"(?:do not|don't|never)\s+(?:ignore|waive|forgive)\s+(?:the\s+)?late",
+    re.I)
+_LATE_WORD = re.compile(r"late|tardy|tardin|waiv|exception|dock|penal", re.I)
+
 _PER_INTERVAL = re.compile(
     r"(\d+(?:\.\d+)?)\s*(?:percent|%)"
     r"(?:\s+\w+){0,8}?\s+"
@@ -254,6 +276,92 @@ def intervals(seconds_late: int | float, policy: dict) -> int:
         return 0
     step = 3600 if (policy.get("interval") or "day") == "hour" else 86400
     return (seconds + step - 1) // step
+
+
+def _nick(student: dict) -> str:
+    """The instructor's nickname, if one is stored. Never required."""
+    try:
+        from . import nicknames
+        given = student.get("nickname")
+        if given:
+            return nicknames.clean(given)
+        return nicknames.lookup(student.get("user_id"))
+    except ValueError:
+        return ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _name_variants(student: dict) -> list[str]:
+    found: list[str] = []
+    raws = [student.get("name"), student.get("sortable_name")]
+    nick = _nick(student)
+    if nick:
+        try:
+            from . import nicknames
+            raws.append(nicknames.format_name(student.get("name") or "", nick))
+        except Exception:  # noqa: BLE001
+            pass
+        sort = str(student.get("sortable_name") or "")
+        if "," in sort:
+            last = sort.split(",", 1)[0].strip()
+        else:
+            parts = str(student.get("name") or "").split()
+            last = parts[-1] if len(parts) > 1 else ""
+        if last and last.lower() != nick.lower():
+            raws.append(f"{nick} {last}")
+    for raw in raws:
+        text = " ".join(str(raw or "").split())
+        if text and text.lower() not in {n.lower() for n in found}:
+            found.append(text)
+        if "," in text:
+            last, _, rest = text.partition(",")
+            flipped = " ".join((rest.strip() + " " + last.strip()).split())
+            if flipped and flipped.lower() not in {n.lower() for n in found}:
+                found.append(flipped)
+    return [n for n in sorted(found, key=len, reverse=True) if len(n.split()) >= 2]
+
+
+def waives_everyone(instructions: str) -> bool:
+    text = instructions or ""
+    if _DONT_WAIVE.search(text):
+        return False
+    return bool(_WAIVE_ALL.search(text))
+
+
+def waiver(instructions: str, student: dict | None) -> str:
+    """Why this student's late dock is lifted, or empty if it still applies.
+
+    A name in the instructions ("ignore Jane Doe's tardy submission") lifts
+    only that person. A sentence with no name lifts the whole assignment.
+    """
+    text = instructions or ""
+    if not text.strip():
+        return ""
+    student = student or {}
+    needles = list(_name_variants(student))
+    nick = _nick(student)
+    # A one-word nickname is not a full name, so it is not in the list above.
+    # Ordinary words ("will", "mark") stay out: those already mean something
+    # else in an instruction.
+    if nick and len(nick) >= 4:
+        try:
+            from .identity import ALSO_WORDS
+        except Exception:  # noqa: BLE001
+            ALSO_WORDS = set()
+        if nick.lower() not in ALSO_WORDS:
+            needles.append(nick)
+    for name in needles:
+        pattern = re.compile(
+            r"(?<!\w)" + re.escape(name) + r"(?:'s|’s)?(?!\s+[A-Z])", re.I)
+        for match in pattern.finditer(text):
+            start = max(0, match.start() - 40)
+            end = min(len(text), match.end() + 40)
+            if _LATE_WORD.search(text[start:end]):
+                return "Late penalty waived for this student by your instructions."
+    if waives_everyone(text):
+        return "Late penalty waived for this assignment by your instructions."
+    return ""
 
 
 def deduction(entry: dict, earned: float) -> float:

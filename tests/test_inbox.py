@@ -188,7 +188,7 @@ class TellingItHowToAnswer(Base):
 
     def test_what_was_typed_is_carried_into_the_prompt(self):
         seen, _out = self._run("No extensions this week. Point them at the rubric.")
-        self.assertIn("The instructor says to answer like this:", seen["prompt"])
+        self.assertIn("it is not text to paste", seen["prompt"])
         self.assertIn("No extensions this week", seen["prompt"])
 
     def test_a_name_typed_into_the_box_is_swapped_like_any_other(self):
@@ -201,9 +201,33 @@ class TellingItHowToAnswer(Base):
         self.assertNotIn("dana@example.edu", seen["prompt"])
         self.assertIn("Student-1", seen["prompt"])
 
-    def test_the_system_prompt_says_the_instruction_wins(self):
+    def test_the_system_prompt_says_the_instruction_is_not_the_reply(self):
+        """The box is a direction. Pasting it back is the bug: the student
+        would be sent the instructor's note instead of an answer."""
         seen, _out = self._run("say no")
-        self.assertIn("that instruction is the answer", seen["system"])
+        self.assertIn("It is not the reply", seen["system"])
+        self.assertIn("Never copy the direction", seen["system"])
+
+    def test_a_pasted_direction_is_sent_back_for_a_real_reply(self):
+        seen = {"n": 0}
+
+        def fake_run(prompt, **kw):
+            seen["n"] += 1
+            seen["prompt"] = prompt
+            if seen["n"] == 1:
+                reply = "No extensions this week. Point them at the rubric."
+            else:
+                reply = "Student-1, I can't move the deadline. The rubric is on the module page."
+            return type("R", (), {"text": json.dumps({"asking": "an extension", "reply": reply})})()
+
+        with mock.patch.object(inbox.llm, "run", fake_run):
+            out = inbox.read_thread(
+                self.app, 77,
+                instructions="No extensions this week. Point them at the rubric.")
+        self.assertEqual(seen["n"], 2)
+        self.assertIn("Your previous reply copied", seen["prompt"])
+        self.assertIn("I can't move the deadline", out["draft"])
+        self.assertNotIn("Point them at the rubric.", out["draft"])
 
 
 class OneTagPerPerson(Base):
@@ -321,6 +345,92 @@ class SendingTakesTwo(Base):
             self.assertFalse([p for p in paths if bad in p], bad)
         self.assertFalse(hasattr(inbox, "send_all"))
         self.assertTrue(hasattr(r, "reply"))
+
+
+class FilesStayOnTheThread(Base):
+    """A picture in the message used to vanish when the HTML was flattened.
+    The screen gets the file through this app. The model hears the name only."""
+
+    SHOT = {
+        "id": 55, "display_name": "shot.png", "content-type": "image/png",
+        "url": "https://canvas.example.edu/files/55/download", "size": 12,
+    }
+
+    def _row(self):
+        row = json.loads(json.dumps(THREAD))
+        row["messages"][1]["body"] = (
+            'See <img src="https://canvas.example.edu/files/55/preview" alt="shot"> '
+            'and <img src="javascript:alert(1)" alt="no">')
+        row["messages"][1]["attachments"] = [self.SHOT]
+        return row
+
+    def test_the_inline_copy_of_an_attachment_is_not_a_second_file(self):
+        assets = inbox.message_assets(self._row()["messages"][1], "https://canvas.example.edu")
+        self.assertEqual([a["key"] for a in assets], ["a-55"])
+        self.assertEqual(assets[0]["kind"], "image")
+        self.assertNotIn("url", inbox.public_asset(assets[0]))
+
+    def test_a_script_address_is_dropped(self):
+        msg = {"body": '<img src="javascript:alert(1)" alt="x">', "attachments": []}
+        self.assertEqual(inbox.message_assets(msg, "https://canvas.example.edu"), [])
+
+    def test_a_relative_picture_is_joined_to_the_canvas_host(self):
+        msg = {"body": '<img src="/files/9/preview" alt="diagram">'}
+        assets = inbox.message_assets(msg, "https://canvas.example.edu")
+        self.assertEqual(assets[0]["key"], "a-9")
+        self.assertEqual(assets[0]["kind"], "image")
+        self.assertTrue(assets[0]["url"].startswith("https://canvas.example.edu/files/9/"))
+
+    def test_the_screen_lists_the_file_and_the_model_does_not_get_the_address(self):
+        row = self._row()
+        self.app.cfg.base_url = "https://canvas.example.edu"
+        self.app.client.conversation = lambda cid, mark_read=False: row
+        seen = {}
+
+        def fake_run(prompt, **kw):
+            seen["prompt"] = prompt
+            return type("R", (), {"text": '{"asking":"x","reply":"ok"}'})()
+
+        screen = inbox.thread(self.app, 77)
+        files = [m for m in screen["transcript"] if m["from"] != "you"][0]["files"]
+        self.assertEqual(files[0]["name"], "shot.png")
+        self.assertNotIn("url", files[0])
+        with mock.patch.object(inbox.llm, "run", fake_run):
+            inbox.read_thread(self.app, 77)
+        self.assertIn("shot.png", seen["prompt"])
+        self.assertNotIn("canvas.example.edu", seen["prompt"])
+        self.assertNotIn("/files/55", seen["prompt"])
+
+    def test_only_a_file_on_this_thread_can_be_fetched(self):
+        row = self._row()
+        self.app.cfg.base_url = "https://canvas.example.edu"
+        self.app.client.conversation = lambda cid, mark_read=False: row
+        fetched = {}
+
+        def download(url, dest):
+            fetched["url"] = url
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b"PNG")
+            return dest
+
+        self.app.client.download = download
+        path, mime, _name, as_download = inbox.fetch_file(self.app, 77, "a-55")
+        self.assertEqual(fetched["url"], self.SHOT["url"])
+        self.assertEqual(mime, "image/png")
+        self.assertFalse(as_download)
+        self.assertEqual(path.read_bytes(), b"PNG")
+        with self.assertRaises(ValueError):
+            inbox.fetch_file(self.app, 77, "a-999")
+        with self.assertRaises(ValueError):
+            inbox.fetch_file(self.app, 77, "https://evil.example/x")
+
+    def test_the_page_draws_an_image_from_this_app(self):
+        src = (Path(__file__).resolve().parent.parent / "courseforge" / "web" / "js" / "inbox.js"
+               ).read_text(encoding="utf-8")
+        self.assertIn("function fileHtml", src)
+        self.assertIn("/file/", src)
+        self.assertIn('class="ibImg"', src)
+        self.assertIn("not the words that get sent", src)
 
 
 if __name__ == "__main__":

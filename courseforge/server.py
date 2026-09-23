@@ -28,8 +28,9 @@ from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, urlparse
 
 from . import (accommodations, areas, audit, blender, confirm, curve, grader,
-               latepolicy, llm, gradesync, handoff, htmlclean, instruct, overlap,
-               quizedit, routing, schedule, statesync, teaching, terms)
+               latepolicy, llm, gradesync, handoff, htmlclean, instruct,
+               nicknames, overlap, quizedit, routing, schedule, statesync,
+               teaching, terms)
 from .canvas import CanvasClient, CanvasError
 from . import config
 from .config import Config
@@ -307,6 +308,7 @@ class App:
         # Standing accommodations, kept beside the graded work rather than in
         # any one course, because students and their approvals outlast a term.
         self.roster = accommodations.Roster(self.store.root / "accommodations.json")
+        nicknames.bind(self.store.root)
         self._quiz_cache: dict[tuple[str, str], dict] = {}
         # Grading in progress, carried between machines through Canvas. The
         # worker only ever looks at assignments that have been handed off once,
@@ -511,6 +513,8 @@ class App:
             "extracted": self.store.extracted(course_id, assignment_id),
             "instructions": self.store.instructions(course_id, assignment_id),
             "late_policy": policy,
+            "late_waiver": latepolicy.waives_everyone(
+                self.store.instructions(course_id, assignment_id)),
             "pseudonymize": self.cfg.pseudonymize,
             # Measured locally and cheap, so the teaching bar can say something
             # useful the moment the page opens rather than waiting to be asked.
@@ -542,7 +546,7 @@ class App:
                 pct = round(100.0 * total / possible, 1) if possible else ""
                 letter = curve.letter(pct if pct != "" else None, self.cfg.grade_scale)
             writer.writerow([
-                uid, info.get("name", ""), info.get("status", ""),
+                uid, nicknames.shown(info.get("name", ""), uid), info.get("status", ""),
                 earned, adjust, total, possible, pct, letter,
                 entry.get("source", ""), entry.get("needs_human", ""),
                 "; ".join(entry.get("flags") or []),
@@ -681,7 +685,15 @@ class App:
         if not flag_only:
             changes.setdefault("source", "human")
         if "scores" in changes:
-            changes["total"] = round(sum(float(v or 0) for v in changes["scores"].values()), 2)
+            rubric_now = (self.store.draft(course_id, assignment_id).get("rubric") or [])
+            locked = {str(c.get("id")) for c in rubric_now if c.get("locked")}
+            prev = before.get("scores") or {}
+            merged_scores = dict(changes["scores"])
+            for cid in locked:
+                if cid not in merged_scores and cid in prev:
+                    merged_scores[cid] = prev[cid]
+            changes["scores"] = merged_scores
+            changes["total"] = round(sum(float(v or 0) for v in merged_scores.values()), 2)
             # A rubric score by hand replaces a breakdown-less total pulled
             # from Canvas.
             changes["total_only"] = False
@@ -1817,6 +1829,53 @@ class App:
         self._policy_cache[key] = text
         return text
 
+    def apply_late_instructions(self, course_id, assignment_id, text: str) -> int:
+        """Lift or restore the late dock from the instruction box, without regrading.
+
+        The syllabus rule is applied in code after Claude scores, so a sentence
+        in the instructions never reached it. Saving the box is what changes it.
+        """
+        policy = self.course_late_policy(course_id)
+        extracted = self.store.extracted(course_id, assignment_id)
+        with self.store.lock:
+            draft = self.store.draft(course_id, assignment_id)
+            rubric = draft.get("rubric") or []
+            possible = draft.get("points_possible") or 0
+            changed = 0
+            for uid, entry in (draft.get("students") or {}).items():
+                if not entry or entry.get("total") is None:
+                    continue
+                info = extracted.get(str(uid)) or {}
+                late = bool(info.get("late")) or bool(entry.get("late_penalty"))
+                if not late:
+                    continue
+                reason = latepolicy.waiver(text, info)
+                current = dict(entry.get("late_penalty") or {})
+                if reason:
+                    if current.get("waived") and current.get("summary") == reason:
+                        continue
+                    entry["late_penalty"] = {
+                        **current, "applied": False, "waived": True,
+                        "points": 0, "summary": reason,
+                    }
+                elif current.get("waived"):
+                    if policy and info.get("late"):
+                        fresh = latepolicy.attach(
+                            {"total": entry.get("total"), "scores": entry.get("scores"),
+                             "flags": list(entry.get("flags") or [])},
+                            info, policy, possible)
+                        entry["late_penalty"] = fresh.get("late_penalty") or {}
+                    else:
+                        entry.pop("late_penalty", None)
+                else:
+                    continue
+                if curve.is_scored(entry):
+                    entry["final_total"] = curve.final_total(entry, rubric, possible)
+                changed += 1
+            if changed:
+                self.store.save_draft(course_id, assignment_id, draft)
+            return changed
+
     def course_late_policy(self, course_id) -> dict:
         """The late-work rule for this course, from the syllabus (or Canvas)."""
         key = str(course_id)
@@ -2176,8 +2235,19 @@ class App:
                             "comments": rationales.get(str(c.get("id"))) or "",
                         }
                         for c in rubric
-                        if c.get("id") not in (None, "", "_overall")
+                        if str(c.get("id") or "").isdigit()
                         and scores.get(str(c.get("id"))) is not None
+                    }
+                if entry.get("quiz_submission_id") and entry.get("quiz_question_scores"):
+                    item["quiz"] = {
+                        "quiz_id": entry.get("quiz_id"),
+                        "submission_id": entry.get("quiz_submission_id"),
+                        "attempt": entry.get("quiz_attempt") or 1,
+                        "questions": {
+                            qid: {"score": pts, "comment": (entry.get("rationales") or {}).get(f"q{qid}") or ""}
+                            for qid, pts in (entry.get("quiz_question_scores") or {}).items()
+                            if pts is not None
+                        },
                     }
                 if round(score - earned, 2):
                     item["earned"] = earned
@@ -2226,6 +2296,11 @@ class App:
         for index, item in enumerate(planned, start=1):
             log(f"pushing {index}/{len(planned)}: {item['name']}")
             try:
+                quiz = item.get("quiz") or {}
+                if quiz.get("submission_id") and quiz.get("questions"):
+                    self.client.grade_quiz_questions(
+                        course_id, quiz.get("quiz_id"), quiz["submission_id"],
+                        quiz.get("attempt") or 1, quiz["questions"])
                 sub = self.client.post_grade(course_id, assignment_id, item["user_id"],
                                              score=item["score"], comment=item["comment"] or None,
                                              rubric=item.get("rubric") or None)
@@ -3247,8 +3322,10 @@ def make_handler(app: App):
                         return self._json({"job": job})
 
                     if action == "instructions":
-                        app.store.save_instructions(cid, aid, body.get("text", ""))
-                        return self._json({"ok": True})
+                        text = body.get("text", "")
+                        app.store.save_instructions(cid, aid, text)
+                        lifted = app.apply_late_instructions(cid, aid, text)
+                        return self._json({"ok": True, "late_waived": lifted})
 
                     if action == "student":
                         uid = parts[5] if len(parts) > 5 else body.get("user_id")

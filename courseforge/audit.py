@@ -219,6 +219,44 @@ def _rows(path: Path) -> list[dict]:
     return out
 
 
+# Canvas changes that are written here and not in the ledger. Grade pushes
+# are the main one: the ledger does not carry names, so a push never appeared
+# in "Canvas writes today".
+CANVAS_ACTIONS = frozenset({
+    "posted", "released", "hidden", "messaged",
+    "applied", "extended", "schedule", "quiz-settings",
+})
+
+
+def _local_day(iso: str | None) -> str:
+    if not iso:
+        return ""
+    try:
+        return datetime.fromisoformat(str(iso)).astimezone().date().isoformat()
+    except ValueError:
+        return ""
+
+
+def canvas_writes_today(root: Path) -> int:
+    """Successful Canvas writes recorded only in this chain, for the local day.
+
+    One push of a whole class is one write, not one per student. Editing a
+    score on this computer is not a write, and neither is a Canvas refusal.
+    """
+    today = datetime.now().astimezone().date().isoformat()
+    n = 0
+    for path in months(root)[-2:]:
+        for row in _rows(path):
+            if row.get("action") not in CANVAS_ACTIONS:
+                continue
+            if str(row.get("result") or "ok") != "ok":
+                continue
+            at = str(row.get("at") or "")
+            if at.startswith(today) or _local_day(at) == today:
+                n += 1
+    return n
+
+
 def read(root: Path, limit: int = 200, month: str = "", student: str = "",
          area: str = "") -> list[dict]:
     """Entries newest first. `student` matches a Canvas user id or a name."""

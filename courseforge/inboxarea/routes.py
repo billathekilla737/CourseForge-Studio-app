@@ -16,7 +16,7 @@ never put a word in front of a student.
 from __future__ import annotations
 
 from .. import inbox
-from ..routing import HTTPError, route
+from ..routing import FileResponse, HTTPError, route
 
 
 def install(app) -> None:  # noqa: ARG001  (routes register on import)
@@ -60,6 +60,18 @@ def bulk(req):
                           confirm_token=body.get("confirm"), log=log)
 
     return req.job("inbox.bulk", job)
+
+
+@route("GET", "/api/inbox/{cid}/file/{key}", area="inbox")
+def attachment(req):
+    """One picture or file from this thread. The Canvas address never reaches
+    the browser; the bytes are read here and sent back."""
+    try:
+        path, mime, _name, download = inbox.fetch_file(
+            req.app, req.params["cid"], req.params["key"])
+    except ValueError as exc:
+        raise HTTPError(404, str(exc)) from None
+    return FileResponse(path, mime, download=download)
 
 
 @route("GET", "/api/inbox/{cid}", area="inbox")

@@ -26,10 +26,13 @@ a defence anybody wants to make to a dean.
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import re
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urljoin
 
 from . import audit, identity, llm, pseudonym
 
@@ -38,10 +41,196 @@ MAX_THREADS = 60
 
 
 def _text(raw: str) -> str:
-    """Canvas message bodies are plain text with the odd entity. Flatten."""
+    """Canvas message bodies are plain text with the odd entity. Flatten.
+
+    Tags come out, which is what used to drop every picture. Files are lifted
+    off the message first (see message_assets) and shown beside this text.
+    """
     out = html.unescape(str(raw or ""))
     out = re.sub(r"<[^>]+>", " ", out)
     return re.sub(r"[ \t]+\n", "\n", re.sub(r"[ \t]{2,}", " ", out)).strip()
+
+
+_IMG = re.compile(r"<img\b([^>]*)>", re.I)
+_ANCHOR = re.compile(r"<a\b([^>]*)>(.*?)</a>", re.I | re.S)
+_ATTR = re.compile(r"""\b(src|href|alt)\s*=\s*("|\')(.*?)\2""", re.I)
+_FILE_ID = re.compile(r"/files/(\d+)")
+_KEY = re.compile(r"^[a-z]-\d{1,20}$|^u-[0-9a-f]{16}$")
+
+
+def _attr(tag: str, name: str) -> str:
+    for found, _q, value in _ATTR.findall(tag or ""):
+        if found.lower() == name:
+            return html.unescape(value).strip()
+    return ""
+
+
+def _abs_url(base: str, src: str) -> str:
+    src = html.unescape(str(src or "")).strip()
+    if not src or src.lower().startswith(("javascript:", "data:", "blob:")):
+        return ""
+    if src.startswith("//"):
+        src = "https:" + src
+    if src.startswith("/") and base:
+        return base.rstrip("/") + src
+    if src.startswith(("http://", "https://")):
+        return src
+    if base:
+        return urljoin(base.rstrip("/") + "/", src)
+    return ""
+
+
+def _file_id(url: str):
+    match = _FILE_ID.search(url or "")
+    return match.group(1) if match else ""
+
+
+def _ext_of(name: str) -> str:
+    base = (name or "").rsplit("/", 1)[-1].split("?", 1)[0]
+    return base.rsplit(".", 1)[-1].lower() if "." in base else ""
+
+
+def _kind(mime: str, name: str, url: str = "") -> str:
+    mime = (mime or "").split(";")[0].strip().lower()
+    ext = _ext_of(name) or _ext_of(url)
+    if "svg" in mime or ext == "svg" or mime in ("text/html", "application/xhtml+xml"):
+        return "file"
+    if mime.startswith("image/") or ext in ("png", "jpg", "jpeg", "gif", "webp", "bmp"):
+        return "image"
+    if mime.startswith("video/") or ext in ("mp4", "webm", "mov", "m4v"):
+        return "video"
+    if mime.startswith("audio/") or ext in ("mp3", "m4a", "wav", "ogg"):
+        return "audio"
+    if mime == "application/pdf" or ext == "pdf":
+        return "pdf"
+    return "file"
+
+
+def _safe_name(name: str, fallback: str) -> str:
+    text = re.sub(r"[\r\n\t]+", " ", str(name or "")).strip()
+    text = re.sub(r"\s+", " ", text)
+    return (text or fallback)[:180]
+
+
+def _asset(key: str, name: str, mime: str, url: str, size=None, hint: str = "") -> dict:
+    name = _safe_name(name, "file")
+    mime = (mime or "").split(";")[0].strip().lower()
+    kind = _kind(mime, name, url)
+    if (hint == "image" and kind == "file" and "svg" not in mime
+            and "svg" not in (url or "").lower()):
+        kind = "image"
+    if kind == "file" and ("svg" in mime or mime in ("text/html", "application/xhtml+xml")):
+        mime = "application/octet-stream"
+    try:
+        size = int(size) if size is not None else None
+    except (TypeError, ValueError):
+        size = None
+    return {"key": key, "name": name, "mime": mime, "kind": kind, "size": size, "url": url}
+
+
+def message_assets(msg: dict, base: str = "") -> list[dict]:
+    """Files on one Canvas message: attachments, a media comment, inline images.
+
+    The url stays here for the download. The screen gets public_asset, which
+    leaves it out, and the browser loads the file through this app.
+    """
+    if not isinstance(msg, dict):
+        return []
+    out = []
+    seen = set()
+
+    def add(asset: dict) -> None:
+        if not asset or not asset.get("url") or not asset.get("key"):
+            return
+        if asset["key"] in seen:
+            return
+        fid = _file_id(asset["url"])
+        if fid and fid in seen:
+            return
+        seen.add(asset["key"])
+        if fid:
+            seen.add(fid)
+        out.append(asset)
+
+    def walk(one: dict) -> None:
+        for att in one.get("attachments") or []:
+            if not isinstance(att, dict):
+                continue
+            fid = str(att.get("id") or "").strip()
+            url = _abs_url(base, att.get("url") or "")
+            if not fid.isdigit() or not url:
+                continue
+            mime = att.get("content-type") or att.get("content_type") or ""
+            add(_asset("a-" + fid,
+                       att.get("display_name") or att.get("filename") or "file",
+                       mime, url, att.get("size")))
+        media = one.get("media_comment") or {}
+        if isinstance(media, dict) and (media.get("url") or media.get("media_id")):
+            url = _abs_url(base, media.get("url") or "")
+            mid = re.sub(r"[^A-Za-z0-9_-]", "", str(media.get("media_id") or ""))[:40]
+            fid = _file_id(url)
+            key = ("a-" + fid) if fid else ("u-" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:16])
+            if mid and not fid:
+                key = "u-" + hashlib.sha256(("media:" + mid).encode("utf-8")).hexdigest()[:16]
+            mime = media.get("content-type") or media.get("content_type") or ""
+            if not mime and media.get("media_type") == "video":
+                mime = "video/mp4"
+            elif not mime and media.get("media_type") == "audio":
+                mime = "audio/mp4"
+            add(_asset(key, media.get("display_name") or "recording", mime, url))
+        body = str(one.get("body") or "")
+        for tag in _IMG.findall(body):
+            url = _abs_url(base, _attr(tag, "src"))
+            if not url:
+                continue
+            fid = _file_id(url)
+            key = ("a-" + fid) if fid else ("u-" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:16])
+            add(_asset(key, _attr(tag, "alt") or "image", "", url, hint="image"))
+        for tag, inner in _ANCHOR.findall(body):
+            url = _abs_url(base, _attr(tag, "href"))
+            fid = _file_id(url)
+            if not url or not fid:
+                continue
+            label = _text(inner) or "file"
+            add(_asset("a-" + fid, label, "", url))
+        for child in one.get("forwarded_messages") or []:
+            if isinstance(child, dict):
+                walk(child)
+
+    walk(msg)
+    return out
+
+
+def public_asset(asset: dict) -> dict:
+    """What the browser is allowed to see. The Canvas URL stays on the server."""
+    return {key: asset.get(key) for key in ("key", "name", "mime", "kind", "size")}
+
+
+def find_asset(messages, key: str, base: str = "") -> dict | None:
+    if not _KEY.match(str(key or "")):
+        return None
+    for msg in messages or []:
+        if not isinstance(msg, dict):
+            continue
+        for asset in message_assets(msg, base):
+            if asset["key"] == key:
+                return asset
+    return None
+
+
+def _echoed(reply: str, instruction: str) -> bool:
+    """True when the draft is the direction pasted back, not a message."""
+    def norm(text):
+        return re.sub(r"\s+", " ", (text or "").strip()).casefold()
+
+    got, told = norm(reply), norm(instruction)
+    if not got or not told:
+        return False
+    if got == told:
+        return True
+    if told in got and len(got) - len(told) < 40:
+        return True
+    return False
 
 
 def _when(iso: str | None) -> str:
@@ -138,7 +327,7 @@ class Thread:
                       "user_id": str(p.get("id"))} for p in self.people],
         }
 
-    def transcript(self, full: dict, mask: bool = True) -> list[dict]:
+    def transcript(self, full: dict, mask: bool = True, base: str = "") -> list[dict]:
         """Every message in the thread, oldest first.
 
         `mask` is for the model, not for the screen. The instructor is reading
@@ -146,16 +335,27 @@ class Thread:
         "[PHONE]" is the tool withholding the very thing the student sent. So
         the screen gets the message as written, and only the copy that leaves
         the machine has anything taken out of it.
+
+        Files are named on both copies. The Canvas address stays off both:
+        the screen loads the bytes through this app, and the model only hears
+        that a file was attached.
         """
         out = []
         for msg in reversed(full.get("messages") or []):
             author = str(msg.get("author_id") or "")
             body = msg.get("body") or ""
+            files = []
+            for asset in message_assets(msg, base):
+                shown = public_asset(asset)
+                if mask:
+                    shown["name"] = self.mask(shown.get("name") or "")
+                files.append(shown)
             out.append({
                 "id": msg.get("id"),
                 "from": "you" if author == self.me_id else self.tag(author),
                 "at": msg.get("created_at"),
                 "body": self.mask(body) if mask else _text(body),
+                "files": files,
             })
         return out
 
@@ -185,11 +385,16 @@ def listing(app, scope: str = "", course_id=None, limit: int = 40) -> dict:
     }
 
 
+def canvas_base(app) -> str:
+    cfg = getattr(app, "cfg", None)
+    return str(getattr(cfg, "base_url", "") or "").rstrip("/")
+
+
 def thread(app, conversation_id) -> dict:
     row = app.client.conversation(conversation_id, mark_read=False)
     t = Thread(app, row, app.me_id)
     out = t.view()
-    out["transcript"] = t.transcript(row, mask=False)
+    out["transcript"] = t.transcript(row, mask=False, base=canvas_base(app))
     return out
 
 
@@ -216,12 +421,15 @@ Answer with JSON and nothing else:
   in. When needs_you is true, draft the part you can and leave the decision to
   them in plain words.
 
-When the instructor has told you how to answer, that instruction is the answer
-and your reading of the message is not. Write what they asked for, in their
-voice, even where you would have said something else; if what they want is
-already decided, "needs_you" is false. If their instruction cannot be squared
-with what the student actually asked, follow the instruction and say what the
-mismatch is in "why" rather than quietly splitting the difference."""
+When the instructor has given a direction, that direction decides what the
+reply should do. It is not the reply. Never copy the direction into "reply",
+and do not answer with their note lightly reworded. Write the short message
+the student will read, in the instructor's voice, that carries out the
+direction. If they said there is no extension, the reply tells the student
+that, in a sentence a student can understand. If the direction cannot be
+squared with what the student asked, follow the direction and say what the
+mismatch is in "why" rather than quietly splitting the difference. When a
+direction is present and it already decides the question, "needs_you" is false."""
 
 
 def read_thread(app, conversation_id, model: str | None = None,
@@ -241,7 +449,8 @@ def read_thread(app, conversation_id, model: str | None = None,
     """
     row = app.client.conversation(conversation_id, mark_read=False)
     t = Thread(app, row, app.me_id)
-    msgs = t.transcript(row, mask=True)
+    base = canvas_base(app)
+    msgs = t.transcript(row, mask=True, base=base)
     if not msgs:
         raise ValueError("that conversation has no messages in it")
 
@@ -255,17 +464,40 @@ def read_thread(app, conversation_id, model: str | None = None,
              "Subject: %s" % t.mask(t.row.get("subject") or "(no subject)"), ""]
     for m in msgs:
         lines.append("%s wrote:\n%s\n" % (m["from"], m["body"]))
+        names = [f.get("name") or "file" for f in (m.get("files") or [])]
+        if names:
+            lines.append("Attached (the instructor can already see these): %s\n" % ", ".join(names))
     told = t.mask(instructions or "")
     if told:
-        lines.append("The instructor says to answer like this:\n%s\n" % told)
+        lines.append(
+            "The instructor's direction (this tells you how to answer; "
+            "it is not text to paste into the reply):\n%s\n" % told)
 
-    result = llm.run("\n".join(lines), model=model or getattr(app.cfg, "describe_model", "sonnet"),
-                     system=SYSTEM, expect_json=True, timeout_s=180)
+    chosen = model or getattr(app.cfg, "describe_model", "sonnet")
+    result = llm.run("\n".join(lines), model=chosen, system=SYSTEM,
+                     expect_json=True, timeout_s=180)
     data = llm.parse_json(result.text) or {}
     if not isinstance(data, dict):
         raise ValueError("the model did not answer in the shape this screen reads")
 
     draft = str(data.get("reply") or "").strip()
+    # A direction such as "no extensions, point them at the rubric" was coming
+    # back as the reply itself. Ask once more, and keep the second answer when
+    # it is actually a message.
+    if told and _echoed(draft, told):
+        again = list(lines) + [
+            "",
+            "Your previous reply copied the instructor's direction. "
+            "That direction is not the message. Write the reply the student should read.",
+        ]
+        second = llm.run("\n".join(again), model=chosen, system=SYSTEM,
+                         expect_json=True, timeout_s=180)
+        data2 = llm.parse_json(second.text) or {}
+        if isinstance(data2, dict):
+            draft2 = str(data2.get("reply") or "").strip()
+            if draft2 and not _echoed(draft2, told):
+                data = data2
+                draft = draft2
     return {
         "id": t.id,
         "asking": t.unmask(str(data.get("asking") or "").strip()),
@@ -282,6 +514,49 @@ def read_thread(app, conversation_id, model: str | None = None,
         "with": out_people(t),
         "note": "Nothing has been sent. This draft exists only on this computer.",
     }
+
+
+def fetch_file(app, conversation_id, key: str):
+    """One attachment from one thread, saved under the data folder.
+
+    The key has to be a file this conversation actually carries. A URL from
+    the query string is never fetched, so this cannot be aimed at some other
+    host. Returns (path, content_type, download_name, as_download).
+    """
+    if not _KEY.match(str(key or "")):
+        raise ValueError("That file is not on this thread.")
+    row = app.client.conversation(conversation_id, mark_read=False)
+    asset = find_asset(row.get("messages") or [], key, canvas_base(app))
+    if not asset:
+        raise ValueError("That file is not on this thread.")
+    root = Path(app.store.root) / ".inbox-cache"
+    root.mkdir(parents=True, exist_ok=True)
+    safe_cid = re.sub(r"[^A-Za-z0-9_-]", "", str(conversation_id))[:40] or "thread"
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", asset.get("name") or "file").strip(".-")[:80] or "file"
+    dest = root / ("%s-%s-%s" % (safe_cid, key, stem))
+    app.client.download(asset["url"], dest)
+    mime = asset.get("mime") or ""
+    if not mime or mime == "application/octet-stream":
+        mime = _kind_mime(asset.get("name") or "", asset.get("kind") or "file")
+    download = asset.get("kind") == "file"
+    return dest, mime or "application/octet-stream", asset.get("name") or "file", download
+
+
+def _kind_mime(name: str, kind: str) -> str:
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    known = {
+        "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
+        "pdf": "application/pdf", "mp4": "video/mp4", "webm": "video/webm",
+        "mov": "video/quicktime", "mp3": "audio/mpeg", "m4a": "audio/mp4",
+        "wav": "audio/wav", "ogg": "audio/ogg",
+    }
+    if ext in known:
+        return known[ext]
+    return {
+        "image": "image/jpeg", "video": "video/mp4", "audio": "audio/mpeg",
+        "pdf": "application/pdf",
+    }.get(kind, "application/octet-stream")
 
 
 def out_people(t: "Thread") -> list[dict]:

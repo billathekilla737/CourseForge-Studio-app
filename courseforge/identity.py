@@ -194,7 +194,16 @@ class NameMap:
         return self.by_user.get(str(user_id), "")
 
     def name_for(self, tag: str) -> str:
-        return (self.by_tag.get(tag) or {}).get("name", "")
+        """The spelling the instructor's screen uses. Tags stay in the file."""
+        row = self.by_tag.get(tag) or {}
+        legal = (row.get("name") or "").strip()
+        if not legal:
+            return ""
+        try:
+            from . import nicknames
+            return nicknames.shown(legal, row.get("user_id"))
+        except Exception:  # noqa: BLE001
+            return legal
 
     def __len__(self) -> int:
         return len(self.by_tag)
@@ -208,6 +217,10 @@ class NameMap:
         """
         whole: list[tuple[str, str]] = []      # (needle, tag), case-insensitive
         single: dict[str, set[str]] = {}       # token -> tags that claim it
+        try:
+            from . import nicknames
+        except Exception:  # noqa: BLE001
+            nicknames = None
         for tag, row in self.by_tag.items():
             # sortable_name ("Alvarez, Jordan") is a needle in its own right and
             # not only as the flipped form, or the two halves match separately
@@ -220,7 +233,22 @@ class NameMap:
             flipped = _flip(row.get("sortable_name", ""))
             if flipped:
                 whole.append((flipped, tag))
-            for token in _tokens(row.get("name", "")) | _tokens(_flip(row.get("sortable_name", ""))):
+            tokens = _tokens(row.get("name", "")) | _tokens(_flip(row.get("sortable_name", "")))
+            nick = ""
+            if nicknames is not None:
+                nick = nicknames.lookup(row.get("user_id") or "")
+            if nick:
+                # The quoted form is one needle, so John "Jack" Doe does not
+                # leave the nickname sitting in the text after the legal name
+                # is taken. A bare nickname that is also an ordinary word is
+                # left alone, the same as a legal name that is.
+                shown = nicknames.format_name(row.get("name") or "", nick)
+                if shown and shown.lower() != (row.get("name") or "").strip().lower():
+                    whole.append((shown, tag))
+                if len(nick) >= MIN_TOKEN and nick.lower() not in ALSO_WORDS:
+                    whole.append((nick, tag))
+                tokens |= _tokens(nick)
+            for token in tokens:
                 single.setdefault(token, set()).add(tag)
 
         self._shared = {t: sorted(tags) for t, tags in single.items() if len(tags) > 1}
@@ -444,6 +472,13 @@ class NameMap:
 # --------------------------------------------------------------------- cache
 _CACHE: dict[str, NameMap] = {}
 _LOCK = threading.RLock()
+
+
+def rebuild_all() -> None:
+    """Nicknames changed. Rebuild matchers without rewriting names.json."""
+    with _LOCK:
+        for nm in _CACHE.values():
+            nm._build()
 
 
 def for_course(app, course_id, refresh: bool = False) -> NameMap:

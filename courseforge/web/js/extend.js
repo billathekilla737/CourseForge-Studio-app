@@ -38,6 +38,7 @@
 
   /* ------------------------------------------------------------ the screen */
   async function open() {
+    const nicks = (typeof loadNicks === 'function') ? loadNicks() : null;
     showView('inbox');                    // the wide full-width shell
     const host = $('#viewInbox');
     defaultWindow();
@@ -59,6 +60,7 @@
         return;
       }
     }
+    if (nicks) await nicks;
     draw();
   }
 
@@ -95,11 +97,12 @@
     const q = S.query.toLowerCase();
     const matches = S.students.filter(s =>
       !q || s.name.toLowerCase().includes(q)
+         || studentLabel(s).toLowerCase().includes(q)
          || (s.sis_user_id || '').toLowerCase().includes(q));
     return (matches.slice(0, 40).map(s => `
       <button class="exPick${S.picked.has(String(s.user_id)) ? ' on' : ''}"
         data-uid="${esc(s.user_id)}">
-        <b>${esc(s.name)}</b>
+        <b>${esc(studentLabel(s))}</b>
         <span>${esc(s.courses.slice(0, 3).join(', '))}${
           s.courses.length > 3 ? ` +${s.courses.length - 3} more` : ''}</span>
       </button>`).join('') || '<div class="muted">no match</div>')
@@ -113,7 +116,7 @@
       <h3>Who was away</h3>
       ${chosen.length ? `<div class="exChosen">${chosen.map(s => `
         <button class="exChip" data-drop="${esc(s.user_id)}"
-          title="Remove from this extension">${esc(s.name)}
+          title="Remove from this extension">${esc(studentLabel(s))}
           <span class="exX">×</span></button>`).join('')}</div>` : ''}
       <input type="search" id="exSearch" placeholder="Search your students by name or ID"
         value="${esc(S.query)}" autocomplete="off">
@@ -234,7 +237,7 @@
       return `<section class="exPlan"><h3>Nothing to move</h3>
         ${scopeHtml(p)}
         <p class="muted">Nothing was due between ${esc(p.window.start)} and
-          ${esc(p.window.end)} for ${esc((p.students || []).map(s => s.name).join(', '))}
+          ${esc(p.window.end)} for ${esc((p.students || []).map(s => studentLabel(s)).join(', '))}
           in the ${esc(String(p.courses_in_scope))} course(s) searched.</p>
         ${skippedHtml(p)}</section>`;
     }
@@ -264,7 +267,7 @@
             <td><b>${esc(r.title)}</b>${r.kind !== 'assignment'
               ? ` <span class="pill sm">${esc(r.kind)}</span>` : ''}
               ${r.submitted ? ' <span class="pill warn sm">already turned in</span>' : ''}</td>
-            <td>${esc(r.name)}</td>
+            <td>${esc(studentLabel(r))}</td>
             <td class="exDate">${esc(fmt(r.from_due))}</td>
             <td class="exArrow">→</td>
             <td class="exDate exNew">${esc(fmt(r.to_due))}</td>
@@ -292,7 +295,7 @@
   function scopeHtml(p) {
     const missing = p.not_in_scope || [];
     if (!missing.length) return '';
-    return `<div class="callout">${missing.map(m => `<div><b>${esc(m.name)}</b> is
+    return `<div class="callout">${missing.map(m => `<div><b>${esc(studentLabel(m))}</b> is
       not in any of the courses searched.${m.courses.length
         ? ` Canvas has them in ${esc(m.courses.join(', '))}.`
         : ' Canvas shows them in none of your courses.'}</div>`).join('')}
@@ -304,7 +307,7 @@
     const loud = (p.skipped || []).filter(s => !s.quiet);
     if (!loud.length) return '';
     return `<details class="exSkipped"><summary>${loud.length} left alone</summary>
-      <ul>${loud.map(s => `<li><b>${esc(s.title)}</b> — ${esc(s.name)}:
+      <ul>${loud.map(s => `<li><b>${esc(s.title)}</b> — ${esc(studentLabel(s))}:
         ${esc(s.why)}</li>`).join('')}</ul></details>`;
   }
 

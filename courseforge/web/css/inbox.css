@@ -1,0 +1,10 @@
+/* Files on a Canvas message. The picture is loaded from this app, not from
+   Canvas, because the browser does not hold the Canvas token. */
+.ibFiles{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.ibFile{margin:0}
+.ibFile figcaption{font-size:11px;color:var(--muted);margin-top:4px}
+.ibImg{display:block;max-width:min(100%, 480px);height:auto;border-radius:8px;
+  border:1px solid var(--line);background:var(--bg)}
+.ibVid{display:block;max-width:min(100%, 520px);border-radius:8px;background:#000}
+.ibAudio{width:min(100%, 420px)}
+.ibFileLink{font-size:13px}

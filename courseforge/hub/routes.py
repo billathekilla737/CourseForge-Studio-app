@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .. import ledger
+from .. import audit, ledger
 from ..areas import AREAS
 from ..routing import HTTPError, route
 
@@ -144,24 +144,60 @@ def _mtime(path: Path) -> float:
         return 0.0
 
 
+def figures(app, cid, cdir: Path) -> dict:
+    """The four numbers on the course page band. Disk only, and it does not
+    create the course folder: the home list calls this for courses never opened.
+    """
+    rows = app.store.read(cdir / "assignments.json", []) or []
+    if not isinstance(rows, list):
+        rows = []
+    waiting = sum(int(r.get("needs_grading") or 0) for r in rows if isinstance(r, dict))
+    graded = 0
+    last: str | None = None
+    try:
+        children = [p for p in cdir.iterdir() if p.is_dir() and p.name.isdigit()]
+    except OSError:
+        children = []
+    for child in children:
+        draft = app.store.read(child / "draft.json", None)
+        if not isinstance(draft, dict) or not draft:
+            continue
+        when = draft.get("last_graded_at") or draft.get("updated_at")
+        if draft.get("last_graded_at") or draft.get("students"):
+            graded += 1
+        if when and (last is None or str(when) > str(last)):
+            last = str(when)
+    # The ledger counts pages, files and settings. Grade pushes are only in
+    # the audit, because that record is allowed to name students.
+    writes = audit.canvas_writes_today(cdir)
+    if (cdir / ledger.FILE).is_file():
+        writes += ledger.today_counts(cdir).get("writes", 0)
+    return {
+        "count": len(rows),
+        "assignments": rows,
+        "waiting": waiting,
+        "graded": graded,
+        "writes_today": writes,
+        "last_graded_at": last,
+    }
+
+
 def local_state(app, course_id) -> dict:
     """What this machine already knows about one course. No Canvas, no model.
 
-    Three questions the course list could not answer before: has this course
-    ever been opened here, is anything waiting to be graded in it, and when was
-    it last worked on. All three come from files that are already written, so
-    the list paints in the time it takes to stat a few dozen paths.
+    The four figures are the same ones the course page shows in its band, so
+    the home list and the open course cannot disagree. A course that has never
+    been opened here is left alone: reading it would create the folder.
     """
     cdir = Path(app.store.root) / str(course_id)
     if not cdir.is_dir():
         return {"known": False, "waiting": 0, "assignments": 0, "graded": 0,
-                "touched_at": None, "last_assignment": None}
+                "writes_today": 0, "touched_at": None, "last_assignment": None}
 
-    rows = app.store.assignments(course_id) or []
-    waiting = sum(int(r.get("needs_grading") or 0) for r in rows)
-    names = {str(r.get("id")): r.get("name", "") for r in rows}
+    fig = figures(app, course_id, cdir)
+    rows = fig["assignments"]
+    names = {str(r.get("id")): r.get("name", "") for r in rows if isinstance(r, dict)}
 
-    graded = 0
     newest_draft, newest_aid = 0.0, None
     try:
         children = [p for p in cdir.iterdir() if p.is_dir() and p.name.isdigit()]
@@ -169,9 +205,6 @@ def local_state(app, course_id) -> dict:
         children = []
     for child in children:
         when = _mtime(child / "draft.json")
-        if not when:
-            continue
-        graded += 1
         if when > newest_draft:
             newest_draft, newest_aid = when, child.name
 
@@ -179,9 +212,10 @@ def local_state(app, course_id) -> dict:
                   _mtime(cdir / ledger.FILE))
     return {
         "known": True,
-        "waiting": waiting,
-        "assignments": len(rows),
-        "graded": graded,
+        "waiting": fig["waiting"],
+        "assignments": fig["count"],
+        "graded": fig["graded"],
+        "writes_today": fig["writes_today"],
         "touched_at": _iso(touched),
         # The work itself, not merely a list that was synced: this is what
         # "carry on" should point at.
@@ -219,6 +253,10 @@ def _resume(courses: list[dict]) -> dict | None:
         "assignment_id": last.get("id"),
         "assignment_name": last.get("name") or "",
         "waiting": best.get("waiting", 0),
+        "assignments": best.get("assignments", 0),
+        "graded": best.get("graded", 0),
+        "writes_today": best.get("writes_today", 0),
+        "known": True,
         "worked_at": best.get("worked_at"),
         "ago": _ago(best.get("worked_at")),
     }
@@ -249,15 +287,20 @@ def build_hub(app, cid) -> dict:
     except Exception as exc:  # noqa: BLE001
         areas["record"] = _not_installed(f"{type(exc).__name__}: {exc}")
 
+    try:
+        from ..attendance.routes import hub_status as attendance_status
+        areas["attendance"] = _normalise(attendance_status(app, cid))
+    except Exception as exc:  # noqa: BLE001
+        areas["attendance"] = _not_installed(f"{type(exc).__name__}: {exc}")
+
     rows = ledger.read(cdir, limit=8)
     needs = sorted({n for a in areas.values() for n in (a.get("needs") or []) if n})
-    writes_today = ledger.today_counts(cdir).get("writes", 0)
     stats = [
         {"label": "Assignments", "value": grade.get("count", 0)},
         {"label": "Waiting to grade", "value": grade.get("waiting", 0),
          "kind": "warn" if grade.get("waiting") else ""},
         {"label": "Graded here", "value": grade.get("graded", 0)},
-        {"label": "Canvas writes today", "value": writes_today},
+        {"label": "Canvas writes today", "value": grade.get("writes_today", 0)},
     ]
     return {
         "course": course,
@@ -285,26 +328,12 @@ def _course(app, cid) -> dict:
 def _grade_status(app, cid, cdir: Path) -> dict:
     """The Grade card, from the cached assignment list and the draft files.
     Counts and timestamps only: nothing about a student leaves this function."""
-    store = app.store
     cache = cdir / "assignments.json"
-    assignments = store.assignments(cid) or []
-    waiting = sum(int(a.get("needs_grading") or 0) for a in assignments)
-
-    graded = 0
-    last: str | None = None
-    try:
-        children = [p for p in cdir.iterdir() if p.is_dir() and p.name.isdigit()]
-    except OSError:
-        children = []
-    for child in children:
-        draft = store.read(child / "draft.json", None)
-        if not isinstance(draft, dict) or not draft:
-            continue
-        when = draft.get("last_graded_at") or draft.get("updated_at")
-        if draft.get("last_graded_at") or draft.get("students"):
-            graded += 1
-        if when and (last is None or str(when) > str(last)):
-            last = str(when)
+    fig = figures(app, cid, cdir)
+    assignments = fig["assignments"]
+    waiting = fig["waiting"]
+    graded = fig["graded"]
+    last = fig["last_graded_at"]
 
     lines: list[str] = []
     if cache.is_file():
@@ -332,9 +361,10 @@ def _grade_status(app, cid, cdir: Path) -> dict:
         "badge_title": "submissions Canvas says are waiting to grade",
         "needs": [],
         "actions": [{"label": "Open assignments", "href": f"#/c/{cid}/grade"}],
-        "count": len(assignments),
+        "count": fig["count"],
         "waiting": waiting,
         "graded": graded,
+        "writes_today": fig["writes_today"],
         "last_graded_at": last,
         "assignments": [
             {"id": a.get("id"), "name": a.get("name", ""), "graded_at": a.get("graded_at"),

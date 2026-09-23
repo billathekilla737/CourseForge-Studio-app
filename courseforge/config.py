@@ -219,6 +219,13 @@ class Config:
             value = value[1:-1].strip()
         return value
 
+    def has_token(self) -> bool:
+        """True when a token is saved. Does not raise, and does not call Canvas."""
+        try:
+            return bool(self.token())
+        except RuntimeError:
+            return False
+
     def token(self) -> str:
         """Canvas API token, from env or a token file. Never from config.json."""
         env = os.environ.get("CANVAS_TOKEN")

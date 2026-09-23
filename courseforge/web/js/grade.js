@@ -1970,10 +1970,6 @@ async function openCourses(refresh) {
   showView('picker');
   crumbs([{ label: 'Courses' }]);
   $('#pickerTitle').textContent = 'Your courses';
-  const canvasDown = S.health && S.health.canvas && S.health.canvas.ok === false;
-  $('#pickerHint').textContent = canvasDown
-    ? 'Canvas did not answer. Looking for a course list already saved on this computer…'
-    : 'Reading your courses from Canvas…';
   $('#pickerResume').innerHTML = '';
   $('#btnRefresh').onclick = () => openCourses(true);
   $('#headerActions').innerHTML =
@@ -1981,6 +1977,14 @@ async function openCourses(refresh) {
     + '<button class="btn" id="btnToken" title="Replace the saved Canvas token">'
     + 'Canvas token…</button>';
   $('#btnToken').onclick = () => openSetup();
+  if (S.health && S.health.canvas && S.health.canvas.reason === 'no_token') {
+    $('#pickerHint').textContent = 'Paste your Canvas token to load your courses.';
+    return;
+  }
+  const canvasDown = S.health && S.health.canvas && S.health.canvas.ok === false;
+  $('#pickerHint').textContent = canvasDown
+    ? 'Canvas did not answer. Looking for a course list already saved on this computer…'
+    : 'Reading your courses from Canvas…';
 
   // A new computer has no saved list, so this wait is Canvas. Say so, and
   // do not leave the hint on "Loading…" if the request never comes back.

@@ -262,7 +262,20 @@ function renderBanners() {
   $('#banners').innerHTML = '';
   const h = S.health;
   if (!h) return;
-  if (!h.canvas.ok) {
+  if (!h.canvas.ok && h.canvas.reason === 'no_token') {
+    banner('err', '<b>This computer has no Canvas token yet.</b>' +
+      '<span class="bannerHint">Paste it once. It is saved on this machine and ' +
+      'the courses load after that.</span>' +
+      '<button class="btn sm" id="bnSetup">Paste Canvas token…</button>' +
+      '<details class="bannerWhy"><summary>details</summary>' +
+      '<span class="bannerDetail">' + esc(h.canvas.error || '') + '</span></details>');
+    const bn = $('#bnSetup');
+    if (bn) bn.onclick = () => openSetup();
+    if (!S.tokenPrompted && typeof openSetup === 'function') {
+      S.tokenPrompted = true;
+      openSetup();
+    }
+  } else if (!h.canvas.ok) {
     // A missing token and a Canvas outage used the same sentence, so a rate
     // limit or a failed address lookup looked like the token had vanished.
     const err = h.canvas.error || '';

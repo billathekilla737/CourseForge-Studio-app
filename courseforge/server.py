@@ -394,6 +394,15 @@ class App:
             "claude": self._doctor or {"logged_in": None, "detail": "not checked yet"},
             "blender": blender.probe(self.cfg.blender_path),
         }
+        if not self.cfg.has_token():
+            # Do not call Canvas. A new computer has no token, and guessing
+            # "not connected" sent the course list off to wait on nothing.
+            out["canvas"] = {
+                "ok": False,
+                "reason": "no_token",
+                "error": "No Canvas API token is saved on this computer.",
+            }
+            return out
         try:
             # A stuck address lookup ignores the socket timeout on Windows and
             # holds this request forever. The first screen never gets past

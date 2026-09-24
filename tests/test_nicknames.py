@@ -185,7 +185,14 @@ class PageUsesTheLabel(unittest.TestCase):
         self.assertIn("esc(studentLabel(s))", grade)
         self.assertIn("name: s.name", grade)
         self.assertIn('id="stNick"', student)
-        self.assertIn('id="gdNick"', grade)
+        # A submission is the wrong place to type a nickname. The student
+        # page and the accommodation roster are the two editors.
+        self.assertNotIn('id="gdNick"', grade)
+        roster = grade[grade.index("async function openRoster("):
+                       grade.index("function utcToLocalInput(")]
+        self.assertIn("data-nick=", roster)
+        self.assertIn("saveNickname", roster)
+        self.assertIn("delete copy.nickname", roster)
         self.assertIn("function sortKey(s)", grade)
         self.assertIn("s.name", grade[grade.index("function sortKey"):
                                        grade.index("function sortKey") + 120])

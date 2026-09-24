@@ -345,7 +345,7 @@ def _grade_status(app, cid, cdir: Path) -> dict:
     if graded:
         lines.append(f"{graded} graded here" + (f", last {_ago(last)}" if last else ""))
     else:
-        lines.append("Nothing graded here yet. Grades are pushed hidden, and only when you confirm.")
+        lines.append("Nothing graded here yet. Grades are posted only when you confirm, and students can see them.")
 
     try:
         age = time.time() - cache.stat().st_mtime if cache.is_file() else None

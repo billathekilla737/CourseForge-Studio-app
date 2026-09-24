@@ -515,29 +515,36 @@ class App:
 
     def assignments(self, course_id, refresh: bool = False) -> list[dict]:
         cached = self.store.assignments(course_id)
-        if cached and not refresh:
-            return cached
-        raw = self.client.assignments(course_id)
-        out = []
-        for a in raw:
-            adir = self.store.assignment_dir(course_id, a["id"])
-            draft = self.store.draft(course_id, a["id"])
-            out.append({
-                "id": a["id"], "name": a.get("name", ""),
-                "points_possible": a.get("points_possible"),
-                "due_at": a.get("due_at"),
-                "published": a.get("published"),
-                "submission_types": a.get("submission_types") or [],
-                "has_rubric": bool(a.get("rubric")),
-                "is_discussion": bool(a.get("discussion_topic")),
-                "needs_grading": a.get("needs_grading_count"),
-                "synced_at": draft.get("synced_at"),
-                "graded_at": draft.get("last_graded_at"),
-                "has_instructions": bool(self.store.instructions(course_id, a["id"]).strip()),
-                "_dir": str(adir),
-            })
-        self.store.save_assignments(course_id, out)
-        return out
+        if not (cached and not refresh):
+            raw = self.client.assignments(course_id)
+            cached = []
+            for a in raw:
+                adir = self.store.assignment_dir(course_id, a["id"])
+                draft = self.store.draft(course_id, a["id"])
+                cached.append({
+                    "id": a["id"], "name": a.get("name", ""),
+                    "points_possible": a.get("points_possible"),
+                    "due_at": a.get("due_at"),
+                    "published": a.get("published"),
+                    "submission_types": a.get("submission_types") or [],
+                    "has_rubric": bool(a.get("rubric")),
+                    "is_discussion": bool(a.get("discussion_topic")),
+                    "needs_grading": a.get("needs_grading_count"),
+                    "has_submissions": bool(a.get("has_submitted_submissions")),
+                    "synced_at": draft.get("synced_at"),
+                    "graded_at": draft.get("last_graded_at"),
+                    "has_instructions": bool(self.store.instructions(course_id, a["id"]).strip()),
+                    "_dir": str(adir),
+                })
+            self.store.save_assignments(course_id, cached)
+        for row in cached:
+            if not isinstance(row, dict):
+                continue
+            row["graded"] = gradesync.assignment_is_graded(
+                row.get("needs_grading"),
+                self.store.extracted(course_id, row.get("id")),
+                row.get("has_submissions"))
+        return cached
 
     def workspace(self, course_id, assignment_id) -> dict:
         draft = self.store.draft(course_id, assignment_id)
@@ -2104,11 +2111,10 @@ class App:
                 "no_score": no_score, "not_graded": not_graded}
 
     # ---------------------------------------------------------- grade posting
-    # Canvas decides whether a student sees a grade the moment it is written
-    # (automatic) or only after the instructor presses Post (manual). Manual is
-    # what makes "push now, show them later" possible: a push lands hidden, the
-    # gradebook doubles as a save point between machines, and Make live is the
-    # moment the class actually sees anything.
+    # A grade is visible when it is written. Holding grades for a later Post
+    # was a second step nobody used, and it made a posted automatic score look
+    # like a finished grade. The app does not set that hold, and a push turns
+    # it off if an older version of this app left it on.
 
     def policy(self, course_id, assignment_id=None) -> dict:
         """Read the post policy from Canvas; for an assignment, cache it on the
@@ -2144,50 +2150,48 @@ class App:
         self._require_writes(what)
         self.confirm.require(kind, payload, summary, token, detail)
 
-    def _ensure_manual_posting(self, course_id, assignment_id, log) -> None:
-        """Make this assignment post manually, so a push lands hidden.
+    def _stop_holding_grades(self, course_id, assignment_id, log) -> None:
+        """Turn off a manual post policy, if this assignment still has one.
 
-        Run before every push. It is what lets the push dialog offer a plain
-        choice about who sees what: under an automatic policy a grade is visible
-        the instant it is written, and "keep them hidden for now" would be a lie
-        the tool could not take back. With manual guaranteed, visibility is one
-        explicit step afterwards, scoped to exactly the students just written.
-
-        Grades already visible stay visible; this only governs what happens next.
+        Older builds set that hold before every push. Students should see a
+        grade when it is written, including one entered in SpeedGrader. A
+        failure here does not stop the push: the grades are posted afterwards
+        either way.
         """
         try:
-            if (self.policy(course_id, assignment_id) or {}).get("effective_manual"):
-                return
+            manual = (self.policy(course_id, assignment_id) or {}).get("effective_manual")
         except Exception as exc:  # noqa: BLE001
             log(f"could not read how Canvas posts this assignment ({exc})")
-        # Said in plain terms, and said at all: this changes a Canvas setting on
-        # the instructor's live course, and it governs SpeedGrader too.
-        log("telling Canvas to hold new grades on this assignment until they are "
-            "posted, including any typed in SpeedGrader")
-        self.client.set_assignment_post_policy(assignment_id, True)
-        # A course setting changed on the instructor's live course, and one that
-        # governs SpeedGrader too, so it belongs in the record even though it is
-        # a side effect of pushing rather than something anyone asked for.
+            return
+        if not manual:
+            return
+        log("this assignment was holding new grades; turning that off")
+        try:
+            self.client.set_assignment_post_policy(assignment_id, False)
+        except Exception as exc:  # noqa: BLE001
+            log(f"could not turn off the hold ({exc}); the grades will still be posted")
+            return
         audit.record(self.course_dir(course_id), "grade", "post-policy",
-                     "Set this assignment to hold new grades until they are "
-                     "posted, so nothing lands visible by accident.",
+                     "Stopped holding new grades on this assignment. Students "
+                     "can see a grade when it is written.",
                      course_id=course_id,
-                     detail={"assignment_id": str(assignment_id), "manual": True})
+                     detail={"assignment_id": str(assignment_id), "manual": False})
 
     def pull(self, course_id, assignment_id) -> dict:
         """Refresh the Canvas side and merge. Cheap enough to run on a timer."""
-        out = gradesync.pull_grades(self.cfg, self.client, self.store,
-                                    course_id, assignment_id, self.me_id)
-        try:
-            out["post_policy"] = self.policy(course_id, assignment_id)
-        except Exception as exc:  # noqa: BLE001
-            out["post_policy"] = {"error": str(exc)}
-        return out
+        return gradesync.pull_grades(self.cfg, self.client, self.store,
+                                     course_id, assignment_id, self.me_id)
 
     def release(self, course_id, assignment_id, only: list[str] | None,
                 hide: bool, log=lambda _m: None,
                 confirm_token: str | None = None) -> dict:
-        """Canvas's own Post (or Hide) button, then a pull so posted_at is fresh."""
+        """Canvas's own Post button, then a pull so posted_at is fresh.
+
+        Hiding grades is not offered. A request that asks to hide them is
+        refused before anything is sent.
+        """
+        if hide:
+            raise ValueError("Grades are not hidden from here.")
         who = f"{len(only)} selected student(s)" if only else "every graded student"
         self._gate("release",
                    {"course_id": str(course_id),
@@ -2234,11 +2238,10 @@ class App:
         rubric = draft.get("rubric") or []
         possible = draft.get("points_possible") or 0
 
-        # Who sees these is decided right here, by the choice on the push
-        # dialog, and not by a Canvas posting policy set weeks ago somewhere
-        # else. _ensure_manual_posting is what makes that answer true.
-        landing = ("visible to students as soon as they land" if show
-                   else "hidden from students until you make them live")
+        # Students see the grade when it is written. `show` is kept on the
+        # signature so an older page cannot ask for a hidden push.
+        show = True
+        landing = "visible to students as soon as they land"
         mode = comment_mode if comment_mode in ("none", "selected", "all") else (
             "all" if include_comments else "none")
 
@@ -2317,12 +2320,11 @@ class App:
                     "comments": (sorted([str(i["user_id"]), i.get("comment") or ""]
                                         for i in planned)
                                  if mode != "none" else False)},
-                   f"Write {len(planned)} grade(s) to Canvas. The assignment is "
-                   "set to manual posting first, so nothing shows to students "
-                   "until you make it live.",
+                   f"Write {len(planned)} grade(s) to Canvas. Students will "
+                   "be able to see them.",
                    confirm_token, what="posting grades")
 
-        self._ensure_manual_posting(course_id, assignment_id, log)
+        self._stop_holding_grades(course_id, assignment_id, log)
 
         posted, failed = [], []
         settled: dict[str, dict] = {}       # per-student draft changes
@@ -2372,12 +2374,22 @@ class App:
 
         log(f"pushed {len(posted)}, failed {len(failed)}")
 
-        # Everything landed hidden. Showing it is a second, separate step
-        # against exactly the students just written, so nothing else hidden on
-        # this assignment is swept along with them.
+        # Post anything just written, and any score already in the gradebook
+        # that an older hold kept invisible. One step, the students in this push.
         shown = 0
-        if show and posted:
-            ids = [str(item["user_id"]) for item in posted]
+        ids = [str(item["user_id"]) for item in posted]
+        scope = {str(u) for u in only} if only else None
+        for uid, info in extracted.items():
+            uid = str(uid)
+            if scope is not None and uid not in scope:
+                continue
+            if not isinstance(info, dict):
+                continue
+            if info.get("canvas_score") is None or info.get("canvas_posted_at"):
+                continue
+            if uid not in ids:
+                ids.append(uid)
+        if ids:
             log(f"showing {len(ids)} grade(s) to students")
             try:
                 progress = self.client.release_grades(assignment_id, ids, hide=False)
@@ -2388,12 +2400,8 @@ class App:
                 self.pull(course_id, assignment_id)
                 n_visible, n_hidden = shown, 0
             except Exception as exc:  # noqa: BLE001
-                # The grades are written either way. Say plainly that they are
-                # still hidden rather than reporting a push that did not happen.
-                log(f"WARNING the grades are in Canvas but could not be shown: {exc}")
-                log("they are still hidden; use Make live to try again")
-        elif posted:
-            log(f"{n_hidden} landed hidden from students, {n_visible} visible")
+                log(f"WARNING the grades are in Canvas but students may not "
+                    f"see them yet: {exc}")
 
         # Into the account of record: which students got which score, from this
         # account, at this moment. Grades are the other half of what a dispute
@@ -2406,8 +2414,7 @@ class App:
                 self.course_dir(course_id), "grade", "posted",
                 f"Wrote {len(posted)} grade(s) to \"{name}\""
                 + (f", {len(failed)} refused by Canvas" if failed else "")
-                + (f", then made {shown} visible to students" if shown
-                   else ", left hidden from students" if posted else "") + ".",
+                + (f". Students can see {shown}." if shown else "."),
                 students=[audit.person(i["user_id"], i.get("name", ""),
                                        score=i.get("score")) for i in posted],
                 count=len(posted), course_id=course_id,

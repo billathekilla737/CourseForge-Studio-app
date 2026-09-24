@@ -140,6 +140,12 @@ class PushSendsOnlyTickedComments(unittest.TestCase):
         self.assertEqual(by["8"]["comment"], "Add a backrest.")
         self.assertEqual(out["comments_n"], 2)
 
+    def test_a_push_is_visible_to_students(self):
+        out = self.plan("none")
+        self.assertTrue(out["show"])
+        self.assertNotIn("hidden", out["landing"].lower())
+        self.assertIn("visible", out["landing"].lower())
+
 
 class NamesDoNotLeaveOnAGrade(unittest.TestCase):
     def test_build_prompt_does_not_contain_the_roster_name(self):
@@ -310,7 +316,7 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         # Bulk bar and context menu share one action list, so a new verb cannot
         # land on shift-click and be missing from right-click (or the reverse).
         self.assertIn("selectionItems(st)", self.src)
-        self.assertIn("js/grade.js?v=load-3",
+        self.assertIn("js/grade.js?v=graded-1",
                       (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn('step="1"', self.src)
         self.assertNotIn("data-tiers", self.src)
@@ -361,6 +367,31 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         self.assertIn("How it will read", self.src)
         self.assertIn("paperFrame canvasPage", self.src)
         self.assertIn("id=\"anPreview\"", self.src)
+
+    def test_an_ungraded_written_answer_is_not_called_in_step(self):
+        """A posted automatic score is not a finished grade. A zero on a
+        short answer that Canvas has not scored must not read as a zero,
+        and the nickname box must not use a real student's nickname as
+        its example."""
+        self.assertIn("function writtenOpen(", self.src)
+        self.assertIn("written answers are not in the posted score", self.src)
+        self.assertIn("grade${n === 1 ? '' : 's'} live", self.src)
+        self.assertIn("stamp.className = 'gradedStamp'", self.src)
+        self.assertIn('class="pill good gradedMark"', self.src)
+        self.assertNotIn("Push hidden", self.src)
+        self.assertNotIn("Make grades live", self.src)
+        self.assertIn("Not graded · worth ", self.src)
+        self.assertIn("Proposed on this computer", self.src)
+        self.assertNotIn('placeholder="Jack"', self.src)
+        self.assertNotIn('id="gdNick"', self.src)
+        detail = self.src[self.src.index("function renderDetail("):
+                          self.src.index("function renderWork(")]
+        self.assertNotIn("Nickname", detail)
+        student = (WEB / "js" / "student.js").read_text(encoding="utf-8")
+        self.assertNotIn('placeholder="Jack"', student)
+        self.assertIn('placeholder="nickname"', student)
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertIn("js/student.js?v=students-11", page)
 
     def test_the_announcement_dialog_tolerates_no_schedule(self):
         body = self.src[self.src.index("function openAnnounce("):]

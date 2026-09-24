@@ -765,7 +765,12 @@ async function openRoster(afterwards) {
             <th>Note</th><th></th></tr></thead>
           <tbody>${state.rows.map((r, i) => `<tr>
             <td class="acName"><a href="#/student/${esc(r.user_id)}">${esc(studentLabel(r))}</a>
-              <span class="muted">${esc(r.sis_user_id || r.user_id)}</span></td>
+              <span class="muted">${esc(r.sis_user_id || r.user_id)}</span>
+              <label class="roNick">Nickname
+                <input type="text" data-nick="${esc(r.user_id)}" maxlength="40"
+                  autocomplete="off" placeholder="nickname"
+                  value="${esc((typeof nickById !== 'undefined' && nickById[String(r.user_id)]) || '')}">
+              </label></td>
             <td><select data-i="${i}" data-k="kind">
               <option value="percent" ${r.kind === 'percent' ? 'selected' : ''}
                 >extra %</option>
@@ -824,6 +829,32 @@ async function openRoster(afterwards) {
     });
     host.querySelectorAll('[data-drop]').forEach(b => {
       b.onclick = () => commit(() => state.rows.splice(+b.dataset.drop, 1));
+    });
+    host.querySelectorAll('[data-nick]').forEach(el => {
+      el.dataset.saved = el.value;
+      el.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); } };
+      el.onblur = async () => {
+        if (gone || el.value === el.dataset.saved) return;
+        const uid = String(el.dataset.nick || '');
+        const typed = el.value;
+        if (!/^\d+$/.test(uid)) return;
+        try {
+          const saved = await saveNickname(uid, typed);
+          if (gone) return;
+          const live = host.querySelector('[data-nick="' + uid + '"]');
+          if (live) {
+            live.value = saved.nickname || '';
+            live.dataset.saved = live.value;
+          }
+          const link = live && live.closest('td') && live.closest('td').querySelector('a');
+          const row = state.rows.find(r => String(r.user_id) === uid);
+          if (link && row) link.textContent = studentLabel(row);
+          if (S.ws && S.ws.extracted && $('#roster')) renderRoster();
+          setStatus(saved.nickname ? 'nickname saved' : 'nickname cleared', 'ok');
+        } catch (err) {
+          if (!gone) setStatus(firstLine(err.message), 'err');
+        }
+      };
     });
     const wirePool = () => {
       host.querySelectorAll('.roPick').forEach(b => {
@@ -894,12 +925,19 @@ async function openRoster(afterwards) {
 
   const save = async () => {
     try {
-      const r = await api('/accommodations', { body: { students: state.rows } });
+      const students = state.rows.map(row => {
+        const copy = Object.assign({}, row);
+        delete copy.nickname;
+        return copy;
+      });
+      const r = await api('/accommodations', { body: { students } });
       (r.rejected || []).forEach(x => setStatus(firstLine(x.why), 'err'));
       return r;
     } catch (err) { setStatus(firstLine(err.message), 'err'); return null; }
   };
 
+  if (typeof loadNicks === 'function') await loadNicks();
+  if (gone) return;
   draw();
 }
 
@@ -2291,7 +2329,8 @@ async function openCourse(courseId, refresh) {
         <td class="tg">${a.needs_grading
       ? `<span class="tgBadge" title="${a.needs_grading} submission(s) Canvas says are waiting">${
           a.needs_grading}</span>`
-      : '<span class="muted">—</span>'}</td>
+      : (a.graded ? '<span class="pill good gradedMark">Graded</span>'
+      : '<span class="muted">—</span>')}</td>
         <td class="num">${a.points_possible ?? '—'}</td>
         <td>${a.has_rubric ? '<span class="pill good">rubric</span>' : '<span class="pill warn">none</span>'}</td>
         <td>${a.graded_at ? '<span class="pill ai">graded ' + esc(fmtDate(a.graded_at)) + '</span>'
@@ -2393,6 +2432,9 @@ async function openAssignment(courseId, assignmentId, opts = {}) {
   renderHeaderActions();
   S.sel = 0;
   render();
+  // Say this before the pull. A posted automatic score used to become
+  // "in step" only after Canvas answered, and a quiet pull then left it there.
+  if (S.ws.draft && S.ws.draft.synced_at) applyPullStatus(postingFromWorkspace(S.ws));
   // Choosing an assignment is the request to work on it, so fetch it rather
   // than waiting to be told again. The page is already drawn underneath, so
   // the sync reads as the page filling in. Only on a real arrival: the job
@@ -2403,61 +2445,6 @@ async function openAssignment(courseId, assignmentId, opts = {}) {
   // Line up with the other machine. Fire and forget: it decides for itself and
   // only interrupts when both sides have moved.
   if (opts.arriving) handoffOnOpen(courseId, assignmentId);
-}
-
-/* --------------------------------------------------------- grade posting */
-/* Two steps, and only two. A push writes scores into the Canvas gradebook and
-   always lands them hidden; the push dialog then offers to show them straight
-   away. Canvas's own automatic-vs-manual posting policy is not a question the
-   instructor is asked any more: the server forces this assignment to manual
-   before every push (see App._ensure_manual_posting), which is what makes
-   "keep them hidden for now" a promise the tool can keep.
-
-   This is the other half: releasing grades that are already in Canvas and
-   hidden, from a push made earlier or on another machine. Changes no score. */
-function openRelease(only) {
-  const { courseId, assignmentId } = S.ids;
-  const host = $('#modalHost');
-  const scope = (only && only.length) ? only.map(String) : null;
-  const canWrite = !!(S.health && S.health.allow_canvas_writes);
-  const rows = Object.values(S.ws.extracted || {})
-    .filter(s => s.canvas_score != null && (!scope || scope.includes(String(s.user_id))))
-    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  const hidden = rows.filter(s => !s.canvas_posted_at);
-  const live = rows.filter(s => s.canvas_posted_at);
-  const list = arr => arr.map(s => `  ${studentLabel(s)}: ${num(s.canvas_score)}`).join('\n') || '  none';
-  host.innerHTML = `<div class="modalBack"><div class="modal">
-      <h3>Make grades live${scope ? ` — ${scope.length} selected` : ''}</h3>
-      <div class="sub">This is Canvas's own <b>Post grades</b> button. It changes nothing about
-        the scores; it lets students see what is already in the gradebook${scope
-          ? ' for the students you selected' : ''}. The list is as of the last pull.</div>
-      <div class="log" id="relLog">${rows.length
-        ? `HIDDEN FROM STUDENTS (${hidden.length}):\n${list(hidden)}\n\nVISIBLE (${live.length}):\n${list(live)}`
-        : 'No grades in Canvas yet' + (scope ? ' for these students' : ' for this assignment') + ' — push first.'}</div>
-      ${canWrite ? '' : '<div class="callout" style="margin-top:12px">Read-only: Canvas writes are locked off in config.json.</div>'}
-      <div class="foot">
-        <button class="btn" id="relCancel">Cancel</button>
-        <button class="btn" id="relHide" ${(canWrite && live.length) ? '' : 'disabled'}
-          title="Hide these grades from students again">Hide again</button>
-        <button class="btn primary" id="relGo" ${(canWrite && hidden.length) ? '' : 'disabled'}>
-          Make ${hidden.length ? hidden.length + ' ' : ''}live</button>
-      </div></div></div>`;
-  $('#relCancel').onclick = () => { host.innerHTML = ''; };
-  const run = hide => {
-    const n = hide ? live.length : hidden.length;
-    runJobConfirmed(hide ? 'Hiding grades' : 'Making grades live',
-      token => api(`/a/${courseId}/${assignmentId}/release`,
-        { body: { only: scope, hide, confirm: token } }),
-      async () => { $('#modalHost').innerHTML = ''; await pullNow(false); },
-      { title: hide ? `Hide ${n} grade${n === 1 ? '' : 's'} again?`
-                    : `Show ${n} grade${n === 1 ? '' : 's'} to students now?`,
-        verb: hide ? 'Yes, hide them' : 'Yes, show them',
-        note: hide ? 'Students stop seeing these until you post them again.'
-                   : 'This is the Canvas Post action. Students may be notified, '
-                     + 'and it cannot be quietly undone.' });
-  };
-  $('#relGo').onclick = () => run(false);
-  $('#relHide').onclick = () => run(true);
 }
 
 /* ------------------------------------------------------------- pulling */
@@ -2485,9 +2472,73 @@ function editingNow() {
 /* What a re-render would change: enough to skip the render when nothing did. */
 function syncPrint(ws) {
   const ex = (ws && ws.extracted) || {}, st = ((ws && ws.draft) || {}).students || {};
-  return JSON.stringify([((ws && ws.draft) || {}).post_policy || null,
+  return JSON.stringify([
     Object.keys(ex).sort().map(u => [ex[u].canvas_score, ex[u].canvas_posted_at,
       (st[u] || {}).source, (st[u] || {}).total, (st[u] || {}).final_total, !!(st[u] || {}).conflict])]);
+}
+/* Canvas still wants a person to score the written questions. The number
+   already posted can be the automatic part only, and students may already
+   see it. pending_review is Canvas's own word for that. */
+function writtenOpen(s) {
+  if (!s || s.status === 'unsubmitted') return false;
+  if (s.quiz_needs_written) return true;
+  if (s.status === 'pending_review' || s.canvas_state === 'pending_review') return true;
+  return !!(s.quiz && s.quiz.workflow === 'pending_review');
+}
+function writtenOpenCount(ws) {
+  return Object.values((ws && ws.extracted) || {}).filter(writtenOpen).length;
+}
+function postingFromWorkspace(ws) {
+  const rows = Object.values((ws && ws.extracted) || {});
+  const students = Object.values(((ws && ws.draft) || {}).students || {});
+  return {
+    conflicts: students.filter(e => e && e.conflict),
+    adopted: [],
+    hidden: rows.filter(s => s && s.canvas_score != null && !s.canvas_posted_at),
+    live: rows.filter(s => s && s.canvas_score != null && s.canvas_posted_at),
+  };
+}
+function gradesLiveLine(n) {
+  n = +n || 0;
+  return `${n} grade${n === 1 ? '' : 's'} live`;
+}
+/* Every turned-in submission has a finished Canvas score. An automatic
+   score with the written answers still open does not count. */
+function gradingFinished(ws) {
+  const people = Object.values((ws && ws.extracted) || {}).filter(s => s && typeof s === 'object');
+  const submitted = people.filter(s => s.status && s.status !== 'unsubmitted');
+  if (!submitted.length) return false;
+  return submitted.every(s => !writtenOpen(s) && s.canvas_score != null);
+}
+function paintGradedStamp() {
+  const host = $('#viewWork');
+  if (!host) return;
+  const el = $('#gradedStamp');
+  if (!S.ws || !gradingFinished(S.ws)) { if (el) el.remove(); return; }
+  if (el) return;
+  const stamp = document.createElement('div');
+  stamp.id = 'gradedStamp';
+  stamp.className = 'gradedStamp';
+  stamp.setAttribute('role', 'status');
+  stamp.textContent = 'Graded';
+  host.insertBefore(stamp, host.firstChild);
+}
+function applyPullStatus(r) {
+  const c = (r.conflicts || []).length;
+  const n = (r.adopted || []).length;
+  const live = (r.live || []).length;
+  const open = writtenOpenCount(S.ws);
+  const liveLine = gradesLiveLine(live);
+  if (c) {
+    const tail = open ? ` · written answers still open for ${open}` : '';
+    setStatus(`${c} conflict${c === 1 ? '' : 's'} with Canvas — see the Conflicts filter${tail} · ${liveLine}`, 'err');
+  } else if (open) {
+    setStatus(`${open} still to grade · written answers are not in the posted score · ${liveLine}`, 'err');
+  } else if (n) {
+    setStatus(`pulled ${n} grade${n === 1 ? '' : 's'} from Canvas · ${liveLine}`, 'ok');
+  } else {
+    setStatus(liveLine, 'ok');
+  }
 }
 async function pullNow(quiet) {
   if (!S.ids || S.pulling) return;
@@ -2504,12 +2555,11 @@ async function pullNow(quiet) {
     S.ws = await api(`/a/${courseId}/${assignmentId}`);
     const changed = syncPrint(S.ws) !== was;
     if (changed) { renderHeaderActions(); render(); }
-    const n = (r.adopted || []).length, c = (r.conflicts || []).length;
-    if (changed || !quiet) {
-      if (c) setStatus(`${c} conflict${c === 1 ? '' : 's'} with Canvas — see the Conflicts filter`, 'err');
-      else if (n) setStatus(`pulled ${n} grade${n === 1 ? '' : 's'} from Canvas`, 'ok');
-      else setStatus(`in step with Canvas · ${(r.hidden || []).length} hidden, ${(r.live || []).length} live`, 'ok');
-    }
+    // A quiet pull used to leave "in step" on screen after the numbers had
+    // stopped changing, which read as "grading is finished".
+    const cur = (($('#status') || {}).textContent || '').trim();
+    if (changed || !quiet || !cur || cur.indexOf('in step with Canvas') === 0
+        || cur.indexOf(' hidden, ') !== -1) applyPullStatus(r);
   } catch (err) {
     if (!quiet) setStatus('pull failed: ' + err.message, 'err');
   } finally { S.pulling = false; }
@@ -2574,7 +2624,7 @@ Where every submission has images, this is the model that grades the whole class
     </span>
     <span class="tbGroup"><span class="tbTag">Send</span>
       <button class="btn danger" id="btnPush" ${synced ? '' : 'disabled'}
-        title="Write the grades into your Canvas gradebook. Asks first, and lets you choose whether students can see them">Push to Canvas…</button>
+        title="Write the grades into your Canvas gradebook. Students can see them. Asks first.">Push to Canvas…</button>
       ${pastDue ? `<button class="btn" id="btnRemind"
         title="Message every student who has turned nothing in for this">Remind missing</button>` : ''}
       <button class="btn" id="btnExport" ${synced ? '' : 'disabled'}
@@ -3597,13 +3647,7 @@ function openPush(only) {
   const { courseId, assignmentId } = S.ids;
   const host = $('#modalHost');
   const scope = (only && only.length) ? only : null;
-  // Grades sitting in Canvas from an earlier push that students still cannot
-  // see. Releasing those used to be a button of its own on the toolbar, which
-  // read as a second way to send grades. It is not: it is the tail of this one.
   const inScope = scope ? new Set(scope.map(String)) : null;
-  const stillHidden = Object.values(S.ws.extracted || {})
-    .filter(s => s.canvas_score != null && !s.canvas_posted_at
-      && (!inScope || inScope.has(String(s.user_id))));
   const nTicked = Object.entries((S.ws.draft && S.ws.draft.students) || {})
     .filter(([uid, e]) => e && e.post_comment && (e.comment || '').trim()
       && (!inScope || inScope.has(String(uid)))).length;
@@ -3623,19 +3667,11 @@ function openPush(only) {
       <p class="hint" style="margin:-6px 0 12px">Claude's comments stay off unless you tick
         them on a student. "Every student's comment" is the old all-or-nothing dump.</p>
       <div class="log" id="pushLog">Working out what would be written…</div>
-      ${stillHidden.length ? `<div class="callout pushHidden">
-        <b>${esc(stillHidden.length)} grade${stillHidden.length === 1 ? '' : 's'} already in
-        Canvas ${stillHidden.length === 1 ? 'is' : 'are'} still hidden from students.</b>
-        That is from an earlier push. This one does not change them.
-        <button class="btn sm" type="button" id="pushShowOld">Show them to students…</button>
-      </div>` : ''}
       <div class="foot">
         <button class="btn" id="pushCancel">Cancel</button>
         <button class="btn danger" id="pushGo" disabled>Post for real</button>
       </div></div></div>`;
   $('#pushCancel').onclick = () => { host.innerHTML = ''; };
-  const showOld = $('#pushShowOld');
-  if (showOld) showOld.onclick = () => openRelease(scope);
   // Turning comments on or off changes what would be written, so the plan is
   // worked out again rather than left on screen describing the other setting.
   $('#pushComments').onchange = () => { $('#pushGo').disabled = true; plan(); };
@@ -3703,15 +3739,14 @@ function openPush(only) {
     // one every other confirmed write in the app uses.
     runJobConfirmed(
       scope ? `Pushing ${scope.length} grade(s) to Canvas` : 'Pushing grades to Canvas',
-      (token, show) => api(`/a/${courseId}/${assignmentId}/push`,
+      token => api(`/a/${courseId}/${assignmentId}/push`,
         { body: { dry_run: false, comments: commentMode, only: scope,
-                  show: !!show, confirm: token } }),
+                  show: true, confirm: token } }),
       async r => {
         const n = (r.posted || []).length, bad = (r.failed || []).length;
         setStatus(`pushed ${n} grade(s)`
           + (bad ? `, ${bad} failed` : '')
-          + (n ? (r.shown ? ` · ${r.shown} now visible to students`
-                          : ' · hidden from students') : ''),
+          + (n ? ' · students can see them' : ''),
           bad ? 'err' : 'ok');
         // The push recorded what Canvas now holds; show it without waiting for
         // the pull timer.
@@ -3723,15 +3758,11 @@ function openPush(only) {
       },
       { title: scope ? `Push grades for ${scope.length} student(s)?`
                      : 'Push these grades to Canvas?',
+        verb: 'Post grades',
         note: (commentMode === 'all' ? 'Every student comment will be written as well.'
               : commentMode === 'selected' ? 'Only comments you ticked on the student panel will be written.'
                             : 'Scores only, no comments.')
-              + ' Push hidden puts them in the gradebook where only you can see them,'
-              + ' and you can show them later from this same dialog.'
-              + ' Push live writes them and posts them at once, so the class can'
-              + ' read them straight away.',
-        actions: [{ label: 'Push hidden', value: false, cls: '' },
-                  { label: 'Push live', value: true, cls: 'danger' }],
+              + ' Students can see these grades as soon as they are posted.',
         // Cancelling restores the dialog underneath from markup alone, which
         // leaves it with no handlers at all, so put a live one back.
         onCancel: () => openPush(only) });
@@ -4159,8 +4190,11 @@ function renderRoster() {
           : s.status === 'unsubmitted' ? '<span class="dot none"></span>' : '';
     const sub = s.status === 'unsubmitted' ? 'no submission'
       : noScore ? esc(unscoredReason(s, e))
-        : (e && e.conflict) ? `Canvas has ${num(e.conflict.canvas_score)}`
-          : (e && e.needs_human ? 'needs review' : (lateText(s) || `${s.words || 0} words`));
+        : (e && e.conflict) ? (writtenOpen(s)
+          ? `Canvas auto ${num(e.conflict.canvas_score)} · written open`
+          : `Canvas has ${num(e.conflict.canvas_score)}`)
+          : writtenOpen(s) ? 'written answers not graded'
+            : (e && e.needs_human ? 'needs review' : (lateText(s) || `${s.words || 0} words`));
     const picked = S.picked.has(String(s.user_id));
     const b = document.createElement('button');
     b.type = 'button';
@@ -4183,10 +4217,10 @@ function renderRoster() {
       ? `<span class="vidMark" title="${esc((s.videos || []).join(', '))} — plays in the work pane">▶</span>` : '';
     // Is this grade in Canvas, and can the student see it? Quiet glyph: the
     // detail pane has the words.
-    const postMark = s.canvas_score == null ? ''
-      : s.canvas_posted_at
-        ? '<span class="postMark live" title="in Canvas, visible to the student">●</span>'
-        : '<span class="postMark hidden" title="in Canvas, hidden from the student">◌</span>';
+    const postMark = (s.canvas_score == null || !s.canvas_posted_at) ? ''
+      : writtenOpen(s)
+        ? '<span class="postMark live" title="Automatic score only. Written answers are still to grade.">●</span>'
+        : '<span class="postMark live" title="students can see this score">●</span>';
     const cmtMark = e && e.post_comment && (e.comment || '').trim()
       ? '<span class="cmtMark" title="this comment will be included on the next push">cmt</span>' : '';
     b.innerHTML = `<span><span class="nm">${dot}${esc(studentLabel(s))}${ok}${clash}${vidMark}${cmtMark}</span><span class="sub">${esc(sub)}</span></span>
@@ -4576,6 +4610,7 @@ function render() {
   if (S.view === 'insights') renderInsights();
   else renderDetail();
   renderTeachBar();
+  paintGradedStamp();
 }
 
 function renderDetail() {
@@ -4620,16 +4655,6 @@ function renderDetail() {
   let html = `<div class="who"><h2>${esc(studentLabel(s))}</h2>
       <span class="id">user ${esc(s.user_id)}${S.ws.pseudonymize ? ' · sent as ' + esc(s.pseudonym) : ''}
         · <a href="#/student/${esc(s.user_id)}">Full record</a></span>
-      <div class="nickRow">
-        <label>Nickname
-          <input id="gdNick" maxlength="40" autocomplete="off"
-            value="${esc((typeof nickById !== 'undefined' && nickById[String(s.user_id)]) || '')}"
-            placeholder="Jack">
-        </label>
-        <button class="btn sm" id="gdNickSave" type="button">Save</button>
-        <span class="muted" id="gdNickNote">${s.name && studentLabel(s) !== s.name
-          ? 'Canvas name: ' + esc(s.name) : ''}</span>
-      </div>
     </div>
     <div class="tags">${tags || '<span class="tag">not graded yet</span>'}</div>`;
 
@@ -4642,14 +4667,21 @@ function renderDetail() {
 
   if (e.conflict) {
     const c = e.conflict;
+    const proposal = writtenOpen(s) && e.source !== 'human';
+    const canvasBit = writtenOpen(s)
+      ? `Canvas holds <b>${num(c.canvas_score)}</b>, the automatic score${c.canvas_posted_at
+          ? ' students can already see' : ''}. The written answers are still ungraded there.`
+      : `Canvas holds <b>${num(c.canvas_score)}</b>${c.canvas_graded_at
+          ? ' (graded ' + esc(fmtDate(c.canvas_graded_at)) + ')' : ''}.`;
+    const mineBit = proposal
+      ? ` A proposal on this computer is <b>${num(total)}</b> and has not been posted.`
+      : ` You have <b>${num(total)}</b> here and it has not been pushed.`;
     html += `<div class="callout bad conflictBox" style="margin-bottom:14px">
-      <b>Canvas and this machine disagree.</b> Canvas holds <b>${num(c.canvas_score)}</b>${c.canvas_graded_at
-        ? ' (graded ' + esc(fmtDate(c.canvas_graded_at)) + ')' : ''}${c.canvas_posted_at
-        ? ', visible to the student' : ', hidden from the student'}; you have <b>${num(total)}</b>
-      here and it has not been pushed. Nothing was overwritten. Pick one:
+      <b>Canvas and this machine disagree.</b> ${canvasBit}${mineBit}
+      Nothing was overwritten. Pick one:
       <div class="actionRow" style="margin:10px 0 0">
         <button class="btn sm" id="cfCanvas">Take Canvas (${num(c.canvas_score)})</button>
-        <button class="btn sm" id="cfMine">Keep mine (${num(total)})</button>
+        <button class="btn sm" id="cfMine">${proposal ? 'Keep the proposal' : 'Keep mine'} (${num(total)})</button>
       </div></div>`;
   }
   if (e.total_only && isScored(e)) {
@@ -4685,9 +4717,20 @@ function renderDetail() {
       || 'A late penalty from the syllabus was applied.')} The rubric above is the
       score the work earned.</div>` : ''}`;
 
-  if (e.quiz_auto_score != null) {
+  const autoShown = e.quiz_auto_score != null ? e.quiz_auto_score : s.quiz_auto_score;
+  if (writtenOpen(s)) {
+    const autoBit = autoShown != null
+      ? `Canvas posted the automatic score, <b>${num(autoShown)}</b>. That is the number students can see. `
+      : '';
+    const here = !isScored(e)
+      ? 'The written answers still need a grade.'
+      : (e.source === 'human'
+        ? 'The bars below are your score on this computer. They have not been posted.'
+        : 'The bars below are a proposal on this computer. They have not been posted, and they are not the grade in Canvas.');
+    html += `<div class="callout">${autoBit}${here}</div>`;
+  } else if (autoShown != null) {
     html += `<div class="callout">Canvas already scored the multiple choice at
-      <b>${num(e.quiz_auto_score)}</b>. The bars below are only the written answers,
+      <b>${num(autoShown)}</b>. The bars below are only the written answers,
       and the total adds the two together.</div>`;
   }
 
@@ -4732,31 +4775,6 @@ function renderDetail() {
   host.innerHTML = html;
   host.scrollTop = 0;
 
-  const gdNick = $('#gdNick');
-  const gdNickSave = $('#gdNickSave');
-  if (gdNickSave && gdNick) {
-    gdNickSave.onclick = async () => {
-      gdNickSave.disabled = true;
-      const note = $('#gdNickNote');
-      try {
-        const saved = await saveNickname(s.user_id, gdNick.value);
-        const shown = saved.display_name || formatNick(s.name || '', saved.nickname || '');
-        gdNick.value = saved.nickname || '';
-        const head = host.querySelector('.who h2');
-        if (head) head.textContent = shown || s.name || '';
-        if (note) note.textContent = saved.nickname
-          ? ('Saved. Canvas name: ' + (s.name || ''))
-          : 'Cleared. Canvas name stays.';
-        renderRoster();
-        setStatus(saved.nickname ? 'nickname saved' : 'nickname cleared', 'ok');
-      } catch (err) {
-        if (note) note.textContent = err.message;
-      } finally {
-        gdNickSave.disabled = false;
-      }
-    };
-  }
-
   host.querySelectorAll('input[type=range]').forEach(r => {
     r.addEventListener('input', ev => {
       const el = ev.target;
@@ -4794,16 +4812,18 @@ function renderDetail() {
   renderWork(s, e);
 }
 
-/* What the gradebook holds for this student, and whether the student can see
-   it. `posted_at` is Canvas's word for visible; a score with no posted_at is
-   in the gradebook but hidden. */
+/* What the gradebook holds for this student. A posted automatic score on an
+   open written question is not a finished grade. */
 function canvasTag(s, e) {
   if (s.canvas_score == null) return '';
-  const vis = s.canvas_posted_at ? 'visible to student' : 'hidden from student';
+  if (writtenOpen(s)) {
+    return `<span class="tag warn" title="Canvas scored the automatic questions. The written ones are still waiting.">Canvas: ${num(s.canvas_score)} posted · written answers not graded</span>`;
+  }
   const mine = finalOf(e);
   const differs = mine != null && Math.abs(mine - s.canvas_score) >= 0.005;
   const when = fmtDate(s.canvas_graded_at);
-  return `<span class="tag ${s.canvas_posted_at ? 'ok' : ''}" title="${when ? 'graded in Canvas ' + esc(when) : 'in the Canvas gradebook'}">Canvas: ${num(s.canvas_score)} · ${vis}${differs ? ' · differs from yours' : ''}</span>`;
+  const seen = s.canvas_posted_at ? ' · students can see it' : '';
+  return `<span class="tag ${s.canvas_posted_at ? 'ok' : ''}" title="${when ? 'graded in Canvas ' + esc(when) : 'in the Canvas gradebook'}">Canvas: ${num(s.canvas_score)}${seen}${differs ? ' · differs from yours' : ''}</span>`;
 }
 
 /* Names the curve steps in the order they were applied, so a stacked curve is
@@ -5161,6 +5181,20 @@ function wireViewers(host) {
   });
 }
 
+/* A score sitting on this computer for one written question. Not Canvas's. */
+function localWrittenNote(q, e) {
+  if (!q.manual || !isScored(e)) return '';
+  const key = 'q' + String(q.id || '');
+  const scores = e.scores || {};
+  if (!Object.prototype.hasOwnProperty.call(scores, key)) return '';
+  const where = e.source === 'human' ? 'Scored on this computer'
+    : 'Proposed on this computer';
+  const why = (e.rationales || {})[key];
+  return `<div class="prose"><b>${esc(where)}, not in Canvas</b><br>${
+    num(scores[key])} / ${num(q.points_possible)}`
+    + (why ? `<br>${esc(why)}` : '') + '</div>';
+}
+
 function renderWork(s, e) {
   // Free the previous WebGL context before innerHTML orphans its canvas, and
   // drop any auto-load that was queued for the student we just left.
@@ -5181,16 +5215,28 @@ function renderWork(s, e) {
       <br><br><a href="${sgUrl(s.user_id)}" target="_blank" rel="noopener">Confirm in SpeedGrader ↗</a></div>`;
   } else {
     if (s.quiz_review && s.quiz_review.length) {
+      if (writtenOpen(s)) {
+        body += `<div class="callout">Written answers are not graded in Canvas.
+          A zero on a short answer is not a score.
+          ${isScored(e) ? 'The note under each one is a proposal on this computer. It has not been posted.' : ''}
+          </div>`;
+      }
       body += s.quiz_review.map(q => {
-        const mark = q.manual ? 'Written'
-          : (q.correct === true ? 'Correct' : q.correct === false ? 'Incorrect' : '');
-        const pts = (q.points != null && q.points !== '')
-          ? ` <span class="wc">${num(q.points)} / ${num(q.points_possible)}</span>` : '';
+        const ungraded = q.manual && writtenOpen(s)
+          && (q.points == null || q.points === '' || +q.points === 0);
+        const mark = ungraded ? `Not graded · worth ${num(q.points_possible)}`
+          : q.manual ? 'Written'
+            : (q.correct === true ? 'Correct' : q.correct === false ? 'Incorrect' : '');
+        const pill = ungraded ? 'warn' : (q.manual ? 'muted' : (q.correct === false ? 'warn' : 'good'));
+        const pts = ungraded ? ''
+          : ((q.points != null && q.points !== '')
+            ? ` <span class="wc">${num(q.points)} / ${num(q.points_possible)}</span>` : '');
+        const note = (q.manual && writtenOpen(s)) ? localWrittenNote(q, e) : '';
         return `<div class="workSec"><h4>${esc(q.name || ('Question ' + (q.position || '')))}${pts}`
-          + (mark ? ` <span class="pill ${q.correct === false ? 'warn' : 'good'}">${mark}</span>` : '')
+          + (mark ? ` <span class="pill ${pill}">${mark}</span>` : '')
           + `</h4><div class="prose"><b>Question</b><br>${esc(q.prompt || '')}</div>`
           + `<div class="prose"><b>${q.manual ? 'Response' : 'Their answer'}</b><br>${
-            esc(q.response || '')}</div></div>`;
+            esc(q.response || '')}</div>${note}</div>`;
       }).join('');
     }
     if (s.filenames && s.filenames.length) {

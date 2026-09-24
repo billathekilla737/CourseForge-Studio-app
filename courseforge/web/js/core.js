@@ -134,11 +134,8 @@ function askConfirm(info, proceed, opts = {}) {
     return info.detail ? `<div class="cfDetail">${esc(info.detail)}</div>` : '';
   })();
 
-  // Where a change has two honest forms -- a push the class can read, and one
-  // only the instructor can see -- each is its own button here. The alternative
-  // was setting it in the dialog underneath and then describing the choice back
-  // in a sentence, which is how the same screen came to say both "hidden until
-  // you make them live" and "students see them immediately".
+  // A confirm can offer more than one way to send the same change. Each
+  // button carries its own value back to the caller.
   const actions = (opts.actions && opts.actions.length) ? opts.actions
     : [{ label: opts.verb || 'Yes, send it', value: undefined, cls: 'danger' }];
 

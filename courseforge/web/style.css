@@ -485,11 +485,16 @@ html.busy .btn, html.busy button{cursor:progress}
   padding:7px 11px;margin:0 0 14px}
 .tag.ok{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 
-/* grade posting and two-machine sync */
-/* The push dialog asks who sees these grades, at the moment they are written.
-   There is no standing automatic-vs-manual setting in the UI any more: the
-   server forces manual posting before every push, so the answer here is the
-   whole answer. */
+/* A finished assignment. The large stamp sits across the grading page.
+   The small pill is the same word on the course assignment list. */
+.gradedStamp{grid-column:1 / -1;display:flex;align-items:center;justify-content:center;
+  padding:16px 18px;background:var(--accent-soft);color:var(--accent);
+  border-bottom:1px solid var(--accent);
+  font-size:26px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+@media (max-width:700px){
+  .gradedStamp{font-size:18px;letter-spacing:.1em;padding:12px 10px}
+}
+.pill.gradedMark{font-weight:700;letter-spacing:.04em;text-transform:uppercase}
 .dot.canvas{background:var(--accent)}
 .rrow .clashMark{color:var(--danger);font:800 10px var(--sans);border:1px solid var(--danger);
   border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;

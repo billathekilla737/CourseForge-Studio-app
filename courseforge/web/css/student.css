@@ -6,8 +6,11 @@
 .nickRow{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin:.45rem 0 0}
 .nickRow label{font-size:.85rem;font-weight:600}
 .nickRow input{display:block;margin-top:.25rem;font:16px/1.4 var(--sans);padding:.35rem .55rem;min-width:10rem}
+.nickRow input::placeholder{color:var(--muted);font-style:italic;opacity:1}
 .nickPreview{margin:.35rem 0 0;color:var(--muted)}
-.who .nickRow{margin-top:.35rem}
+.roNick{display:block;margin-top:.35rem;font-size:11px;font-weight:600;color:var(--muted)}
+.roNick input{font-weight:400}
+.roNick input::placeholder{color:var(--muted);font-style:italic;opacity:1}
 .stSearchRow{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;margin-bottom:.4rem}
 .stSearch{display:block;font-weight:600;flex:1;min-width:16rem}
 .stSearch input{display:block;width:100%;max-width:28rem;margin:.35rem 0 .4rem;

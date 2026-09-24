@@ -12,7 +12,7 @@
      state: what the first action does, and that nothing is pushed. */
   const CARDS = [
     { id: 'grade', label: 'Grade', zone: 'grade', href: cid => `#/c/${cid}/grade`,
-      blurb: 'Sync an assignment, grade it with Claude against the rubric, and push scores hidden until you make them live. Nothing is pushed until you confirm.' },
+      blurb: 'Sync an assignment, grade it with Claude against the rubric, and push the scores when you confirm. Students can see a grade once it is posted.' },
     { id: 'a11y', label: 'Accessibility', zone: 'a11y', href: cid => `#/c/${cid}/a11y`,
       blurb: 'Fix pages, PowerPoints, Word files and PDFs to ADA and Ally standards. Every change is verified against the original and pushed only when you confirm.' },
     { id: 'build', label: 'Build', zone: 'build', href: cid => `#/c/${cid}/build`,

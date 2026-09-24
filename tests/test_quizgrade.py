@@ -67,6 +67,30 @@ def manuals():
     return quizgrade.manual_questions(BANK)
 
 
+class AFinishedAssignmentIsGraded(unittest.TestCase):
+    def test_pending_written_answers_are_not_graded(self):
+        extracted = {
+            "7": {"status": "pending_review", "canvas_score": 18,
+                  "canvas_posted_at": "2026-09-19T00:00:00Z",
+                  "quiz_needs_written": True},
+        }
+        self.assertFalse(gradesync.assignment_is_graded(1, extracted, True))
+        self.assertFalse(gradesync.assignment_is_graded(0, extracted, True))
+
+    def test_scored_submissions_with_nothing_waiting_are_graded(self):
+        extracted = {
+            "7": {"status": "graded", "canvas_score": 90,
+                  "canvas_posted_at": "2026-09-19T00:00:00Z"},
+            "8": {"status": "unsubmitted"},
+        }
+        self.assertTrue(gradesync.assignment_is_graded(0, extracted, True))
+
+    def test_nothing_turned_in_is_not_graded(self):
+        self.assertFalse(gradesync.assignment_is_graded(0, {}, False))
+        self.assertTrue(gradesync.assignment_is_graded(
+            0, {}, True))
+
+
 class PartialQuizIsNotAdopted(unittest.TestCase):
     def test_canvas_multiple_choice_does_not_count_as_finished(self):
         store = Store(Path(tempfile.mkdtemp()))

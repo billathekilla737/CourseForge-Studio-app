@@ -230,13 +230,45 @@ def resolve_conflicts(store: Store, course_id, assignment_id,
 
 # ------------------------------------------------------------------ pulling
 def posting_state(extracted: dict) -> dict:
-    """Who has a grade in Canvas, split by whether the student can see it."""
+    """Who has a grade in Canvas, and who can already see it.
+
+    ``live`` is the count the page shows. ``hidden`` is only the leftover
+    from an older hold; new grades are posted so students can see them.
+    """
     hidden, live = [], []
     for uid, info in extracted.items():
-        if info.get("canvas_score") is None:
+        if not isinstance(info, dict) or info.get("canvas_score") is None:
             continue
         (live if info.get("canvas_posted_at") else hidden).append(str(uid))
     return {"hidden": hidden, "live": live}
+
+
+def assignment_is_graded(needs_grading, extracted, has_submissions=False) -> bool:
+    """True when Canvas is not waiting on anyone and the turned-in work is scored.
+
+    A score on the automatic questions is not enough: a quiz still in
+    pending review is not graded. An assignment nobody has turned in is
+    not graded either.
+    """
+    try:
+        if int(needs_grading or 0) > 0:
+            return False
+    except (TypeError, ValueError):
+        return False
+    people = [s for s in (extracted or {}).values() if isinstance(s, dict)]
+    submitted = [s for s in people if str(s.get("status") or "") not in ("", "unsubmitted")]
+    if not submitted:
+        return bool(has_submissions)
+    for info in submitted:
+        quiz = info.get("quiz") or {}
+        if (info.get("quiz_needs_written")
+                or info.get("status") == "pending_review"
+                or info.get("canvas_state") == "pending_review"
+                or quiz.get("workflow") == "pending_review"):
+            return False
+        if info.get("canvas_score") is None:
+            return False
+    return True
 
 
 def pull_grades(cfg: Config, client: CanvasClient, store: Store,

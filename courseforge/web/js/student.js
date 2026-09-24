@@ -563,15 +563,16 @@ async function openStudent(userId, courseId) {
 
       <section>
         <h3>Nickname</h3>
-        <p class="muted">Studio shows this spelling on your screens. For John Doe
-          and Jack, that is John "Jack" Doe. Grades pushed to Canvas still use
-          the Canvas name, and the model never receives the nickname. The
-          nickname is kept in your Canvas files so another computer signed in
-          as you shows the same spelling.</p>
+        <p class="muted">Studio shows this spelling on your screens. A saved
+          nickname appears in quotes between the first and last name. An empty
+          box is not a nickname. Grades pushed to Canvas still use the Canvas
+          name, and the model never receives the nickname. The nickname is
+          kept in your Canvas files so another computer signed in as you
+          shows the same spelling.</p>
         <div class="nickRow">
           <label>Goes by
             <input id="stNick" maxlength="40" value="${esc(data.nickname || '')}"
-              placeholder="Jack" autocomplete="off">
+              placeholder="nickname" autocomplete="off">
           </label>
           <button class="btn" id="stNickSave" type="button">Save nickname</button>
         </div>

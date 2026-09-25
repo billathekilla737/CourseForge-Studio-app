@@ -144,6 +144,7 @@
           aria-label="Select the thread from ${esc(who)} about ${esc(t.subject)}">
         <button class="ibRowMain" type="button" data-i="${i}" data-id="${esc(t.id)}">
           <span class="ibTop"><span class="ibWho">${esc(who)}</span>
+            ${t.course_name ? `<span class="ibCourse">${esc(t.course_name)}</span>` : ''}
             <span class="ibAgo">${esc(t.ago || '')}</span></span>
           <span class="ibSubj">${esc(t.subject)}</span>
           <span class="ibPrev">${esc(t.preview || '')}</span>
@@ -296,14 +297,29 @@
     drawThread(t);
   }
 
+  /* The name in the thread heading opens that student's page. The course is
+     known, so the page opens on that course rather than a search across all. */
+  function whoHtml(t) {
+    const people = t.with || [];
+    if (!people.length) return 'someone';
+    return people.map(p => {
+      const label = (typeof studentLabel === 'function' && studentLabel(p)) || p.name || p.tag || 'student';
+      if (!p.user_id) return esc(label);
+      const href = t.course_id
+        ? `#/c/${esc(t.course_id)}/student/${esc(p.user_id)}`
+        : `#/student/${esc(p.user_id)}`;
+      return `<a class="ibWhoLink" href="${href}">${esc(label)}</a>`;
+    }).join(', ');
+  }
+
   function drawThread(t) {
     const pane = $('#ibPane');
-    const who = (t.with || []).map(p => studentLabel(p) || p.tag).join(', ');
+    const who = whoHtml(t);
     const read = mem().read[t.id];
     pane.innerHTML = `<div class="ibThread">
       <div class="ibHead">
         <h3>${esc(t.subject)}</h3>
-        <p class="hint">${esc(who)}${t.course_id ? ' · course ' + esc(t.course_id) : ''}
+        <p class="hint">${who}${t.course_name ? ' · ' + esc(t.course_name) : ''}
           · ${esc(t.ago || '')}</p>
       </div>
       <div id="ibInsight"></div>

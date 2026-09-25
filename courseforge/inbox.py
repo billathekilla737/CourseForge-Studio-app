@@ -249,9 +249,41 @@ def _when(iso: str | None) -> str:
 
 
 def course_of(row: dict):
-    """The course a thread belongs to, or None for account-level mail."""
+    """The course a thread belongs to, or None for account-level mail.
+
+    A message started from the inbox often has no context_code. Canvas still
+    names the course under audience_contexts.
+    """
     code = str(row.get("context_code") or "")
-    return code.split("course_", 1)[1] if code.startswith("course_") else None
+    if code.startswith("course_"):
+        return code.split("course_", 1)[1]
+    contexts = row.get("audience_contexts") or {}
+    courses = contexts.get("courses") if isinstance(contexts, dict) else None
+    if isinstance(courses, dict) and courses:
+        return str(next(iter(courses)))
+    return None
+
+
+def course_label(app, row: dict, course_id) -> str:
+    """The short course name shown beside the sender. Never an id."""
+    known = {}
+    for c in (app.store.courses() or []):
+        if isinstance(c, dict) and c.get("id") is not None:
+            known[str(c.get("id"))] = c.get("title") or c.get("name") or ""
+    ids = []
+    if course_id:
+        ids.append(str(course_id))
+    contexts = row.get("audience_contexts") or {}
+    courses = contexts.get("courses") if isinstance(contexts, dict) else None
+    if isinstance(courses, dict):
+        for cid in courses:
+            if str(cid) not in ids:
+                ids.append(str(cid))
+    names = [known.get(cid) or "" for cid in ids]
+    names = [n for n in names if n]
+    if names:
+        return ", ".join(names)
+    return str(row.get("context_name") or "").strip()
 
 
 class Thread:
@@ -264,6 +296,7 @@ class Thread:
     """
 
     def __init__(self, app, row: dict, me_id=None):
+        self.app = app
         self.row = row
         self.id = row.get("id")
         self.course_id = course_of(row)
@@ -317,6 +350,7 @@ class Thread:
         return {
             "id": self.id,
             "course_id": self.course_id,
+            "course_name": course_label(self.app, self.row, self.course_id),
             "subject": self.row.get("subject") or "(no subject)",
             "unread": self.row.get("workflow_state") == "unread",
             "messages": self.row.get("message_count") or 1,

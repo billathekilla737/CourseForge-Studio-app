@@ -98,6 +98,23 @@ class Base(unittest.TestCase):
 
 
 class NothingLeavesWithAName(Base):
+    def test_the_thread_name_opens_the_student_page(self):
+        src = (Path(__file__).resolve().parents[1] / "courseforge" / "web" / "js"
+               / "inbox.js").read_text(encoding="utf-8")
+        self.assertIn("#/c/${esc(t.course_id)}/student/${esc(p.user_id)}", src)
+        self.assertIn('class="ibWhoLink"', src)
+
+    def test_the_list_names_the_course_beside_the_sender(self):
+        view = inbox.Thread(self.app, THREAD, me_id=9).view()
+        self.assertEqual(view["course_name"], "Intro")
+
+    def test_a_thread_without_a_context_code_still_names_the_course(self):
+        row = dict(THREAD, context_code="",
+                   audience_contexts={"courses": {"734975": ["101"]}})
+        view = inbox.Thread(self.app, row, me_id=9).view()
+        self.assertEqual(view["course_id"], "734975")
+        self.assertEqual(view["course_name"], "Intro")
+
     def test_the_sender_is_a_tag_in_what_goes_out(self):
         t = inbox.Thread(self.app, THREAD, me_id=9)
         body = t.mask(THREAD["messages"][1]["body"])

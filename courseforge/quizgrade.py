@@ -8,10 +8,42 @@ only them and add that to the score Canvas already has.
 """
 from __future__ import annotations
 
+import re
+
 from .extract import html_to_text
 
 # Canvas leaves these out of the automatic score until a person grades them.
 MANUAL_TYPES = {"essay_question", "file_upload_question"}
+
+
+def was_submitted(sub: dict | None, assignment: dict | None = None) -> bool:
+    """True when this row is a quiz the student actually took.
+
+    Canvas often leaves submitted_at and attempt empty on the assignment
+    submission for an auto-graded quiz, and still records a score. A posted
+    zero for someone who never started has no quiz submission type and no
+    attempt history, and that one stays unsubmitted.
+    """
+    if not isinstance(sub, dict):
+        return False
+    if sub.get("submitted_at") or sub.get("attempt"):
+        return True
+    kind = str(sub.get("submission_type") or "")
+    if kind in ("online_quiz", "external_tool", "basic_lti_launch"):
+        return True
+    for row in sub.get("submission_history") or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("submitted_at") or row.get("attempt") or row.get("submission_data"):
+            return True
+    types = (assignment or {}).get("submission_types") or []
+    # A publisher quiz (Cengage and the like) is an external tool. Canvas
+    # keeps the score and nothing else: no submit time, no attempt, no answers.
+    if "external_tool" in types and sub.get("missing") is not True:
+        if sub.get("workflow_state") in ("graded", "submitted", "pending_review"):
+            if sub.get("score") is not None or str(sub.get("grade") or "").strip():
+                return True
+    return False
 
 
 def is_quiz(assignment: dict | None) -> bool:
@@ -137,6 +169,73 @@ def review_rows(bank: list[dict], rows: list[dict]) -> list[dict]:
     return [row for row in out if row["id"]]
 
 
+_BLANK_ANSWER = re.compile(
+    r"(?i)^\s*(?:n\s*/\s*a|na|none|blank|skipped|\(no written answer\))?\s*\.?\s*$")
+
+
+def answer_is_blank(text, question: dict | None = None) -> bool:
+    """Nothing was turned in. A placeholder such as n/a counts as nothing.
+
+    A file-upload question with no text may still have a file. That is not blank.
+    """
+    kind = str((question or {}).get("type") or "")
+    if kind in ("file_upload_question", "file_upload"):
+        return False
+    return _BLANK_ANSWER.match(str(text or "").strip()) is not None
+
+
+def written_answers_blank(info: dict | None) -> bool:
+    mans = [q for q in ((info or {}).get("quiz_review") or [])
+            if isinstance(q, dict) and q.get("manual")]
+    return bool(mans) and all(answer_is_blank(q.get("response"), q) for q in mans)
+
+
+def written_scores_recorded(entry: dict | None, info: dict | None) -> bool:
+    """Every written question has a number, and zero counts.
+
+    A blank answer scored 0 is a finished grade. Leaving it unscored is what
+    keeps the submission on Canvas's to-grade list.
+    """
+    mans = [q for q in ((info or {}).get("quiz_review") or [])
+            if isinstance(q, dict) and q.get("manual")]
+    if not mans or not entry:
+        return False
+    scores = entry.get("scores") or {}
+    return all(scores.get(f"q{q.get('id')}") is not None for q in mans)
+
+
+def question_scores(entry: dict | None) -> dict:
+    """Written-question points to send to Canvas. Zero is included.
+
+    A missing key is not a zero: that question was never scored. An explicit
+    0 is a grade and has to be posted, or Canvas leaves the quiz to grade.
+    """
+    out: dict[str, object] = {}
+    if not entry:
+        return out
+    for qid, pts in (entry.get("quiz_question_scores") or {}).items():
+        if pts is not None and str(qid) != "":
+            out[str(qid)] = pts
+    for key, pts in (entry.get("scores") or {}).items():
+        key = str(key)
+        if len(key) > 1 and key[0] == "q" and key[1:].isdigit() and pts is not None:
+            out.setdefault(key[1:], pts)
+    return out
+
+
+def hold_for_review(entry: dict | None, info: dict | None) -> bool:
+    """True when a push should wait for the instructor.
+
+    A flagged blank answer that was scored 0 is not a hold. The zero is the
+    grade, and it has to be posted or Canvas keeps the submission waiting.
+    """
+    if not entry or not entry.get("needs_human") or entry.get("human_ok"):
+        return False
+    if written_answers_blank(info) and written_scores_recorded(entry, info):
+        return False
+    return True
+
+
 def written_text(questions: list[dict], answers: list[dict] | None) -> str:
     """The prompt and the student's words for each written question."""
     by_id = {str(a.get("id")): a for a in (answers or []) if a.get("id") is not None}
@@ -213,7 +312,7 @@ def prepare(client, course_id, quiz_id, assignment: dict | None = None) -> dict 
         return None
     bank = bank if isinstance(bank, list) else []
     manuals = manual_questions(bank)
-    if not manuals:
+    if not bank:
         return None
     try:
         rows = client.quiz_submissions(course_id, quiz_id)

@@ -56,6 +56,11 @@ async function api(path, opts = {}) {
   noticeBuild(res.headers.get('X-App-Build'));
   const data = await res.json().catch(() => ({ error: 'bad JSON from server' }));
   if (!res.ok) {
+    // A restart rotates the page key. The open tab still has the old one, so
+    // every button, including Refresh from Canvas, is refused until reload.
+    if (res.status === 403 && /Reload this browser page/.test(data.error || '')) {
+      noticeKeyStale();
+    }
     // Carry the whole body along. A refused write is not a failure -- it is the
     // server asking, and its answer (the summary and the one-time token) lives
     // in here.
@@ -85,6 +90,18 @@ function noticeServerDown() {
     token problem.
     <button class="btn" onclick="location.reload()">Reload</button>`;
   document.body.prepend(bar);
+}
+
+function noticeKeyStale() {
+  if ($('#staleBar') || $('#keyBar')) return;
+  const bar = document.createElement('div');
+  bar.id = 'keyBar';
+  bar.className = 'staleBar';
+  bar.innerHTML = `<b>Reload this page.</b> Studio was restarted, so this tab's
+    key no longer matches. Refresh from Canvas cannot work until you reload.
+    <button class="btn sm" id="keyReload" type="button">Reload now</button>`;
+  document.body.prepend(bar);
+  $('#keyReload').onclick = () => location.reload();
 }
 
 function noticeBuild(build) {

@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .. import audit, ledger
+from .. import audit, gradesync, ledger
 from ..areas import AREAS
 from ..routing import HTTPError, route
 
@@ -151,7 +151,27 @@ def figures(app, cid, cdir: Path) -> dict:
     rows = app.store.read(cdir / "assignments.json", []) or []
     if not isinstance(rows, list):
         rows = []
-    waiting = sum(int(r.get("needs_grading") or 0) for r in rows if isinstance(r, dict))
+    waiting = 0
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        n = int(r.get("needs_grading") or 0)
+        if not n:
+            continue
+        aid = str(r.get("id") or "")
+        extracted = app.store.read(cdir / aid / "extracted.json", {}) or {}
+        draft = app.store.read(cdir / aid / "draft.json", {}) or {}
+        if not isinstance(extracted, dict):
+            extracted = {}
+        if not isinstance(draft, dict):
+            draft = {}
+        if gradesync.assignment_is_graded(
+                n, extracted, r.get("has_submissions"),
+                draft.get("students"), draft.get("rubric"),
+                draft.get("points_possible"),
+                graded_submissions_exist=r.get("graded_submissions_exist")):
+            continue
+        waiting += n
     graded = 0
     last: str | None = None
     try:

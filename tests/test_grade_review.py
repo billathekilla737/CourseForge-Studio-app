@@ -316,7 +316,7 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         # Bulk bar and context menu share one action list, so a new verb cannot
         # land on shift-click and be missing from right-click (or the reverse).
         self.assertIn("selectionItems(st)", self.src)
-        self.assertIn("js/grade.js?v=graded-1",
+        self.assertIn("js/grade.js?v=quizwork-3",
                       (WEB / "index.html").read_text(encoding="utf-8"))
         self.assertIn('step="1"', self.src)
         self.assertNotIn("data-tiers", self.src)
@@ -367,6 +367,61 @@ class GradeJsKeepsToTheContract(unittest.TestCase):
         self.assertIn("How it will read", self.src)
         self.assertIn("paperFrame canvasPage", self.src)
         self.assertIn("id=\"anPreview\"", self.src)
+
+    def test_the_work_pane_close_is_not_an_inline_handler(self):
+        """Inline onclick is blocked by the page policy, so Close did nothing
+        and the only working control was Hide work, back at the top."""
+        self.assertNotIn('onclick="toggleWork()"', self.src)
+        self.assertIn('id="btnWorkClose"', self.src)
+        self.assertIn("closeWork.onclick = toggleWork", self.src)
+
+    def test_regrade_covers_the_selection(self):
+        """The student-panel button used to grade only the open student."""
+        self.assertIn("doGrade(gradeIds)", self.src)
+        self.assertIn("Re-grade ${gradeIds.length} students", self.src)
+        self.assertNotIn("doGrade([String(s.user_id)])", self.src)
+
+    def test_keep_the_proposal_covers_every_selected_conflict(self):
+        """The buttons on one student used to settle only that student,
+        even when a range was selected."""
+        self.assertIn("function conflictChoiceIds(", self.src)
+        detail = self.src[self.src.index("const cfC = $('#cfCanvas')"):
+                          self.src.index("const cfM = $('#cfMine')") + 200]
+        self.assertIn("resolveConflicts(choiceIds, 'canvas')", detail)
+        self.assertIn("resolveConflicts(choiceIds, 'mine')", detail)
+        self.assertNotIn("resolveConflicts([String(s.user_id)]", detail)
+        self.assertIn("selected students who disagree with Canvas", self.src)
+
+    def test_a_posted_total_is_not_still_to_grade(self):
+        """The quiz stays 'pending review' after the gradebook post. The
+        page was still saying the written answers were a proposal."""
+        body = self.src[self.src.index("function writtenOpen("):
+                        self.src.index("function writtenOpenCount(")]
+        self.assertIn("gradeIsPosted(s) || (writtenScoresRecorded(s) && !reviewHold(s))", body)
+        self.assertIn("This grade is in Canvas and students can see it.", self.src)
+
+    def test_a_score_that_stays_an_f_still_shows_it_moved_up(self):
+        """Leaving F, or gaining points and still being an F, is a move up.
+        The old change column painted a smaller F count in red."""
+        body = self.src[self.src.index("function curvePreviewHTML("):
+                        self.src.index("function openPush(")]
+        self.assertIn("failing ? moved < 0 : moved > 0", body)
+        self.assertIn("up", body)
+        self.assertIn("ltrHold", body)
+        self.assertIn("no writing", body)
+        self.assertIn("those points are 0", body)
+        self.assertNotIn("The score went up", body)
+        self.assertIn('class="ltrIco"', body)
+        self.assertNotIn("↑", body)
+
+    def test_the_resume_course_stays_on_the_list(self):
+        """Carry on is a shortcut. It does not take the course off the list."""
+        body = self.src[self.src.index("function paintHome("):
+                        self.src.index("function courseCount(")]
+        self.assertNotIn("list.filter", body)
+        self.assertNotIn("Your other courses", self.src)
+        self.assertNotIn("That is every course in this term.", self.src)
+        self.assertIn("$('#pickerTitle').textContent = 'Your courses'", body)
 
     def test_an_ungraded_written_answer_is_not_called_in_step(self):
         """A posted automatic score is not a finished grade. A zero on a

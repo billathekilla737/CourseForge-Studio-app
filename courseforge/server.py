@@ -29,8 +29,8 @@ from urllib.parse import parse_qs, urlparse
 
 from . import (accommodations, areas, audit, blender, confirm, curve, grader,
                latepolicy, llm, gradesync, handoff, htmlclean, instruct,
-               nicknames, overlap, quizedit, routing, schedule, statesync,
-               teaching, terms)
+               nicknames, overlap, quizgrade, quizedit, routing, schedule,
+               statesync, teaching, terms)
 from .canvas import CanvasClient, CanvasError
 from . import config
 from .config import Config
@@ -531,6 +531,7 @@ class App:
                     "is_discussion": bool(a.get("discussion_topic")),
                     "needs_grading": a.get("needs_grading_count"),
                     "has_submissions": bool(a.get("has_submitted_submissions")),
+                    "graded_submissions_exist": bool(a.get("graded_submissions_exist")),
                     "synced_at": draft.get("synced_at"),
                     "graded_at": draft.get("last_graded_at"),
                     "has_instructions": bool(self.store.instructions(course_id, a["id"]).strip()),
@@ -540,10 +541,14 @@ class App:
         for row in cached:
             if not isinstance(row, dict):
                 continue
+            book = self.store.draft(course_id, row.get("id")) or {}
             row["graded"] = gradesync.assignment_is_graded(
                 row.get("needs_grading"),
                 self.store.extracted(course_id, row.get("id")),
-                row.get("has_submissions"))
+                row.get("has_submissions"),
+                book.get("students"), book.get("rubric"),
+                book.get("points_possible"),
+                graded_submissions_exist=row.get("graded_submissions_exist"))
         return cached
 
     def workspace(self, course_id, assignment_id) -> dict:
@@ -2254,7 +2259,7 @@ class App:
                                 or ("no submission"
                                     if (extracted.get(uid) or {}).get("status")
                                     == "unsubmitted" else "no score")})
-            elif entry.get("needs_human") and not entry.get("human_ok"):
+            elif quizgrade.hold_for_review(entry, extracted.get(uid) or {}):
                 skipped.append({"user_id": uid, "name": name, "why": "flagged for human review"})
             else:
                 # The curved score is the one that counts, and the dry run has to
@@ -2276,17 +2281,24 @@ class App:
                         if str(c.get("id") or "").isdigit()
                         and scores.get(str(c.get("id"))) is not None
                     }
-                if entry.get("quiz_submission_id") and entry.get("quiz_question_scores"):
+                info = extracted.get(uid) or {}
+                quiz_meta = info.get("quiz") if isinstance(info.get("quiz"), dict) else {}
+                questions = quizgrade.question_scores(entry)
+                submission_id = (entry.get("quiz_submission_id")
+                                 or quiz_meta.get("submission_id"))
+                if submission_id and questions:
                     item["quiz"] = {
-                        "quiz_id": entry.get("quiz_id"),
-                        "submission_id": entry.get("quiz_submission_id"),
-                        "attempt": entry.get("quiz_attempt") or 1,
+                        "quiz_id": entry.get("quiz_id") or quiz_meta.get("quiz_id"),
+                        "submission_id": submission_id,
+                        "attempt": entry.get("quiz_attempt") or quiz_meta.get("attempt") or 1,
                         "questions": {
-                            qid: {"score": pts, "comment": (entry.get("rationales") or {}).get(f"q{qid}") or ""}
-                            for qid, pts in (entry.get("quiz_question_scores") or {}).items()
-                            if pts is not None
+                            qid: {"score": pts,
+                                  "comment": (entry.get("rationales") or {}).get(f"q{qid}") or ""}
+                            for qid, pts in questions.items()
                         },
                     }
+                    if quizgrade.written_answers_blank(info):
+                        item["blank_written"] = True
                 if round(score - earned, 2):
                     item["earned"] = earned
                     item["curved_by"] = round(score - earned, 2)
@@ -2347,6 +2359,9 @@ class App:
                 # on this score as of now. See gradesync.py.
                 settled[item["user_id"]] = {"pushed_at": now, "synced_score": item["score"],
                                             "synced_at": now, "conflict": None}
+                if item.get("blank_written"):
+                    settled[item["user_id"]]["needs_human"] = False
+                    settled[item["user_id"]]["human_ok"] = True
                 if isinstance(sub, dict) and sub:
                     canvas_side[item["user_id"]] = {
                         "canvas_score": sub.get("score"),
@@ -2957,9 +2972,9 @@ def make_handler(app: App):
             if is_permission and self._hook_secret_ok(body):
                 return True
             if not self._studio_key_ok():
-                self._json({"error": "This request did not come from the "
-                                     "CourseForge Studio page on this machine, "
-                                     "so it was refused."}, 403)
+                self._json({"error": "Studio was restarted, so this page is out "
+                                     "of date. Reload this browser page, then "
+                                     "try again."}, 403)
                 return False
             return True
 
@@ -3241,8 +3256,9 @@ def make_handler(app: App):
             if not (is_permission and self._hook_secret_ok(body)):
                 if not self._same_origin():
                     return self._json(
-                        {"error": "This request did not come from the CourseForge Studio "
-                                  "page on this machine, so it was refused."}, 403)
+                        {"error": "Studio was restarted, so this page is out of "
+                                  "date. Reload this browser page, then try again."},
+                        403)
 
             if routing.dispatch(app, self, "POST", url, {}, body):
                 return

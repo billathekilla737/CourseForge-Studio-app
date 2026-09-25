@@ -250,8 +250,12 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
             progress(f"  could not read the quiz questions: {exc}")
             quiz_pack = None
         if quiz_pack:
-            progress(f"{len(quiz_pack['questions'])} written question(s); "
-                     "multiple choice stays as Canvas scored it")
+            n_written = len(quiz_pack["questions"])
+            if n_written:
+                progress(f"{n_written} written question(s); "
+                         "multiple choice stays as Canvas scored it")
+            else:
+                progress("automatic quiz; Canvas already graded the questions")
     extracted: dict[str, dict] = {}
     for index, sub in enumerate(submissions, start=1):
         uid = str(sub.get("user_id"))
@@ -330,6 +334,8 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
         # anything in but already has a posted zero. Trust attempt/submitted_at
         # for whether work exists, and keep Canvas's own view alongside it.
         really_submitted = bool(sub.get("submitted_at")) or bool(sub.get("attempt"))
+        if not really_submitted and quizgrade.was_submitted(sub, assignment):
+            really_submitted = True
         entry = {
             "user_id": uid,
             "name": name,
@@ -369,6 +375,8 @@ def sync_assignment(cfg: Config, client: CanvasClient, store: Store,
             "sheets": [], "models": [],
             "_files_dir": str(adir / "files"),
         }
+        if really_submitted and "external_tool" in (assignment.get("submission_types") or []):
+            entry["external_tool"] = True
         if uid in discussion:
             entry["discussion"] = discussion[uid]
             entry["text"] = (entry["text"] + "\n\n" + _discussion_text(discussion[uid])).strip()
@@ -658,7 +666,7 @@ def build_prompt(assignment: dict, rubric: list[dict], entry: dict,
         'to give a perfect submission is what produces advice nobody asked for.>",\n'
         '  "flags": ["<short tags such as late, missing part 4, possible AI text, off-prompt>"],\n'
         '  "confidence": "high" | "medium" | "low",\n'
-        '  "needs_human": <true if you could not fairly grade this>,\n'
+        '  "needs_human": <true if you could not fairly grade this. A blank, empty, or n/a answer scored 0 is a grade, not a hold>,\n'
         '  "needs_human_reason": "<why, or empty>"\n'
         "}\n"
         "Include every criterion exactly once. Points must not exceed the criterion max. "

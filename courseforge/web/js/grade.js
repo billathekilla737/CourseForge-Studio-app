@@ -2074,10 +2074,9 @@ function paintHome(picked) {
   const resume = picked.resume
     && S.courses.some(c => String(c.id) === String(picked.resume.course_id) && inTerm(c))
     ? picked.resume : null;
-  if (resume) list = list.filter(c => String(c.id) !== String(resume.course_id));
 
   renderResume(resume);
-  $('#pickerTitle').textContent = resume ? 'Your other courses' : 'Your courses';
+  $('#pickerTitle').textContent = 'Your courses';
   const staleNote = $('#pickerThisPc');
   if (staleNote) staleNote.remove();
 
@@ -2087,22 +2086,20 @@ function paintHome(picked) {
     `<select class="termSel" id="selTerm" aria-label="Which term">${opts}
        <option value="__all"${S.term === '__all' ? ' selected' : ''}>All terms (${S.courses.length})</option>
      </select>
-     <span style="margin-left:10px">${courseCount(list, resume)}</span>`;
+     <span style="margin-left:10px">${courseCount(list)}</span>`;
 
   $('#pickerBody').innerHTML = list.length
     ? '<div class="pickList">' + list.map(courseRow).join('') + '</div>'
-    : `<p class="hint">${resume ? 'That is every course in this term.'
-        : 'No courses in this term.'}</p>`;
+    : '<p class="hint">No courses in this term.</p>';
   wireCourseTools($('#pickerBody'));
 
   renderStorage();
   $('#selTerm').onchange = ev => { S.term = ev.target.value; openCourses(false); };
 }
 
-function courseCount(list, resume) {
-  const n = list.length + (resume ? 1 : 0);
-  const waiting = list.reduce((a, c) => a + (+c.waiting || 0), 0)
-    + (resume ? (+resume.waiting || 0) : 0);
+function courseCount(list) {
+  const n = list.length;
+  const waiting = list.reduce((a, c) => a + (+c.waiting || 0), 0);
   return `${n} course${n === 1 ? '' : 's'}`
     + (waiting ? ` · ${waiting} submission${waiting === 1 ? '' : 's'} waiting` : '');
 }
@@ -2311,10 +2308,10 @@ async function openCourse(courseId, refresh) {
   try {
     S.assignments = await api(`/courses/${courseId}/assignments` + (refresh ? '?refresh=1' : ''));
   } catch (err) {
-    $('#pickerHint').textContent = firstLine(err.message) + ' — see the banner above.';
+    $('#pickerHint').textContent = firstLine(err.message);
     return;
   }
-  const waiting = S.assignments.reduce((a, x) => a + (+x.needs_grading || 0), 0);
+  const waiting = S.assignments.reduce((a, x) => a + (x.graded ? 0 : (+x.needs_grading || 0)), 0);
   $('#pickerHint').textContent = `${S.assignments.length} assignments`
     + (waiting ? ` · ${waiting} submission${waiting === 1 ? '' : 's'} waiting to grade` : '');
   $('#pickerBody').innerHTML = `<table class="asgTable"><thead><tr>
@@ -2326,10 +2323,11 @@ async function openCourse(courseId, refresh) {
           <b>${esc(a.name)}</b>${a.is_discussion ? ' <span class="pill">discussion</span>' : ''}
           ${a.published ? '' : ' <span class="pill warn">unpublished</span>'}</a></td>
         <td style="color:var(--muted)">${esc(fmtDate(a.due_at) || '—')}</td>
-        <td class="tg">${a.needs_grading
+        <td class="tg">${a.graded
+      ? '<span class="pill good gradedMark">Graded</span>'
+      : (a.needs_grading
       ? `<span class="tgBadge" title="${a.needs_grading} submission(s) Canvas says are waiting">${
           a.needs_grading}</span>`
-      : (a.graded ? '<span class="pill good gradedMark">Graded</span>'
       : '<span class="muted">—</span>')}</td>
         <td class="num">${a.points_possible ?? '—'}</td>
         <td>${a.has_rubric ? '<span class="pill good">rubric</span>' : '<span class="pill warn">none</span>'}</td>
@@ -2476,11 +2474,50 @@ function syncPrint(ws) {
     Object.keys(ex).sort().map(u => [ex[u].canvas_score, ex[u].canvas_posted_at,
       (st[u] || {}).source, (st[u] || {}).total, (st[u] || {}).final_total, !!(st[u] || {}).conflict])]);
 }
+/* The grade Canvas is showing is the one held here, not only the automatic
+   part. A quiz can stay "pending review" after that, because the essays were
+   never marked inside the quiz tool. The posted total is still the grade. */
+function gradeIsPosted(s) {
+  if (!s || s.canvas_score == null || !s.canvas_posted_at || !S.ws) return false;
+  const mine = finalOf(entryOf(s.user_id));
+  if (mine == null) return false;
+  return Math.abs(+mine - +s.canvas_score) < 0.05;
+}
 /* Canvas still wants a person to score the written questions. The number
    already posted can be the automatic part only, and students may already
    see it. pending_review is Canvas's own word for that. */
+function answerIsBlank(q) {
+  if (q && (q.type === 'file_upload_question' || q.type === 'file_upload')) return false;
+  const t = String((q && q.response) || '').replace(/\s+/g, ' ').trim();
+  return !t || /^\(no written answer\)$/i.test(t)
+    || /^(n\s*\/\s*a|na|none|blank|skipped)\.?$/i.test(t);
+}
+function answersAllBlank(s) {
+  const mans = ((s && s.quiz_review) || []).filter(q => q && q.manual);
+  return mans.length > 0 && mans.every(answerIsBlank);
+}
+function writtenScoresRecorded(s) {
+  const e = entryOf(s.user_id);
+  if (!e || !e.scores) return false;
+  const mans = (s.quiz_review || []).filter(q => q && q.manual);
+  if (!mans.length) return false;
+  return mans.every(q => {
+    const v = e.scores['q' + q.id];
+    return v != null && v !== '';
+  });
+}
+/* A blank answer scored 0 is not a review hold. A real answer the model
+   refused to grade still is, and that one stays on the to-grade list. */
+function reviewHold(s) {
+  if (!s || !S.ws) return false;
+  const e = entryOf(s.user_id);
+  if (!e || !e.needs_human || e.human_ok) return false;
+  if (answersAllBlank(s) && writtenScoresRecorded(s)) return false;
+  return true;
+}
 function writtenOpen(s) {
   if (!s || s.status === 'unsubmitted') return false;
+  if (gradeIsPosted(s) || (writtenScoresRecorded(s) && !reviewHold(s))) return false;
   if (s.quiz_needs_written) return true;
   if (s.status === 'pending_review' || s.canvas_state === 'pending_review') return true;
   return !!(s.quiz && s.quiz.workflow === 'pending_review');
@@ -2506,7 +2543,8 @@ function gradesLiveLine(n) {
    score with the written answers still open does not count. */
 function gradingFinished(ws) {
   const people = Object.values((ws && ws.extracted) || {}).filter(s => s && typeof s === 'object');
-  const submitted = people.filter(s => s.status && s.status !== 'unsubmitted');
+  const submitted = people.filter(s => s.status && s.status !== 'unsubmitted'
+    || (s.quiz_review && s.quiz_review.length));
   if (!submitted.length) return false;
   return submitted.every(s => !writtenOpen(s) && s.canvas_score != null);
 }
@@ -2573,7 +2611,7 @@ async function resolveConflicts(uids, choice) {
     const n = (r.settled || []).length;
     setStatus(choice === 'canvas'
       ? `took Canvas for ${n}`
-      : `kept yours for ${n} — the next push overwrites Canvas`, 'ok');
+      : `kept the score on this computer for ${n} — the next push overwrites Canvas`, 'ok');
     render();
   } catch (err) { setStatus('could not resolve: ' + err.message, 'err'); }
 }
@@ -3571,18 +3609,45 @@ function openCurve(only) {
   preview();
 }
 
+function curvePct(score, max) {
+  const n = Number(score), m = Number(max);
+  if (!m || !isFinite(n)) return null;
+  return Math.round(1000 * n / m) / 10;
+}
+function curvePassLine(scale) {
+  const cuts = Object.values(scale || {}).map(Number).filter(v => isFinite(v));
+  return cuts.length ? Math.min(...cuts) : 60;
+}
+function noWrittenWork(uid) {
+  const s = (S.ws && S.ws.extracted && S.ws.extracted[String(uid)]) || null;
+  const mans = ((s && s.quiz_review) || []).filter(q => q && q.manual);
+  if (!mans.length) return false;
+  return mans.every(q => {
+    const t = String(q.response || '').replace(/\s+/g, ' ').trim();
+    return !t || /^\(no written answer\)$/i.test(t)
+      || /^(n\s*\/\s*a|na|none|blank|skipped)\.?$/i.test(t);
+  });
+}
 function curvePreviewHTML(p) {
   const bandRow = (before, after) => {
     const rows = before.distribution.map((b, i) => {
       const a = after.distribution[i];
       const moved = a.count - b.count;
+      // Fewer F's is students moving up, not a loss. More A's is the same
+      // direction. The sign on the count is not the direction of the grade.
+      const failing = b.letter === 'F';
+      const up = failing ? moved < 0 : moved > 0;
+      const down = failing ? moved > 0 : moved < 0;
+      const label = !moved ? '—'
+        : (failing && moved < 0) ? `${-moved} up`
+        : (failing && moved > 0) ? `${moved} more`
+        : (moved > 0 ? '+' + moved : String(moved));
       return `<tr>
         <td class="ltrCell">${b.letter}</td>
         <td>${b.count} <span class="muted">(${(100 * b.share).toFixed(0)}%)</span></td>
         <td class="arrowCell">→</td>
         <td>${a.count} <span class="muted">(${(100 * a.share).toFixed(0)}%)</span></td>
-        <td class="${moved > 0 ? 'up' : moved < 0 ? 'down' : 'muted'}">${
-          moved ? (moved > 0 ? '+' + moved : moved) : '—'}</td>
+        <td class="${up ? 'up' : down ? 'down' : 'muted'}">${label}</td>
       </tr>`;
     }).join('');
     return `<table class="cvBands"><thead><tr><th></th><th>now</th><th></th>
@@ -3630,8 +3695,12 @@ function curvePreviewHTML(p) {
           <td class="mono">${num(r.before)} → ${num(r.after)}</td>
           <td class="mono up">+${num(r.delta)}</td>
           <td>${r.letter_before !== r.letter_after
-            ? `<span class="ltrMove">${r.letter_before} → ${r.letter_after}</span>`
-            : `<span class="muted">${r.letter_after}</span>`}</td>
+            ? `<span class="ltrMove">${esc(r.letter_before)}<svg class="ltrIco" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M2 6.2h6.2V3.2L14 8l-5.8 4.8V9.8H2z"/></svg>${esc(r.letter_after)}</span>`
+            : (r.letter_after === 'F' && r.delta > 0 && noWrittenWork(r.user_id)
+              ? `<span class="ltrHold" title="Nothing was turned in for the written questions, so those points are 0. ${num(r.after)} of ${num(p.scope_max)} is ${curvePct(r.after, p.scope_max)}%, and a D starts at ${curvePassLine(p.scale)}%.">F <span>no writing</span></span>`
+              : (r.letter_after === 'F' && r.delta > 0
+              ? `<span class="ltrHold" title="${curvePct(r.after, p.scope_max)}% of ${num(p.scope_max)}. A D starts at ${curvePassLine(p.scale)}%.">F <span>${curvePct(r.after, p.scope_max)}%</span></span>`
+              : `<span class="muted">${esc(r.letter_after)}</span>`))}</td>
         </tr>`).join('')}
         ${!rows.length ? '<tr><td colspan="4" class="muted">Nobody changes.</td></tr>' : ''}
         </tbody></table>
@@ -3927,7 +3996,7 @@ function students() {
     if (S.query && ![s.name, s.sortable_name, studentLabel(s)].join(' ')
       .toLowerCase().includes(S.query)) return false;
     const e = entryOf(s.user_id);
-    if (S.filter === 'review') return !!(e && e.needs_human);
+    if (S.filter === 'review') return reviewHold(s);
     if (S.filter === 'human') return !!(e && (e.source === 'human' || e.source === 'canvas'));
     if (S.filter === 'ungraded') return !isScored(e);
     // The working set most of the time: whoever handed something in. Everyone
@@ -3959,6 +4028,14 @@ function menuIdsFor(uid) {
   if (S.picked.size > 1 && S.picked.has(key)) return pickedIds();
   return [key];
 }
+/* The conflict buttons sit on one student, but a multi-select means the
+   choice is for every selected student who actually disagrees with Canvas. */
+function conflictChoiceIds(uid) {
+  return menuIdsFor(uid).filter(id => {
+    const row = entryOf(id);
+    return row && row.conflict;
+  });
+}
 function selectionState(ids) {
   ids = (ids || []).map(String);
   const n = ids.length;
@@ -3967,7 +4044,7 @@ function selectionState(ids) {
   const allOk = n > 0 && entries.length === n && entries.every(e => e && e.human_ok);
   return {
     ids, n, entries, canAI, allOk,
-    flagged: entries.filter(e => e && e.needs_human && !e.human_ok).length,
+    flagged: ids.filter(uid => reviewHold((S.ws.extracted || {})[String(uid)] || { user_id: uid })).length,
     clashes: entries.filter(e => e && e.conflict).length,
   };
 }
@@ -4186,7 +4263,7 @@ function renderRoster() {
     const noScore = !!e && !isScored(e);
     const dot = e && e.source === 'human' ? '<span class="dot human"></span>'
       : e && e.source === 'canvas' ? '<span class="dot canvas"></span>'
-        : e && e.needs_human ? '<span class="dot flag"></span>'
+        : reviewHold(s) ? '<span class="dot flag"></span>'
           : s.status === 'unsubmitted' ? '<span class="dot none"></span>' : '';
     const sub = s.status === 'unsubmitted' ? 'no submission'
       : noScore ? esc(unscoredReason(s, e))
@@ -4194,7 +4271,7 @@ function renderRoster() {
           ? `Canvas auto ${num(e.conflict.canvas_score)} · written open`
           : `Canvas has ${num(e.conflict.canvas_score)}`)
           : writtenOpen(s) ? 'written answers not graded'
-            : (e && e.needs_human ? 'needs review' : (lateText(s) || `${s.words || 0} words`));
+            : (reviewHold(s) ? 'needs review' : (lateText(s) || `${s.words || 0} words`));
     const picked = S.picked.has(String(s.user_id));
     const b = document.createElement('button');
     b.type = 'button';
@@ -4660,7 +4737,7 @@ function renderDetail() {
 
   if (e.total !== undefined && !isScored(e)) {
     html += noScoreNote(s, e);
-  } else if (e.needs_human) {
+  } else if (reviewHold(s)) {
     html += `<div class="callout bad" style="margin-bottom:14px"><b>Claude flagged this for you.</b>
       ${esc(e.needs_human_reason || 'It could not grade this fairly.')}</div>`;
   }
@@ -4668,6 +4745,8 @@ function renderDetail() {
   if (e.conflict) {
     const c = e.conflict;
     const proposal = writtenOpen(s) && e.source !== 'human';
+    const choiceIds = conflictChoiceIds(s.user_id);
+    const many = choiceIds.length > 1;
     const canvasBit = writtenOpen(s)
       ? `Canvas holds <b>${num(c.canvas_score)}</b>, the automatic score${c.canvas_posted_at
           ? ' students can already see' : ''}. The written answers are still ungraded there.`
@@ -4676,12 +4755,19 @@ function renderDetail() {
     const mineBit = proposal
       ? ` A proposal on this computer is <b>${num(total)}</b> and has not been posted.`
       : ` You have <b>${num(total)}</b> here and it has not been pushed.`;
+    const who = many
+      ? ` This applies to all ${choiceIds.length} selected students who disagree with Canvas, not only this one.`
+      : '';
     html += `<div class="callout bad conflictBox" style="margin-bottom:14px">
       <b>Canvas and this machine disagree.</b> ${canvasBit}${mineBit}
-      Nothing was overwritten. Pick one:
+      Nothing was overwritten. Pick one.${who}
       <div class="actionRow" style="margin:10px 0 0">
-        <button class="btn sm" id="cfCanvas">Take Canvas (${num(c.canvas_score)})</button>
-        <button class="btn sm" id="cfMine">${proposal ? 'Keep the proposal' : 'Keep mine'} (${num(total)})</button>
+        <button class="btn sm" id="cfCanvas">${many
+          ? `Take Canvas for ${choiceIds.length}`
+          : `Take Canvas (${num(c.canvas_score)})`}</button>
+        <button class="btn sm" id="cfMine">${many
+          ? `${proposal ? 'Keep the proposal' : 'Keep mine'} for ${choiceIds.length}`
+          : `${proposal ? 'Keep the proposal' : 'Keep mine'} (${num(total)})`}</button>
       </div></div>`;
   }
   if (e.total_only && isScored(e)) {
@@ -4690,9 +4776,11 @@ function renderDetail() {
       Canvas total with your rubric score.</div>`;
   }
 
+  const gradeIds = menuIdsFor(s.user_id);
   html += `<div class="actionRow">
       <button class="btn on" id="btnWorkInline">${S.showWork ? 'Hide' : 'View'} submitted work</button>
-      <button class="btn ai" id="btnGradeOne">Re-grade this student</button>
+      <button class="btn ai" id="btnGradeOne">${gradeIds.length > 1
+        ? `Re-grade ${gradeIds.length} students` : 'Re-grade this student'}</button>
       <button class="btn" id="btnAsk">Ask about this work…</button>
       ${e.needs_human || e.human_ok ? `<button class="btn" id="btnReviewOne"
         title="${e.human_ok ? 'Put the review flag back'
@@ -4718,7 +4806,10 @@ function renderDetail() {
       score the work earned.</div>` : ''}`;
 
   const autoShown = e.quiz_auto_score != null ? e.quiz_auto_score : s.quiz_auto_score;
-  if (writtenOpen(s)) {
+  if (gradeIsPosted(s)) {
+    html += `<div class="callout">This grade is in Canvas and students can see it.
+      The bars below are the written part of that score.</div>`;
+  } else if (writtenOpen(s)) {
     const autoBit = autoShown != null
       ? `Canvas posted the automatic score, <b>${num(autoShown)}</b>. That is the number students can see. `
       : '';
@@ -4799,15 +4890,16 @@ function renderDetail() {
   $('#prevS').onclick = () => { S.sel = Math.max(0, S.sel - 1); render(); };
   $('#nextS').onclick = () => { S.sel = Math.min(list.length - 1, S.sel + 1); render(); };
   $('#btnWorkInline').onclick = toggleWork;
-  $('#btnGradeOne').onclick = () => doGrade([String(s.user_id)]);
+  $('#btnGradeOne').onclick = () => doGrade(gradeIds);
   const remindOne = $('#btnRemindOne');
   if (remindOne) remindOne.onclick = () =>
     openRemind(S.ids.courseId, S.ids.assignmentId, [String(s.user_id)]);
   const one = $('#btnReviewOne');
   if (one) one.onclick = () => doMarkReviewed(!e.human_ok, [String(s.user_id)]);
   $('#btnAsk').onclick = () => openAsk(s);
-  const cfC = $('#cfCanvas'); if (cfC) cfC.onclick = () => resolveConflicts([String(s.user_id)], 'canvas');
-  const cfM = $('#cfMine'); if (cfM) cfM.onclick = () => resolveConflicts([String(s.user_id)], 'mine');
+  const choiceIds = conflictChoiceIds(s.user_id);
+  const cfC = $('#cfCanvas'); if (cfC) cfC.onclick = () => resolveConflicts(choiceIds, 'canvas');
+  const cfM = $('#cfMine'); if (cfM) cfM.onclick = () => resolveConflicts(choiceIds, 'mine');
 
   renderWork(s, e);
 }
@@ -5210,7 +5302,13 @@ function renderWork(s, e) {
   meta.push(`${s.words || 0} words`);
 
   let body = '';
-  if (s.status === 'unsubmitted') {
+  if (s.external_tool && !(s.quiz_review && s.quiz_review.length)) {
+    const max = (S.ws.draft && S.ws.draft.points_possible) || 0;
+    body = `<div class="callout">Canvas graded this in the publisher tool${
+      s.canvas_score == null ? '' : ` and recorded <b>${num(s.canvas_score)}</b>${max ? ' of ' + num(max) : ''}`
+    }. The questions are not stored on the Canvas submission, so they cannot be shown here.
+      <br><br><a href="${sgUrl(s.user_id)}" target="_blank" rel="noopener">Open in SpeedGrader ↗</a></div>`;
+  } else if (s.status === 'unsubmitted' && !(s.quiz_review && s.quiz_review.length)) {
     body = `<div class="callout bad">Canvas shows this student as <b>unsubmitted</b> — there is nothing to read.
       <br><br><a href="${sgUrl(s.user_id)}" target="_blank" rel="noopener">Confirm in SpeedGrader ↗</a></div>`;
   } else {
@@ -5224,13 +5322,18 @@ function renderWork(s, e) {
       body += s.quiz_review.map(q => {
         const ungraded = q.manual && writtenOpen(s)
           && (q.points == null || q.points === '' || +q.points === 0);
+        const ours = (q.manual && !writtenOpen(s) && e && e.scores
+          && Object.prototype.hasOwnProperty.call(e.scores, 'q' + String(q.id || '')))
+          ? e.scores['q' + String(q.id || '')] : null;
         const mark = ungraded ? `Not graded · worth ${num(q.points_possible)}`
           : q.manual ? 'Written'
             : (q.correct === true ? 'Correct' : q.correct === false ? 'Incorrect' : '');
         const pill = ungraded ? 'warn' : (q.manual ? 'muted' : (q.correct === false ? 'warn' : 'good'));
         const pts = ungraded ? ''
-          : ((q.points != null && q.points !== '')
-            ? ` <span class="wc">${num(q.points)} / ${num(q.points_possible)}</span>` : '');
+          : (ours != null
+            ? ` <span class="wc">${num(ours)} / ${num(q.points_possible)}</span>`
+            : ((q.points != null && q.points !== '')
+              ? ` <span class="wc">${num(q.points)} / ${num(q.points_possible)}</span>` : ''));
         const note = (q.manual && writtenOpen(s)) ? localWrittenNote(q, e) : '';
         return `<div class="workSec"><h4>${esc(q.name || ('Question ' + (q.position || '')))}${pts}`
           + (mark ? ` <span class="pill ${pill}">${mark}</span>` : '')
@@ -5285,8 +5388,10 @@ function renderWork(s, e) {
   host.innerHTML = `<div class="workHead"><h3>Submitted work</h3>
       <span class="meta">${esc(meta.join(' · '))}</span><span class="spacer"></span>
       <a class="btn sm" target="_blank" rel="noopener" href="${sgUrl(s.user_id)}">SpeedGrader ↗</a>
-      <button class="btn sm" onclick="toggleWork()">Close</button></div>
+      <button class="btn sm" type="button" id="btnWorkClose">Close</button></div>
     <div class="workBody">${body}</div>`;
+  const closeWork = host.querySelector('#btnWorkClose');
+  if (closeWork) closeWork.onclick = toggleWork;
   wireViewers(host);
   wireVideos(host);
   host.scrollTop = 0;

@@ -618,8 +618,13 @@ html.busy .btn, html.busy button{cursor:progress}
 .up{color:var(--accent);font-weight:600}
 .down{color:var(--danger);font-weight:600}
 .muted{color:var(--muted)}
-.ltrMove{font:700 11.5px var(--mono);background:var(--accent-soft);color:var(--accent);
-  padding:1px 6px;border-radius:99px}
+.ltrMove{display:inline-flex;align-items:center;gap:4px;font:700 11.5px/1 var(--mono);
+  background:var(--accent-soft);color:var(--accent);
+  padding:4px 8px;border-radius:99px;white-space:nowrap;vertical-align:middle;
+  overflow:visible}
+.ltrIco{width:14px;height:14px;flex:none;display:block;overflow:visible}
+.ltrHold{font:700 11.5px/1 var(--mono);color:var(--ink);white-space:nowrap}
+.ltrHold span{font-weight:500;color:var(--muted);margin-left:4px}
 .cvFoot{font-size:11px;color:var(--muted);margin:14px 0 0}
 
 /* a multi-line error keeps its shape: the token message names a path per line */

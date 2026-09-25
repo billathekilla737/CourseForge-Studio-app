@@ -17,6 +17,28 @@ BANK = [
 ]
 
 
+class AnAutomaticQuizWasSubmitted(unittest.TestCase):
+    def test_a_quiz_attempt_without_a_timestamp_still_counts(self):
+        self.assertTrue(quizgrade.was_submitted({"submission_type": "online_quiz", "score": 8}))
+        self.assertTrue(quizgrade.was_submitted({
+            "submission_history": [{"submission_data": [{"question_id": 1, "answer_id": 2}]}],
+        }))
+
+    def test_a_publisher_quiz_with_a_canvas_score_counts(self):
+        asg = {"submission_types": ["external_tool"]}
+        self.assertTrue(quizgrade.was_submitted({
+            "workflow_state": "graded", "score": 4, "missing": False,
+        }, asg))
+        self.assertFalse(quizgrade.was_submitted({
+            "workflow_state": "graded", "score": 0, "missing": True,
+        }, asg))
+
+    def test_a_posted_zero_with_no_attempt_stays_unsubmitted(self):
+        self.assertFalse(quizgrade.was_submitted({
+            "workflow_state": "graded", "score": 0, "submission_type": None,
+        }))
+
+
 class WrittenQuestions(unittest.TestCase):
     def test_only_the_essay_is_a_criterion(self):
         manuals = quizgrade.manual_questions(BANK)
@@ -84,6 +106,77 @@ class AFinishedAssignmentIsGraded(unittest.TestCase):
             "8": {"status": "unsubmitted"},
         }
         self.assertTrue(gradesync.assignment_is_graded(0, extracted, True))
+
+    def test_other_edges_around_a_blank_written_answer(self):
+        blank = {"quiz_review": [
+            {"manual": True, "id": "9", "type": "essay_question", "response": "n/a"},
+            {"manual": True, "id": "10", "type": "essay_question", "response": ""},
+        ]}
+        zeros = {"needs_human": True, "source": "claude", "total": 35,
+                 "scores": {"q9": 0, "q10": 0},
+                 "quiz_question_scores": {"9": None, "10": 0}}
+        self.assertEqual(quizgrade.question_scores(zeros), {"10": 0, "9": 0})
+        upload = {"manual": True, "id": "3", "type": "file_upload_question", "response": ""}
+        self.assertFalse(quizgrade.answer_is_blank("", upload))
+        self.assertFalse(quizgrade.written_answers_blank(
+            {"quiz_review": [upload, blank["quiz_review"][0]]}))
+        mixed = {"quiz_review": [
+            {"manual": True, "id": "9", "response": "n/a"},
+            {"manual": True, "id": "10", "response": "a real answer"},
+        ]}
+        scored = {"needs_human": True, "source": "claude", "total": 40,
+                  "scores": {"q9": 0, "q10": 5}}
+        self.assertTrue(quizgrade.hold_for_review(scored, mixed))
+        missing = {"needs_human": True, "source": "claude", "total": 35,
+                   "scores": {"q9": 0}}
+        self.assertTrue(quizgrade.hold_for_review(missing, blank))
+        flagged = {"user_id": "8", "status": "pending_review", "canvas_score": 80,
+                   "canvas_posted_at": "2026-09-24T12:00:00",
+                   "quiz_auto_score": 50, "quiz_needs_written": True,
+                   "quiz_review": mixed["quiz_review"]}
+        self.assertFalse(gradesync.assignment_is_graded(
+            1, {"8": flagged}, True, {"8": scored}))
+
+    def test_a_blank_answer_scored_zero_is_graded(self):
+        info = {"quiz_review": [
+            {"manual": True, "id": "9", "response": "n/a"},
+            {"manual": True, "id": "10", "response": ""},
+        ]}
+        entry = {"needs_human": True, "source": "claude", "total": 35,
+                 "scores": {"q9": 0, "q10": 0, "_quiz_auto": 35}}
+        self.assertTrue(quizgrade.written_answers_blank(info))
+        self.assertTrue(quizgrade.written_scores_recorded(entry, info))
+        self.assertFalse(quizgrade.hold_for_review(entry, info))
+        self.assertTrue(gradesync.assignment_is_graded(2, {
+            "7": {"user_id": "7", "status": "pending_review", "canvas_score": 35,
+                  "canvas_posted_at": "2026-09-24T12:00:00",
+                  "quiz_auto_score": 35, "quiz_needs_written": True,
+                  "quiz_review": info["quiz_review"]},
+        }, True, {"7": entry}))
+
+    def test_a_posted_total_finishes_a_quiz_canvas_still_calls_open(self):
+        extracted = {
+            "7": {"user_id": "7", "status": "pending_review", "canvas_score": 150,
+                  "canvas_posted_at": "2026-09-24T12:00:00",
+                  "quiz_auto_score": 70, "quiz_needs_written": True},
+        }
+        students = {"7": {"total": 112, "final_total": 150, "source": "claude"}}
+        self.assertTrue(gradesync.assignment_is_graded(
+            10, extracted, True, students))
+        waiting = {
+            "7": {"user_id": "7", "status": "pending_review", "canvas_score": 70,
+                  "canvas_posted_at": "2026-09-24T12:00:00",
+                  "quiz_auto_score": 70, "quiz_needs_written": True},
+        }
+        self.assertFalse(gradesync.assignment_is_graded(
+            10, waiting, True, students))
+
+    def test_a_list_refresh_marks_a_publisher_quiz_graded(self):
+        self.assertTrue(gradesync.assignment_is_graded(
+            0, {}, False, graded_submissions_exist=True))
+        self.assertFalse(gradesync.assignment_is_graded(0, {}, False))
+        self.assertFalse(gradesync.assignment_is_graded(
+            2, {}, True, graded_submissions_exist=True))
 
     def test_nothing_turned_in_is_not_graded(self):
         self.assertFalse(gradesync.assignment_is_graded(0, {}, False))

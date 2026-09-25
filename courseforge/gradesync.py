@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from . import curve
+from . import curve, quizgrade
 from .canvas import CanvasClient
 from .config import Config
 from .store import Store
@@ -243,30 +243,71 @@ def posting_state(extracted: dict) -> dict:
     return {"hidden": hidden, "live": live}
 
 
-def assignment_is_graded(needs_grading, extracted, has_submissions=False) -> bool:
-    """True when Canvas is not waiting on anyone and the turned-in work is scored.
+def _quiz_still_open(info: dict) -> bool:
+    quiz = info.get("quiz") or {}
+    return bool(info.get("quiz_needs_written")
+                or info.get("status") == "pending_review"
+                or info.get("canvas_state") == "pending_review"
+                or quiz.get("workflow") == "pending_review")
+
+
+def whole_grade_posted(info: dict, entry: dict | None = None,
+                       rubric: list | None = None, possible=None) -> bool:
+    """True when the score students can see is the finished grade.
+
+    Posting the total through the gradebook does not clear a quiz's
+    "pending review" flag. The flag only means the essays were not marked
+    inside the quiz. If Canvas is showing the same total held here, or a
+    total other than the automatic part, the assignment grade is posted.
+    """
+    score = info.get("canvas_score")
+    if score is None or not info.get("canvas_posted_at"):
+        return False
+    if entry and curve.is_scored(entry):
+        held = entry.get("final_total")
+        if held is None:
+            held = curve.final_total(entry, rubric or [], possible)
+        return _same(held, score)
+    if _quiz_still_open(info):
+        auto = info.get("quiz_auto_score")
+        return auto is not None and not _same(score, auto)
+    return True
+
+
+def assignment_is_graded(needs_grading, extracted, has_submissions=False,
+                         students=None, rubric=None, possible=None,
+                         graded_submissions_exist=False) -> bool:
+    """True when every turned-in submission has a finished posted grade.
 
     A score on the automatic questions is not enough: a quiz still in
-    pending review is not graded. An assignment nobody has turned in is
-    not graded either.
+    pending review is not graded until the posted total is the whole grade.
+    An assignment nobody has turned in is not graded either. Canvas's
+    needs-grading count stays up after a gradebook post, so it is not the
+    only signal.
     """
-    try:
-        if int(needs_grading or 0) > 0:
-            return False
-    except (TypeError, ValueError):
-        return False
     people = [s for s in (extracted or {}).values() if isinstance(s, dict)]
     submitted = [s for s in people if str(s.get("status") or "") not in ("", "unsubmitted")]
     if not submitted:
-        return bool(has_submissions)
-    for info in submitted:
-        quiz = info.get("quiz") or {}
-        if (info.get("quiz_needs_written")
-                or info.get("status") == "pending_review"
-                or info.get("canvas_state") == "pending_review"
-                or quiz.get("workflow") == "pending_review"):
+        try:
+            if int(needs_grading or 0) > 0:
+                return False
+        except (TypeError, ValueError):
             return False
-        if info.get("canvas_score") is None:
+        # Publisher quizzes are graded in an outside tool. Canvas records the
+        # scores and sets graded_submissions_exist, but leaves
+        # has_submitted_submissions false, so a list refresh never looked graded
+        # until the assignment was opened and resynced.
+        return bool(has_submissions or graded_submissions_exist)
+    entries = students or {}
+    for info in submitted:
+        uid = str(info.get("user_id") or "")
+        entry = entries.get(uid)
+        recorded = (quizgrade.written_scores_recorded(entry, info)
+                    and info.get("canvas_score") is not None
+                    and not quizgrade.hold_for_review(entry, info))
+        if whole_grade_posted(info, entry, rubric, possible) or recorded:
+            continue
+        if _quiz_still_open(info) or info.get("canvas_score") is None:
             return False
     return True
 

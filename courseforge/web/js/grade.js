@@ -2122,7 +2122,7 @@ function glanceIsOpen(id) {
 function glanceCards(c, onBand) {
   const waiting = +c.waiting || 0;
   const cards = [
-    [c.assignments || 0, 'Assignments', ''],
+    [c.to_grade || 0, 'Assignments to Grade', (+c.to_grade) ? 'warn' : ''],
     [waiting, 'Waiting to grade', waiting ? 'warn' : ''],
     [c.graded || 0, 'Graded here', ''],
     [c.writes_today || 0, 'Canvas writes today', ''],

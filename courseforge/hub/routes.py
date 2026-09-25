@@ -152,6 +152,7 @@ def figures(app, cid, cdir: Path) -> dict:
     if not isinstance(rows, list):
         rows = []
     waiting = 0
+    to_grade = 0
     for r in rows:
         if not isinstance(r, dict):
             continue
@@ -171,6 +172,7 @@ def figures(app, cid, cdir: Path) -> dict:
                 draft.get("points_possible"),
                 graded_submissions_exist=r.get("graded_submissions_exist")):
             continue
+        to_grade += 1
         waiting += n
     graded = 0
     last: str | None = None
@@ -194,6 +196,7 @@ def figures(app, cid, cdir: Path) -> dict:
         writes += ledger.today_counts(cdir).get("writes", 0)
     return {
         "count": len(rows),
+        "to_grade": to_grade,
         "assignments": rows,
         "waiting": waiting,
         "graded": graded,
@@ -211,7 +214,7 @@ def local_state(app, course_id) -> dict:
     """
     cdir = Path(app.store.root) / str(course_id)
     if not cdir.is_dir():
-        return {"known": False, "waiting": 0, "assignments": 0, "graded": 0,
+        return {"known": False, "waiting": 0, "assignments": 0, "to_grade": 0, "graded": 0,
                 "writes_today": 0, "touched_at": None, "last_assignment": None}
 
     fig = figures(app, course_id, cdir)
@@ -234,6 +237,7 @@ def local_state(app, course_id) -> dict:
         "known": True,
         "waiting": fig["waiting"],
         "assignments": fig["count"],
+        "to_grade": fig["to_grade"],
         "graded": fig["graded"],
         "writes_today": fig["writes_today"],
         "touched_at": _iso(touched),
@@ -274,6 +278,7 @@ def _resume(courses: list[dict]) -> dict | None:
         "assignment_name": last.get("name") or "",
         "waiting": best.get("waiting", 0),
         "assignments": best.get("assignments", 0),
+        "to_grade": best.get("to_grade", 0),
         "graded": best.get("graded", 0),
         "writes_today": best.get("writes_today", 0),
         "known": True,
@@ -316,7 +321,7 @@ def build_hub(app, cid) -> dict:
     rows = ledger.read(cdir, limit=8)
     needs = sorted({n for a in areas.values() for n in (a.get("needs") or []) if n})
     stats = [
-        {"label": "Assignments", "value": grade.get("count", 0)},
+        {"label": "Assignments to Grade", "value": grade.get("to_grade", 0)},
         {"label": "Waiting to grade", "value": grade.get("waiting", 0),
          "kind": "warn" if grade.get("waiting") else ""},
         {"label": "Graded here", "value": grade.get("graded", 0)},
@@ -382,6 +387,7 @@ def _grade_status(app, cid, cdir: Path) -> dict:
         "needs": [],
         "actions": [{"label": "Open assignments", "href": f"#/c/{cid}/grade"}],
         "count": fig["count"],
+        "to_grade": fig["to_grade"],
         "waiting": waiting,
         "graded": graded,
         "writes_today": fig["writes_today"],

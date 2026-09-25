@@ -28,7 +28,7 @@ class TheHomeListDrawsTheCards(unittest.TestCase):
         src = (Path(__file__).resolve().parents[1] / "courseforge" / "web" / "js"
                / "grade.js").read_text(encoding="utf-8")
         body = src[src.index("function glanceCards"):src.index("function courseRow")]
-        for label in ("Assignments", "Waiting to grade", "Graded here",
+        for label in ("Assignments to Grade", "Waiting to grade", "Graded here",
                       "Canvas writes today"):
             self.assertIn(label, body)
         row = src[src.index("function courseRow"):src.index("function renderResume")]
@@ -75,10 +75,11 @@ class GlanceMatchesTheCoursePage(unittest.TestCase):
         hub = build_hub(app, cid)
         stats = {row["label"]: row["value"] for row in hub["stats"]}
         self.assertEqual(state["assignments"], 3)
+        self.assertEqual(state["to_grade"], 2)
         self.assertEqual(state["waiting"], 95)
         self.assertEqual(state["graded"], 1)
         self.assertEqual(state["writes_today"], 1)
-        self.assertEqual(stats["Assignments"], state["assignments"])
+        self.assertEqual(stats["Assignments to Grade"], state["to_grade"])
         self.assertEqual(stats["Waiting to grade"], state["waiting"])
         self.assertEqual(stats["Graded here"], state["graded"])
         self.assertEqual(stats["Canvas writes today"], state["writes_today"])

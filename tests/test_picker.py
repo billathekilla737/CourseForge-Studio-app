@@ -26,6 +26,12 @@ class FakeStore:
         except (OSError, ValueError):
             return []
 
+    def read(self, path, default=None):
+        try:
+            return json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return default
+
 
 class FakeApp:
     def __init__(self, root):
@@ -67,6 +73,7 @@ class LocalState(unittest.TestCase):
         self.assertTrue(state["known"])
         self.assertEqual(state["waiting"], 15)
         self.assertEqual(state["assignments"], 3)
+        self.assertEqual(state["to_grade"], 2)
 
     def test_graded_here_counts_drafts_and_names_the_newest(self):
         self.course(101, assignments=[{"id": "7", "name": "Project 2"},
@@ -74,7 +81,7 @@ class LocalState(unittest.TestCase):
                     drafts=[7], when=time.time() - 3600)
         self.course(101, drafts=[8], when=time.time() - 60)
         state = hub.local_state(self.app, 101)
-        self.assertEqual(state["graded"], 2)
+        self.assertEqual(state["graded"], 0)
         self.assertEqual(state["last_assignment"], {"id": "8", "name": "Project 3"})
 
     def test_a_synced_course_is_touched_but_not_worked(self):
